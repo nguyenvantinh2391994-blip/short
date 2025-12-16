@@ -371,6 +371,12 @@ class GrokBrowserAutomation:
         Args:
             output_path: Đường dẫn đầy đủ đến file output (nếu có)
             product_code: Mã sản phẩm để làm tên file (ưu tiên dùng cái này)
+
+        Flow Save As:
+        1. Paste mã sản phẩm vào ô Name (đã focus sẵn)
+        2. Ctrl+L → paste đường dẫn thư mục
+        3. Enter → đi đến thư mục
+        4. Alt+S → lưu
         """
         js = '''document.querySelector('button[aria-label="Tải xuống"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))'''
 
@@ -390,16 +396,12 @@ class GrokBrowserAutomation:
         self.log("   Đợi dialog Save As (5s)...")
         time.sleep(5)
 
-        # Lấy tên file từ product_code hoặc output_path
-        filename = ""
-        if product_code:
-            filename = product_code  # Chỉ cần mã, không cần đuôi .mp4
-        elif output_path:
-            filename = Path(output_path).stem  # Lấy tên file không có đuôi
+        # Lấy tên file và folder
+        filename = product_code if product_code else (Path(output_path).stem if output_path else "")
+        folder = str(Path(output_path).parent.absolute()) if output_path else ""
 
         if filename:
-            # Save As mở ra đã focus sẵn ở ô Name
-            # Chỉ cần paste tên file và Enter
+            # Bước 1: Paste mã sản phẩm vào ô Name (đã focus sẵn)
             self.log(f"   Paste tên file: {filename}")
             pyperclip.copy(filename)
             pag.hotkey("ctrl", "a")  # Select all text hiện tại
@@ -407,18 +409,27 @@ class GrokBrowserAutomation:
             pag.hotkey("ctrl", "v")  # Paste tên mới
             time.sleep(0.5)
 
-            # Enter để lưu
-            self.log("   Enter để lưu...")
-            pag.press("enter")
-            time.sleep(1)
+        if folder:
+            # Bước 2: Ctrl+L để đưa về thanh địa chỉ (folder)
+            self.log(f"   Ctrl+L → folder: {folder}")
+            pag.hotkey("ctrl", "l")
+            time.sleep(0.5)
+            pyperclip.copy(folder)
+            pag.hotkey("ctrl", "a")  # Select all
+            time.sleep(0.2)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.5)
 
-            self.log_ok(f"Đã lưu với tên: {filename}")
-        else:
-            # Không có tên, chỉ nhấn Enter để lưu mặc định
-            self.log("   Enter để lưu mặc định...")
+            # Bước 3: Enter để đi đến folder
             pag.press("enter")
-            time.sleep(1)
+            time.sleep(1.5)
 
+        # Bước 4: Alt+S để lưu
+        self.log("   Alt+S để lưu...")
+        pag.hotkey("alt", "s")
+        time.sleep(1)
+
+        self.log_ok(f"Đã lưu: {filename} vào {folder}")
         return True
 
     def open_new_tab_and_close_old(self) -> bool:

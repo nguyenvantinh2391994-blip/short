@@ -1,10 +1,12 @@
 """
-Grok Browser Automation - Đơn giản hóa
-Mở Chrome với profile và thao tác
+Grok Browser Automation - Kết nối Chrome qua CDP
+Không cần đóng Chrome đang mở!
 """
 
 import asyncio
+import subprocess
 import time
+import socket
 from pathlib import Path
 from typing import Optional, List
 from dataclasses import dataclass
@@ -18,6 +20,9 @@ except ImportError:
 
 console = Console()
 
+# Port mặc định cho Chrome debug
+DEBUG_PORT = 9222
+
 
 @dataclass
 class GrokVideoResult:
@@ -26,57 +31,120 @@ class GrokVideoResult:
     error: Optional[str] = None
 
 
-class GrokBrowserAutomation:
-    GROK_IMAGINE_URL = "https://grok.com/imagine/"
+def is_chrome_debug_running(port: int = DEBUG_PORT) -> bool:
+    """Kiểm tra Chrome debug đang chạy không"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            result = s.connect_ex(('127.0.0.1', port))
+            return result == 0
+    except:
+        return False
 
-    def __init__(
-        self,
-        chrome_profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data",
-        profile_name: str = "Default",
-    ):
-        self.chrome_profile_path = chrome_profile_path
-        self.profile_name = profile_name
+
+def start_chrome_debug(
+    chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data",
+    profile_name: str = "Default",
+    port: int = DEBUG_PORT
+) -> bool:
+    """Mở Chrome với debug port"""
+    if is_chrome_debug_running(port):
+        console.print(f"[green]✅ Chrome debug đã chạy trên port {port}[/]")
+        return True
+
+    console.print(f"[cyan]Đang mở Chrome với debug port {port}...[/]")
+
+    try:
+        # Mở Chrome với debug port
+        cmd = [
+            chrome_path,
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={profile_path}",
+            f"--profile-directory={profile_name}",
+            "https://grok.com/imagine"
+        ]
+
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+        )
+
+        # Đợi Chrome khởi động
+        for i in range(30):
+            time.sleep(1)
+            if is_chrome_debug_running(port):
+                console.print(f"[green]✅ Chrome đã mở![/]")
+                time.sleep(2)  # Đợi thêm để trang load
+                return True
+
+        console.print("[red]❌ Không thể mở Chrome debug[/]")
+        return False
+
+    except Exception as e:
+        console.print(f"[red]❌ Lỗi mở Chrome: {e}[/]")
+        return False
+
+
+class GrokBrowserAutomation:
+    GROK_IMAGINE_URL = "https://grok.com/imagine"
+
+    def __init__(self, debug_port: int = DEBUG_PORT):
+        self.debug_port = debug_port
         self.browser = None
         self.page = None
 
-    async def start(self) -> bool:
-        """Mở Chrome với profile"""
+    async def connect(self) -> bool:
+        """Kết nối vào Chrome đang chạy"""
         if not PLAYWRIGHT_AVAILABLE:
             console.print("[red]❌ Chưa cài Playwright. Chạy: pip install playwright && playwright install chromium[/]")
             return False
 
+        if not is_chrome_debug_running(self.debug_port):
+            console.print(f"[red]❌ Chrome debug chưa chạy![/]")
+            console.print(f"[yellow]Chạy lệnh: run.bat start-chrome[/]")
+            return False
+
         try:
-            console.print("[cyan]Đang mở Chrome...[/]")
+            console.print(f"[cyan]Đang kết nối Chrome (port {self.debug_port})...[/]")
 
             self.playwright = await async_playwright().start()
 
-            # Mở Chrome với profile
-            self.browser = await self.playwright.chromium.launch_persistent_context(
-                user_data_dir=self.chrome_profile_path,
-                channel="chrome",
-                headless=False,
-                args=[f"--profile-directory={self.profile_name}"],
+            # Kết nối vào Chrome qua CDP
+            self.browser = await self.playwright.chromium.connect_over_cdp(
+                f"http://127.0.0.1:{self.debug_port}"
             )
 
-            # Lấy hoặc tạo page
-            if self.browser.pages:
-                self.page = self.browser.pages[0]
-            else:
-                self.page = await self.browser.new_page()
+            # Lấy context và page
+            contexts = self.browser.contexts
+            if contexts:
+                self.context = contexts[0]
+                pages = self.context.pages
 
-            console.print("[green]✅ Chrome đã mở[/]")
+                # Tìm tab Grok hoặc dùng tab đầu tiên
+                self.page = None
+                for p in pages:
+                    if "grok.com" in p.url:
+                        self.page = p
+                        break
+
+                if not self.page and pages:
+                    self.page = pages[0]
+
+            if not self.page:
+                self.page = await self.context.new_page()
+
+            console.print("[green]✅ Đã kết nối Chrome![/]")
             return True
 
         except Exception as e:
-            error_msg = str(e)
-            if "Target page, context or browser has been closed" in error_msg:
-                console.print("[red]❌ Chrome đang mở. Đóng Chrome rồi chạy lại![/]")
-            else:
-                console.print(f"[red]❌ Lỗi: {e}[/]")
+            console.print(f"[red]❌ Lỗi kết nối: {e}[/]")
             return False
 
-    async def stop(self):
-        """Đóng browser"""
+    async def disconnect(self):
+        """Ngắt kết nối (không đóng Chrome)"""
         if self.browser:
             await self.browser.close()
         if hasattr(self, 'playwright'):
@@ -95,20 +163,55 @@ class GrokBrowserAutomation:
             return GrokVideoResult(success=False, error=f"Không tìm thấy: {image_path}")
 
         try:
-            # 1. Vào trang Grok Imagine
-            console.print("[cyan]Đang vào Grok Imagine...[/]")
-            await self.page.goto(self.GROK_IMAGINE_URL, wait_until="networkidle", timeout=60000)
-            await asyncio.sleep(2)
+            # 1. Vào trang Grok Imagine nếu chưa
+            current_url = self.page.url
+            if "grok.com/imagine" not in current_url:
+                console.print("[cyan]Đang vào Grok Imagine...[/]")
+                await self.page.goto(self.GROK_IMAGINE_URL, wait_until="networkidle", timeout=60000)
+                await asyncio.sleep(2)
 
-            # 2. Click nút đính kèm
+            # 2. Click nút đính kèm (thử nhiều selector)
             console.print("[cyan]Click nút đính kèm...[/]")
-            await self.page.click('button[aria-label="Đính kèm"]')
+            attach_selectors = [
+                'button[aria-label="Đính kèm"]',
+                'button[aria-label="Attach"]',
+                'button:has(svg.lucide-paperclip)',
+                '[data-testid="attach-button"]',
+            ]
+
+            clicked = False
+            for selector in attach_selectors:
+                try:
+                    btn = await self.page.wait_for_selector(selector, timeout=3000)
+                    if btn:
+                        await btn.click()
+                        clicked = True
+                        break
+                except:
+                    continue
+
+            if not clicked:
+                return GrokVideoResult(success=False, error="Không tìm thấy nút đính kèm")
+
             await asyncio.sleep(0.5)
 
             # 3. Click "Tải lên một tệp" và upload
             console.print(f"[cyan]Upload ảnh: {image_path.name}[/]")
+            upload_selectors = [
+                'div[role="menuitem"]:has-text("Tải lên một tệp")',
+                'div[role="menuitem"]:has-text("Upload a file")',
+                '[data-testid="upload-file"]',
+            ]
+
             async with self.page.expect_file_chooser() as fc_info:
-                await self.page.click('div[role="menuitem"]:has-text("Tải lên một tệp")')
+                for selector in upload_selectors:
+                    try:
+                        item = await self.page.wait_for_selector(selector, timeout=2000)
+                        if item:
+                            await item.click()
+                            break
+                    except:
+                        continue
 
             file_chooser = await fc_info.value
             await file_chooser.set_files(str(image_path))
@@ -117,15 +220,39 @@ class GrokBrowserAutomation:
             # 4. Nhập prompt nếu có
             if prompt:
                 console.print(f"[cyan]Nhập prompt: {prompt[:50]}...[/]")
-                await self.page.fill('textarea[placeholder*="Nhập để tùy chỉnh"]', prompt)
+                textarea_selectors = [
+                    'textarea[placeholder*="Nhập để tùy chỉnh"]',
+                    'textarea[placeholder*="Enter to customize"]',
+                    'textarea',
+                ]
+                for selector in textarea_selectors:
+                    try:
+                        textarea = await self.page.wait_for_selector(selector, timeout=2000)
+                        if textarea:
+                            await textarea.fill(prompt)
+                            break
+                    except:
+                        continue
                 await asyncio.sleep(0.5)
 
             # 5. Nhấn Enter để tạo video
             console.print("[cyan]Đang tạo video... (chờ 1-3 phút)[/]")
             await self.page.keyboard.press("Enter")
 
-            # 6. Đợi nút "Làm lại" xuất hiện
-            await self.page.wait_for_selector('button:has-text("Làm lại")', timeout=300000)
+            # 6. Đợi video xong (nút "Làm lại" xuất hiện)
+            done_selectors = [
+                'button:has-text("Làm lại")',
+                'button:has-text("Redo")',
+                'button:has-text("Regenerate")',
+            ]
+
+            for selector in done_selectors:
+                try:
+                    await self.page.wait_for_selector(selector, timeout=300000)
+                    break
+                except:
+                    continue
+
             console.print("[green]✅ Video đã tạo xong![/]")
             await asyncio.sleep(2)
 
@@ -133,8 +260,21 @@ class GrokBrowserAutomation:
             console.print("[cyan]Đang tải video...[/]")
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
+            download_selectors = [
+                'svg.lucide-download',
+                'button:has(svg.lucide-download)',
+                '[data-testid="download-button"]',
+            ]
+
             async with self.page.expect_download() as download_info:
-                await self.page.click('svg.lucide-download')
+                for selector in download_selectors:
+                    try:
+                        btn = await self.page.wait_for_selector(selector, timeout=3000)
+                        if btn:
+                            await btn.click()
+                            break
+                    except:
+                        continue
 
             download = await download_info.value
             await download.save_as(output_path)
@@ -152,20 +292,25 @@ def create_video_sync(
     output_path: str = "outputs/video.mp4",
     chrome_profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data",
     profile_name: str = "Default",
-    headless: bool = False,
+    headless: bool = False,  # Không dùng nhưng giữ để tương thích
 ) -> GrokVideoResult:
     """Tạo video - gọi từ CLI"""
 
     async def _run():
-        auto = GrokBrowserAutomation(chrome_profile_path, profile_name)
+        # Mở Chrome nếu chưa chạy
+        if not is_chrome_debug_running():
+            if not start_chrome_debug(profile_path=chrome_profile_path, profile_name=profile_name):
+                return GrokVideoResult(success=False, error="Không thể mở Chrome")
 
-        if not await auto.start():
-            return GrokVideoResult(success=False, error="Không thể mở Chrome")
+        auto = GrokBrowserAutomation()
+
+        if not await auto.connect():
+            return GrokVideoResult(success=False, error="Không thể kết nối Chrome")
 
         try:
             return await auto.create_video(image_path, prompt, output_path)
         finally:
-            await auto.stop()
+            await auto.disconnect()
 
     return asyncio.run(_run())
 
@@ -179,10 +324,15 @@ def create_videos_batch_sync(
     """Tạo nhiều video"""
 
     async def _run():
-        auto = GrokBrowserAutomation(chrome_profile_path, profile_name)
+        # Mở Chrome nếu chưa chạy
+        if not is_chrome_debug_running():
+            if not start_chrome_debug(profile_path=chrome_profile_path, profile_name=profile_name):
+                return [GrokVideoResult(success=False, error="Không thể mở Chrome")]
 
-        if not await auto.start():
-            return [GrokVideoResult(success=False, error="Không thể mở Chrome")]
+        auto = GrokBrowserAutomation()
+
+        if not await auto.connect():
+            return [GrokVideoResult(success=False, error="Không thể kết nối Chrome")]
 
         results = []
         try:
@@ -198,7 +348,7 @@ def create_videos_batch_sync(
                 if i < len(tasks):
                     await asyncio.sleep(3)
         finally:
-            await auto.stop()
+            await auto.disconnect()
 
         return results
 

@@ -17,7 +17,13 @@ from .config_manager import get_config, ConfigManager
 from .token_extractor import TokenExtractor, interactive_add_token
 from .grok_client import GrokClient
 from .xai_client import XAIClient, setup_xai_api
-from .grok_automation import create_video_sync, create_videos_batch_sync, GrokVideoResult
+from .grok_automation import (
+    create_video_sync,
+    create_videos_batch_sync,
+    GrokVideoResult,
+    start_chrome_debug,
+    is_chrome_debug_running,
+)
 from .sheets_reader import SheetsReader, LocalProductReader, Product
 from .video_generator import VideoGenerator, VideoConfig
 from .watcher import AutoVideoWatcher, SheetsWatcher
@@ -379,6 +385,38 @@ def xai_generate(prompt, output):
             console.print(f"[green]Đã lưu: {output}[/]")
     else:
         console.print(f"[red]❌ Lỗi: {result.error}[/]")
+
+
+@cli.command("start-chrome")
+@click.pass_context
+def start_chrome(ctx):
+    """Mở Chrome với debug mode để automation"""
+    config = get_config(ctx.obj["config_path"])
+
+    if is_chrome_debug_running():
+        console.print("[green]✅ Chrome debug đã chạy sẵn (port 9222)[/]")
+        console.print("[dim]Có thể chạy: run.bat grok-auto <ảnh>[/]")
+        return
+
+    console.print(Panel(
+        "[bold]Mở Chrome Debug Mode[/]\n\n"
+        "Chrome sẽ mở với debug port 9222.\n"
+        "Bạn có thể tiếp tục sử dụng Chrome bình thường.\n"
+        "Script sẽ kết nối vào Chrome này để tự động tạo video.",
+        title="Chrome Debug"
+    ))
+
+    success = start_chrome_debug(
+        profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data"),
+        profile_name=config.get("chrome.profile_name", "Default"),
+    )
+
+    if success:
+        console.print("\n[bold green]Chrome đã sẵn sàng![/]")
+        console.print("Giờ bạn có thể chạy:")
+        console.print('  [cyan]run.bat grok-auto "products/SP001/1.jpg"[/]')
+    else:
+        console.print("\n[yellow]Lưu ý: Nếu Chrome đang mở, đóng tất cả Chrome rồi chạy lại.[/]")
 
 
 @cli.command("grok-auto")

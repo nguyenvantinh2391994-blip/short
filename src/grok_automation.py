@@ -1,11 +1,10 @@
 """
 Grok Browser Automation - PyAutoGUI
-Mở Chrome bình thường + điều khiển bằng chuột/bàn phím
+Mở Chrome bình thường + điều khiển bằng chuột/bàn phím + JS qua DevTools
 """
 
 import subprocess
 import time
-import os
 from pathlib import Path
 from typing import Optional, List
 from dataclasses import dataclass
@@ -53,6 +52,64 @@ class GrokBrowserAutomation:
     def log(self, msg: str):
         console.print(f"[cyan]{msg}[/]")
 
+    def log_ok(self, msg: str):
+        console.print(f"[green]   ✓ {msg}[/]")
+
+    def log_err(self, msg: str):
+        console.print(f"[red]   ✗ {msg}[/]")
+
+    def log_warn(self, msg: str):
+        console.print(f"[yellow]   ⚠ {msg}[/]")
+
+    def run_js(self, js: str, close_devtools: bool = True) -> bool:
+        """Chạy JS qua DevTools Console."""
+        if not pag or not pyperclip:
+            return False
+
+        try:
+            # Mở DevTools Console
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1.5)
+
+            # Paste và chạy JS
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(0.8)
+
+            # Đóng DevTools
+            if close_devtools:
+                pag.hotkey("ctrl", "shift", "j")
+                time.sleep(0.5)
+
+            return True
+        except Exception as e:
+            self.log_err(f"run_js error: {e}")
+            return False
+
+    def run_js_get_result(self, js: str) -> Optional[str]:
+        """Chạy JS và lấy kết quả qua clipboard."""
+        if not pag or not pyperclip:
+            return None
+
+        try:
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1.5)
+
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(0.8)
+
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+
+            return pyperclip.paste()
+        except:
+            return None
+
     def open_chrome(self, url: str) -> bool:
         """Mở Chrome bình thường."""
         try:
@@ -72,287 +129,231 @@ class GrokBrowserAutomation:
             ])
 
             self.chrome_process = subprocess.Popen(cmd, shell=False)
-            self.log(f"Chrome PID: {self.chrome_process.pid}")
+            self.log_ok(f"Chrome PID: {self.chrome_process.pid}")
             return True
         except Exception as e:
-            console.print(f"[red]Lỗi mở Chrome: {e}[/]")
+            self.log_err(f"Lỗi mở Chrome: {e}")
             return False
-
-    def close_chrome(self):
-        """Đóng Chrome."""
-        try:
-            if pag:
-                pag.hotkey('alt', 'F4')
-                time.sleep(1)
-        except:
-            pass
 
     def click_attach_button(self) -> bool:
-        """Click nút đính kèm bằng JS qua DevTools."""
-        if not pag or not pyperclip:
-            return False
-
+        """Click nút đính kèm."""
         js = '''(function(){
             var btns = document.querySelectorAll('button');
             for(var b of btns){
                 var label = b.getAttribute('aria-label') || '';
                 if(label.includes('Đính kèm') || label.includes('Attach')){
                     b.click();
-                    console.log('Clicked attach');
+                    console.log('OK: Clicked attach button');
                     return true;
                 }
             }
+            console.log('FAIL: Attach button not found');
             return false;
         })();'''
 
-        try:
-            # Mở DevTools
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1.5)
-
-            # Chạy JS
-            pyperclip.copy(js)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.3)
-            pag.press("enter")
-            time.sleep(1)
-
-            # Đóng DevTools
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+        if self.run_js(js):
+            self.log_ok("Đã click nút đính kèm")
             return True
-        except:
-            return False
+        return False
 
     def click_upload_menu(self) -> bool:
         """Click menu Tải lên."""
-        if not pag or not pyperclip:
-            return False
-
         js = '''(function(){
             var items = document.querySelectorAll('div[role="menuitem"]');
             for(var item of items){
                 var text = item.textContent || '';
                 if(text.includes('Tải lên') || text.includes('Upload')){
                     item.click();
-                    console.log('Clicked upload');
+                    console.log('OK: Clicked upload menu');
                     return true;
                 }
             }
+            console.log('FAIL: Upload menu not found');
             return false;
         })();'''
 
-        try:
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1)
-            pyperclip.copy(js)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.3)
-            pag.press("enter")
-            time.sleep(1)
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+        if self.run_js(js):
+            self.log_ok("Đã click menu tải lên")
             return True
-        except:
-            return False
+        return False
 
     def upload_file(self, file_path: str) -> bool:
-        """Upload file qua input."""
-        if not pag or not pyperclip:
-            return False
-
-        # Dùng JS để set file vào input
-        js = f'''(function(){{
-            var input = document.querySelector('input[type="file"]');
-            if(input){{
-                // Trigger click để mở dialog
-                input.click();
-                return true;
-            }}
-            return false;
-        }})();'''
-
-        try:
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1)
-            pyperclip.copy(js)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.3)
-            pag.press("enter")
-            time.sleep(0.5)
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1)
-
-            # Đợi dialog mở, paste path
-            time.sleep(1)
-            pyperclip.copy(str(file_path))
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.5)
-            pag.press("enter")
-            time.sleep(2)
-            return True
-        except:
-            return False
-
-    def click_prompt_textarea(self) -> bool:
-        """Click vào ô nhập prompt (placeholder: Nhập để tùy chỉnh video...)"""
-        if not pag or not pyperclip:
-            return False
-
+        """Upload file qua dialog."""
+        # Click input[type=file] để mở dialog
         js = '''(function(){
+            var input = document.querySelector('input[type="file"]');
+            if(input){
+                input.click();
+                console.log('OK: Opened file dialog');
+                return true;
+            }
+            console.log('FAIL: File input not found');
+            return false;
+        })();'''
+
+        if not self.run_js(js):
+            return False
+
+        time.sleep(1.5)
+
+        # Paste đường dẫn file và Enter
+        pyperclip.copy(str(file_path))
+        pag.hotkey("ctrl", "v")
+        time.sleep(0.5)
+        pag.press("enter")
+        time.sleep(2)
+
+        self.log_ok(f"Đã upload: {Path(file_path).name}")
+        return True
+
+    def click_and_type_prompt(self, prompt: str) -> bool:
+        """Click vào textarea và nhập prompt bằng JS."""
+        # Escape prompt cho JS string
+        escaped_prompt = prompt.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n')
+
+        js = f'''(function(){{
             var ta = document.querySelector('textarea[placeholder*="Nhập để tùy chỉnh video"]');
             if(!ta) ta = document.querySelector('textarea[placeholder*="Enter to customize"]');
             if(!ta) ta = document.querySelector('textarea');
-            if(ta){
+            if(ta){{
                 ta.focus();
                 ta.click();
-                console.log('Clicked textarea');
+                ta.value = '{escaped_prompt}';
+                ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                console.log('OK: Typed prompt into textarea');
+                return true;
+            }}
+            console.log('FAIL: Textarea not found');
+            return false;
+        }})();'''
+
+        if self.run_js(js):
+            self.log_ok("Đã nhập prompt vào textarea")
+            return True
+
+        self.log_err("Không tìm thấy textarea")
+        return False
+
+    def press_enter_to_send(self) -> bool:
+        """Nhấn Enter để gửi - focus textarea trước."""
+        # Focus lại textarea rồi Enter
+        js = '''(function(){
+            var ta = document.querySelector('textarea[placeholder*="Nhập để tùy chỉnh video"]');
+            if(!ta) ta = document.querySelector('textarea');
+            if(ta){
+                ta.focus();
+                console.log('OK: Focused textarea');
                 return true;
             }
             return false;
         })();'''
 
-        try:
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1)
-            pyperclip.copy(js)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.3)
-            pag.press("enter")
-            time.sleep(0.5)
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
-            return True
-        except:
-            return False
+        self.run_js(js)
+        time.sleep(0.3)
 
-    def type_prompt(self, prompt: str) -> bool:
-        """Nhập prompt vào textarea."""
-        if not pag or not pyperclip:
-            return False
+        # Nhấn Enter
+        pag.press("enter")
+        time.sleep(0.5)
+        self.log_ok("Đã nhấn Enter gửi yêu cầu")
+        return True
 
-        try:
-            # Click vào textarea trước
-            self.click_prompt_textarea()
-            time.sleep(0.5)
-
-            # Paste prompt
-            if prompt:
-                pyperclip.copy(prompt)
-                pag.hotkey("ctrl", "v")
-                time.sleep(0.5)
-
-            return True
-        except:
-            return False
-
-    def press_enter(self):
-        """Nhấn Enter để gửi."""
-        if pag:
-            pag.press("enter")
-            time.sleep(0.5)
-
-    def wait_for_video_done(self, timeout: int = 300) -> bool:
-        """Đợi video tạo xong - check nút 'Làm lại' hoặc nút download."""
-        if not pag or not pyperclip:
-            return False
-
-        # JS check cả nút "Làm lại" và nút download
+    def check_video_status(self) -> str:
+        """Check trạng thái video: 'done', 'download_ready', 'waiting'."""
         js = '''(function(){
             // Check nút Làm lại
             var btns = document.querySelectorAll('button');
             for(var b of btns){
                 var text = b.textContent || '';
-                if(text.includes('Làm lại') || text.includes('Redo')){
-                    return 'done';
+                if(text.includes('Làm lại') || text.includes('Redo') || text.includes('Regenerate')){
+                    copy('done'); return;
                 }
             }
-            // Check nút download (video đã sẵn sàng)
-            var svgs = document.querySelectorAll('svg.lucide-download');
-            if(svgs.length > 0) return 'download_ready';
-            return 'waiting';
+            // Check nút/icon download
+            var downloads = document.querySelectorAll('svg.lucide-download, [data-testid*="download"], button[aria-label*="download"], button[aria-label*="Download"]');
+            if(downloads.length > 0){ copy('download_ready'); return; }
+            // Check video element
+            var videos = document.querySelectorAll('video');
+            if(videos.length > 0){ copy('video_exists'); return; }
+            copy('waiting');
         })();'''
+
+        result = self.run_js_get_result(js)
+        return result if result in ['done', 'download_ready', 'video_exists', 'waiting'] else 'waiting'
+
+    def wait_for_video_done(self, timeout: int = 300) -> bool:
+        """Đợi video tạo xong."""
+        self.log("   Đang chờ video...")
 
         for i in range(timeout // 5):
             time.sleep(5)
             elapsed = i * 5
-            if elapsed % 30 == 0:
-                self.log(f"...đã chờ {elapsed}s")
 
-            try:
-                pag.hotkey("ctrl", "shift", "j")
-                time.sleep(1)
+            if elapsed > 0 and elapsed % 30 == 0:
+                self.log(f"   ...đã chờ {elapsed}s")
 
-                # Copy kết quả check vào clipboard
-                check_js = f'''(function(){{
-                    var btns = document.querySelectorAll('button');
-                    for(var b of btns){{
-                        var text = b.textContent || '';
-                        if(text.includes('Làm lại') || text.includes('Redo')){{
-                            copy('done'); return;
-                        }}
-                    }}
-                    var svgs = document.querySelectorAll('svg.lucide-download');
-                    if(svgs.length > 0){{ copy('download_ready'); return; }}
-                    copy('waiting');
-                }})();'''
+            status = self.check_video_status()
+            self.log(f"   [dim]Status: {status}[/]")
 
-                pyperclip.copy(check_js)
-                pag.hotkey("ctrl", "v")
-                time.sleep(0.3)
-                pag.press("enter")
-                time.sleep(0.8)
+            if status in ['done', 'download_ready', 'video_exists']:
+                self.log_ok(f"Video sẵn sàng! (status={status})")
+                return True
 
-                pag.hotkey("ctrl", "shift", "j")
-                time.sleep(0.3)
-
-                result = pyperclip.paste()
-                if result in ['done', 'download_ready']:
-                    return True
-
-                # Sau 30s, thử click download xem có được không
-                if elapsed >= 30 and elapsed % 30 == 0:
-                    self.log(f"   Thử click download...")
-                    if self.click_download():
-                        time.sleep(3)
-                        # Nếu có file tải về thì coi như thành công
-                        return True
-
-            except:
-                pass
+            # Fallback: sau 30s thử click download
+            if elapsed >= 30 and elapsed % 30 == 0:
+                self.log_warn("Thử click download...")
+                self.click_download()
 
         return False
 
     def click_download(self) -> bool:
         """Click nút download."""
-        if not pag or not pyperclip:
-            return False
-
         js = '''(function(){
-            var svgs = document.querySelectorAll('svg');
-            for(var svg of svgs){
-                if(svg.classList.contains('lucide-download') ||
-                   svg.className.baseVal?.includes('download')){
-                    var btn = svg.closest('button') || svg.parentElement;
-                    if(btn){ btn.click(); return true; }
+            // Thử nhiều cách tìm nút download
+
+            // Cách 1: SVG với class lucide-download
+            var svg = document.querySelector('svg.lucide-download');
+            if(svg){
+                var btn = svg.closest('button') || svg.parentElement;
+                if(btn){ btn.click(); console.log('OK: Clicked download (svg.lucide-download)'); return true; }
+            }
+
+            // Cách 2: Button có aria-label chứa download
+            var btns = document.querySelectorAll('button[aria-label*="download"], button[aria-label*="Download"], button[aria-label*="tải"]');
+            if(btns.length > 0){ btns[0].click(); console.log('OK: Clicked download (aria-label)'); return true; }
+
+            // Cách 3: Tìm SVG có path của icon download
+            var allSvgs = document.querySelectorAll('svg');
+            for(var s of allSvgs){
+                var paths = s.querySelectorAll('path');
+                for(var p of paths){
+                    var d = p.getAttribute('d') || '';
+                    if(d.includes('M21 15v4a2') || d.includes('m7 7 5-5-5-5')){
+                        var btn = s.closest('button') || s.parentElement;
+                        if(btn){ btn.click(); console.log('OK: Clicked download (path match)'); return true; }
+                    }
                 }
             }
+
+            // Cách 4: Button chứa text download
+            var allBtns = document.querySelectorAll('button');
+            for(var b of allBtns){
+                var text = (b.textContent || '').toLowerCase();
+                var label = (b.getAttribute('aria-label') || '').toLowerCase();
+                if(text.includes('download') || text.includes('tải') || label.includes('download')){
+                    b.click(); console.log('OK: Clicked download (text match)'); return true;
+                }
+            }
+
+            console.log('FAIL: Download button not found');
             return false;
         })();'''
 
-        try:
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1)
-            pyperclip.copy(js)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.3)
-            pag.press("enter")
-            time.sleep(1)
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+        if self.run_js(js):
+            self.log_ok("Đã click nút download")
             return True
-        except:
-            return False
+
+        self.log_err("Không tìm thấy nút download")
+        return False
 
     def create_video(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
         """Tạo video."""
@@ -370,73 +371,77 @@ class GrokBrowserAutomation:
             return GrokVideoResult(False, error=f"Không tìm thấy: {image_path}")
 
         try:
-            # 1. Mở Chrome
+            # === BƯỚC 1: Mở Chrome ===
             self.log("1. Mở Chrome...")
             if not self.open_chrome(self.GROK_IMAGINE_URL):
                 return GrokVideoResult(False, error="Không mở được Chrome")
 
-            self.log("Đợi trang load (8s)...")
-            time.sleep(8)
+            self.log("   Đợi trang load (10s)...")
+            time.sleep(10)
 
-            # 2. Click đính kèm
+            # === BƯỚC 2: Click đính kèm ===
             self.log("2. Click nút đính kèm...")
-            self.click_attach_button()
+            if not self.click_attach_button():
+                self.log_warn("Có thể không click được, tiếp tục...")
             time.sleep(1)
 
-            # 3. Click tải lên
-            self.log("3. Click tải lên...")
-            self.click_upload_menu()
+            # === BƯỚC 3: Click tải lên ===
+            self.log("3. Click menu tải lên...")
+            if not self.click_upload_menu():
+                self.log_warn("Có thể không click được, tiếp tục...")
             time.sleep(1)
 
-            # 4. Upload file
+            # === BƯỚC 4: Upload file ===
             self.log(f"4. Upload: {image_path.name}")
-            self.upload_file(str(image_path))
+            if not self.upload_file(str(image_path)):
+                return GrokVideoResult(False, error="Không upload được file")
 
-            # Đợi ảnh load xong (quan trọng!)
-            self.log("   Đợi ảnh load (8s)...")
-            time.sleep(8)
+            # Đợi ảnh load
+            self.log("   Đợi ảnh load (10s)...")
+            time.sleep(10)
 
-            # 5. Click vào ô nhập prompt
-            self.log("5. Click ô 'Nhập để tùy chỉnh video...'")
-            self.click_prompt_textarea()
-            time.sleep(1)
-
-            # 6. Nhập prompt
+            # === BƯỚC 5: Nhập prompt ===
             if prompt:
-                self.log(f"6. Nhập prompt: {prompt[:50]}...")
-                pyperclip.copy(prompt)
-                pag.hotkey("ctrl", "v")
-                time.sleep(0.5)
+                self.log(f"5. Nhập prompt: {prompt[:50]}...")
+                if not self.click_and_type_prompt(prompt):
+                    self.log_warn("Không nhập được prompt bằng JS, thử PyAutoGUI...")
+                    # Fallback: click và paste
+                    pag.click(600, 400)  # Click vào giữa màn hình
+                    time.sleep(0.5)
+                    pyperclip.copy(prompt)
+                    pag.hotkey("ctrl", "v")
+                time.sleep(1)
+            else:
+                self.log("5. Không có prompt, bỏ qua...")
 
-            # 7. Nhấn Enter để gửi
-            self.log("7. Nhấn Enter gửi yêu cầu...")
-            self.press_enter()
+            # === BƯỚC 6: Gửi yêu cầu ===
+            self.log("6. Nhấn Enter gửi yêu cầu...")
+            self.press_enter_to_send()
 
-            # 8. Đợi video xong (nút "Làm lại" xuất hiện)
-            self.log("8. Đang tạo video (1-5 phút)...")
+            # === BƯỚC 7: Đợi video ===
+            self.log("7. Đang tạo video (1-5 phút)...")
             video_done = self.wait_for_video_done(timeout=300)
 
             if video_done:
-                self.log("✓ Video xong!")
+                self.log_ok("Video tạo xong!")
             else:
-                # Fallback: thử download luôn dù chưa detect được nút "Làm lại"
-                self.log("[yellow]⚠️ Không detect được nút 'Làm lại', thử download...[/]")
+                self.log_warn("Timeout hoặc không detect được, thử download anyway...")
 
             time.sleep(2)
 
-            # 9. Download
-            self.log("9. Tải video...")
+            # === BƯỚC 8: Download ===
+            self.log("8. Tải video...")
             self.click_download()
             time.sleep(10)
 
-            console.print("[green]✅ Xong! Video trong Downloads[/]")
+            console.print("[green]✅ Xong! Kiểm tra thư mục Downloads[/]")
             return GrokVideoResult(True, video_path="Downloads")
 
         except Exception as e:
+            self.log_err(f"Exception: {e}")
             return GrokVideoResult(False, error=str(e))
         finally:
-            # Không tự đóng Chrome để user xem kết quả
-            pass
+            pass  # Không đóng Chrome để user kiểm tra
 
 
 def create_video_sync(

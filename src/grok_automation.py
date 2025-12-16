@@ -102,51 +102,44 @@ class GrokBrowserAutomation:
 
     def _start_chrome_debug(self, auto_kill: bool = True) -> bool:
         """Khởi động Chrome với remote debugging"""
+        # Kiểm tra nếu đã có Chrome debug đang chạy
         if self._is_chrome_running_debug():
             console.print("[green]✅ Chrome debug mode đã sẵn sàng[/]")
             return True
 
-        # Nếu Chrome đang chạy nhưng không có debug port, đóng nó
-        if auto_kill:
-            self._kill_chrome()
+        # Đóng Chrome cũ để mở Chrome với debug port
+        console.print("[yellow]⚠️ Cần mở Chrome với debug mode[/]")
+        self._kill_chrome()
 
-        console.print("[cyan]Đang khởi động Chrome với debug mode...[/]")
+        console.print("[cyan]Đang mở Chrome...[/]")
 
         cmd = [
             self.chrome_path,
             f"--remote-debugging-port={self.DEBUG_PORT}",
             f"--user-data-dir={self.chrome_profile_path}",
             f"--profile-directory={self.profile_name}",
-            "about:blank",
         ]
 
-        console.print(f"[dim]Profile: {self.profile_name}[/]")
-
         try:
-            # Khởi động Chrome như process riêng
             self.chrome_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
 
-            console.print(f"[dim]Chrome PID: {self.chrome_process.pid}[/]")
-
             # Chờ Chrome khởi động
-            for i in range(15):  # Chờ tối đa 15 giây
+            for i in range(10):
                 if self._is_chrome_running_debug():
-                    console.print("[green]✅ Chrome đã khởi động với debug port[/]")
-                    time.sleep(1)  # Chờ thêm chút để Chrome ổn định
+                    console.print("[green]✅ Chrome đã sẵn sàng[/]")
+                    time.sleep(1)
                     return True
-                console.print(f"[dim]Đang chờ Chrome... ({i+1}/15)[/]")
                 time.sleep(1)
 
-            console.print("[red]❌ Timeout khởi động Chrome[/]")
-            console.print("[yellow]Thử đóng Chrome thủ công và chạy lại[/]")
+            console.print("[red]❌ Không thể khởi động Chrome[/]")
             return False
 
         except Exception as e:
-            console.print(f"[red]❌ Lỗi khởi động Chrome: {e}[/]")
+            console.print(f"[red]❌ Lỗi: {e}[/]")
             return False
 
     async def init_browser(self) -> bool:

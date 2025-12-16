@@ -1,15 +1,33 @@
 """
-Grok Browser Automation
-Dùng trực tiếp Chrome profile - PHẢI ĐÓNG CHROME TRƯỚC
+Grok Browser Automation - PyAutoGUI
+Mở Chrome bình thường + điều khiển bằng chuột/bàn phím
 """
 
+import subprocess
 import time
+import os
 from pathlib import Path
 from typing import Optional, List
 from dataclasses import dataclass
 from rich.console import Console
 
 console = Console()
+
+try:
+    import pyautogui as pag
+    pag.FAILSAFE = True
+    pag.PAUSE = 0.1
+    HAS_PAG = True
+except ImportError:
+    HAS_PAG = False
+    pag = None
+
+try:
+    import pyperclip
+    HAS_CLIP = True
+except ImportError:
+    HAS_CLIP = False
+    pyperclip = None
 
 
 @dataclass
@@ -30,151 +48,341 @@ class GrokBrowserAutomation:
     ):
         self.chrome_path = chrome_path
         self.profile_path = profile_path
-        self.headless = headless
-        self.driver = None
+        self.chrome_process = None
 
-    def _create_driver(self):
-        """Mở Chrome với profile gốc."""
+    def log(self, msg: str):
+        console.print(f"[cyan]{msg}[/]")
+
+    def open_chrome(self, url: str) -> bool:
+        """Mở Chrome bình thường."""
         try:
-            from selenium import webdriver
-            from selenium.webdriver.chrome.service import Service
-            from selenium.webdriver.chrome.options import Options
-        except ImportError:
-            console.print("[red]❌ Chưa cài Selenium![/]")
-            console.print("[yellow]Chạy: pip install selenium webdriver-manager[/]")
-            return False
+            cmd = [self.chrome_path]
 
-        profile = Path(self.profile_path)
-        user_data_dir = profile.parent
-        profile_name = profile.name
+            if self.profile_path and Path(self.profile_path).exists():
+                profile = Path(self.profile_path)
+                cmd.extend([
+                    f"--user-data-dir={profile.parent}",
+                    f"--profile-directory={profile.name}"
+                ])
 
-        options = Options()
-        options.binary_location = self.chrome_path
-        options.add_argument(f"--user-data-dir={user_data_dir}")
-        options.add_argument(f"--profile-directory={profile_name}")
+            cmd.extend([
+                "--window-size=1200,800",
+                "--window-position=50,50",
+                url
+            ])
 
-        if self.headless:
-            options.add_argument("--headless=new")
-
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-
-        try:
-            from webdriver_manager.chrome import ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
-        except:
-            service = Service()
-
-        try:
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.driver.maximize_window()
-            console.print("[green]✓ Chrome đã mở![/]")
+            self.chrome_process = subprocess.Popen(cmd, shell=False)
+            self.log(f"Chrome PID: {self.chrome_process.pid}")
             return True
         except Exception as e:
-            if "user data directory is already in use" in str(e).lower():
-                console.print("[red]❌ ĐÓNG CHROME TRƯỚC rồi chạy lại![/]")
-            else:
-                console.print(f"[red]❌ Lỗi: {e}[/]")
+            console.print(f"[red]Lỗi mở Chrome: {e}[/]")
             return False
 
-    def _wait(self, by, value, timeout=10, clickable=False):
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-        cond = EC.element_to_be_clickable if clickable else EC.presence_of_element_located
-        return WebDriverWait(self.driver, timeout).until(cond((by, value)))
+    def close_chrome(self):
+        """Đóng Chrome."""
+        try:
+            if pag:
+                pag.hotkey('alt', 'F4')
+                time.sleep(1)
+        except:
+            pass
+
+    def click_attach_button(self) -> bool:
+        """Click nút đính kèm bằng JS qua DevTools."""
+        if not pag or not pyperclip:
+            return False
+
+        js = '''(function(){
+            var btns = document.querySelectorAll('button');
+            for(var b of btns){
+                var label = b.getAttribute('aria-label') || '';
+                if(label.includes('Đính kèm') || label.includes('Attach')){
+                    b.click();
+                    console.log('Clicked attach');
+                    return true;
+                }
+            }
+            return false;
+        })();'''
+
+        try:
+            # Mở DevTools
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1.5)
+
+            # Chạy JS
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(1)
+
+            # Đóng DevTools
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+            return True
+        except:
+            return False
+
+    def click_upload_menu(self) -> bool:
+        """Click menu Tải lên."""
+        if not pag or not pyperclip:
+            return False
+
+        js = '''(function(){
+            var items = document.querySelectorAll('div[role="menuitem"]');
+            for(var item of items){
+                var text = item.textContent || '';
+                if(text.includes('Tải lên') || text.includes('Upload')){
+                    item.click();
+                    console.log('Clicked upload');
+                    return true;
+                }
+            }
+            return false;
+        })();'''
+
+        try:
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1)
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(1)
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+            return True
+        except:
+            return False
+
+    def upload_file(self, file_path: str) -> bool:
+        """Upload file qua input."""
+        if not pag or not pyperclip:
+            return False
+
+        # Dùng JS để set file vào input
+        js = f'''(function(){{
+            var input = document.querySelector('input[type="file"]');
+            if(input){{
+                // Trigger click để mở dialog
+                input.click();
+                return true;
+            }}
+            return false;
+        }})();'''
+
+        try:
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1)
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(0.5)
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1)
+
+            # Đợi dialog mở, paste path
+            time.sleep(1)
+            pyperclip.copy(str(file_path))
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.5)
+            pag.press("enter")
+            time.sleep(2)
+            return True
+        except:
+            return False
+
+    def type_prompt(self, prompt: str) -> bool:
+        """Nhập prompt vào textarea."""
+        if not pag or not pyperclip:
+            return False
+
+        js = '''(function(){
+            var ta = document.querySelector('textarea');
+            if(ta){ ta.focus(); ta.click(); return true; }
+            return false;
+        })();'''
+
+        try:
+            # Focus textarea
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1)
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(0.5)
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+
+            # Paste prompt
+            if prompt:
+                pyperclip.copy(prompt)
+                pag.hotkey("ctrl", "v")
+                time.sleep(0.5)
+
+            return True
+        except:
+            return False
+
+    def press_enter(self):
+        """Nhấn Enter để gửi."""
+        if pag:
+            pag.press("enter")
+            time.sleep(0.5)
+
+    def wait_for_video_done(self, timeout: int = 300) -> bool:
+        """Đợi video tạo xong."""
+        if not pag or not pyperclip:
+            return False
+
+        js = '''(function(){
+            var btns = document.querySelectorAll('button');
+            for(var b of btns){
+                var text = b.textContent || '';
+                if(text.includes('Làm lại') || text.includes('Redo')){
+                    return true;
+                }
+            }
+            return false;
+        })();'''
+
+        for i in range(timeout // 5):
+            time.sleep(5)
+            if i % 6 == 0:
+                self.log(f"...đã chờ {i*5}s")
+
+            try:
+                pag.hotkey("ctrl", "shift", "j")
+                time.sleep(1)
+                pyperclip.copy(js)
+                pag.hotkey("ctrl", "v")
+                time.sleep(0.3)
+                pag.press("enter")
+                time.sleep(0.5)
+
+                # Check console output
+                check_js = 'copy(document.querySelector("button")?.textContent?.includes("Làm lại") || false)'
+                pyperclip.copy(check_js)
+                pag.hotkey("ctrl", "v")
+                time.sleep(0.3)
+                pag.press("enter")
+                time.sleep(0.5)
+
+                pag.hotkey("ctrl", "shift", "j")
+                time.sleep(0.3)
+
+                result = pyperclip.paste()
+                if result == "true":
+                    return True
+            except:
+                pass
+
+        return False
+
+    def click_download(self) -> bool:
+        """Click nút download."""
+        if not pag or not pyperclip:
+            return False
+
+        js = '''(function(){
+            var svgs = document.querySelectorAll('svg');
+            for(var svg of svgs){
+                if(svg.classList.contains('lucide-download') ||
+                   svg.className.baseVal?.includes('download')){
+                    var btn = svg.closest('button') || svg.parentElement;
+                    if(btn){ btn.click(); return true; }
+                }
+            }
+            return false;
+        })();'''
+
+        try:
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1)
+            pyperclip.copy(js)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(1)
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+            return True
+        except:
+            return False
 
     def create_video(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.common.keys import Keys
+        """Tạo video."""
+        if not HAS_PAG:
+            console.print("[red]❌ Chưa cài pyautogui![/]")
+            console.print("[yellow]Chạy: pip install pyautogui pyperclip[/]")
+            return GrokVideoResult(False, error="Thiếu pyautogui")
+
+        if not HAS_CLIP:
+            console.print("[red]❌ Chưa cài pyperclip![/]")
+            return GrokVideoResult(False, error="Thiếu pyperclip")
 
         image_path = Path(image_path).absolute()
         if not image_path.exists():
             return GrokVideoResult(False, error=f"Không tìm thấy: {image_path}")
 
         try:
-            console.print("[cyan]1. Mở Chrome...[/]")
-            if not self._create_driver():
-                return GrokVideoResult(False, error="Đóng Chrome trước!")
+            # 1. Mở Chrome
+            self.log("1. Mở Chrome...")
+            if not self.open_chrome(self.GROK_IMAGINE_URL):
+                return GrokVideoResult(False, error="Không mở được Chrome")
 
-            console.print("[cyan]2. Vào grok.com/imagine...[/]")
-            self.driver.get(self.GROK_IMAGINE_URL)
-            time.sleep(5)
+            self.log("Đợi trang load (8s)...")
+            time.sleep(8)
 
-            # Check login
-            if "x.com/login" in self.driver.current_url:
-                console.print("[yellow]⚠️ Chưa đăng nhập! Đợi bạn đăng nhập...[/]")
-                for _ in range(120):
-                    time.sleep(2)
-                    if "x.com/login" not in self.driver.current_url:
-                        self.driver.get(self.GROK_IMAGINE_URL)
-                        time.sleep(3)
-                        break
-
-            console.print("[cyan]3. Click đính kèm...[/]")
-            for sel in ['//button[@aria-label="Đính kèm"]', '//button[@aria-label="Attach"]']:
-                try:
-                    self._wait(By.XPATH, sel, 5, True).click()
-                    console.print("[green]✓[/]")
-                    break
-                except:
-                    continue
+            # 2. Click đính kèm
+            self.log("2. Click nút đính kèm...")
+            self.click_attach_button()
             time.sleep(1)
 
-            console.print("[cyan]4. Click tải lên...[/]")
-            for sel in ['//div[@role="menuitem"][contains(., "Tải lên")]', '//div[@role="menuitem"][contains(., "Upload")]']:
-                try:
-                    self._wait(By.XPATH, sel, 3, True).click()
-                    break
-                except:
-                    continue
+            # 3. Click tải lên
+            self.log("3. Click tải lên...")
+            self.click_upload_menu()
             time.sleep(1)
 
-            console.print(f"[cyan]5. Upload: {image_path.name}[/]")
-            self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]').send_keys(str(image_path))
-            console.print("[green]✓[/]")
+            # 4. Upload file
+            self.log(f"4. Upload: {image_path.name}")
+            self.upload_file(str(image_path))
             time.sleep(3)
 
+            # 5. Nhập prompt
             if prompt:
-                console.print("[cyan]6. Nhập prompt...[/]")
-                self.driver.find_element(By.TAG_NAME, "textarea").send_keys(prompt)
+                self.log(f"5. Nhập prompt: {prompt[:30]}...")
+            self.type_prompt(prompt)
             time.sleep(1)
 
-            console.print("[cyan]7. Tạo video...[/]")
-            self.driver.find_element(By.TAG_NAME, "textarea").send_keys(Keys.RETURN)
-            console.print("[yellow]⏳ Đang tạo (1-5 phút)...[/]")
+            # 6. Nhấn Enter
+            self.log("6. Gửi yêu cầu tạo video...")
+            self.press_enter()
 
-            for i in range(300):
-                time.sleep(1)
-                if i % 30 == 0 and i > 0:
-                    console.print(f"[dim]...{i}s[/]")
-                try:
-                    self.driver.find_element(By.XPATH, '//button[contains(., "Làm lại") or contains(., "Redo")]')
-                    break
-                except:
-                    continue
+            # 7. Đợi video
+            self.log("7. Đang tạo video (1-5 phút)...")
+            if not self.wait_for_video_done():
+                return GrokVideoResult(False, error="Timeout chờ video")
 
-            console.print("[green]✓ Video xong![/]")
+            self.log("✓ Video xong!")
             time.sleep(2)
 
-            console.print("[cyan]8. Tải video...[/]")
-            for sel in ['//svg[contains(@class, "download")]/..', '//button[contains(@class, "download")]']:
-                try:
-                    self._wait(By.XPATH, sel, 5, True).click()
-                    break
-                except:
-                    continue
-
+            # 8. Download
+            self.log("8. Tải video...")
+            self.click_download()
             time.sleep(10)
+
             console.print("[green]✅ Xong! Video trong Downloads[/]")
             return GrokVideoResult(True, video_path="Downloads")
 
         except Exception as e:
             return GrokVideoResult(False, error=str(e))
         finally:
-            if self.driver:
-                self.driver.quit()
+            # Không tự đóng Chrome để user xem kết quả
+            pass
 
 
 def create_video_sync(

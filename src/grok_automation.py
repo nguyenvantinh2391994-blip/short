@@ -369,39 +369,20 @@ class GrokBrowserAutomation:
         """Click nút download bằng JS và xử lý dialog Save As."""
         js = '''document.querySelector('button[aria-label="Tải xuống"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))'''
 
-        self.log("   === BẮT ĐẦU CLICK DOWNLOAD ===")
+        self.log("   === CLICK DOWNLOAD ===")
 
-        # Bước 1: Nhấn Escape để đóng mọi thứ đang mở
-        self.log("   [1] Escape để reset...")
-        pag.press("escape")
-        time.sleep(0.5)
-
-        # Bước 2: Mở DevTools Console
-        self.log("   [2] Ctrl+Shift+J mở Console...")
+        # Mở Console và paste lệnh
         pag.hotkey("ctrl", "shift", "j")
-        time.sleep(2)
+        time.sleep(1.5)
 
-        # Bước 3: Copy JS
-        self.log(f"   [3] Copy JS vào clipboard...")
         pyperclip.copy(js)
+        pag.hotkey("ctrl", "v")
         time.sleep(0.3)
 
-        # Bước 4: Paste
-        self.log("   [4] Ctrl+V paste...")
-        pag.hotkey("ctrl", "v")
-        time.sleep(0.5)
-
-        # Bước 5: Enter để chạy
-        self.log("   [5] Enter để chạy JS...")
         pag.press("enter")
         time.sleep(1)
 
-        # Bước 6: Đóng DevTools
-        self.log("   [6] F12 đóng DevTools...")
-        pag.press("f12")
-        time.sleep(0.5)
-
-        self.log_ok("=== ĐÃ CHẠY LỆNH DOWNLOAD ===")
+        self.log_ok("Đã chạy lệnh download")
 
         # Đợi dialog Save As xuất hiện
         self.log("   Đợi dialog Save As (3s)...")

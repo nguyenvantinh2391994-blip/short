@@ -194,19 +194,25 @@ class GrokBrowserAutomation:
         except:
             return False
 
-    def type_prompt(self, prompt: str) -> bool:
-        """Nhập prompt vào textarea."""
+    def click_prompt_textarea(self) -> bool:
+        """Click vào ô nhập prompt (placeholder: Nhập để tùy chỉnh video...)"""
         if not pag or not pyperclip:
             return False
 
         js = '''(function(){
-            var ta = document.querySelector('textarea');
-            if(ta){ ta.focus(); ta.click(); return true; }
+            var ta = document.querySelector('textarea[placeholder*="Nhập để tùy chỉnh video"]');
+            if(!ta) ta = document.querySelector('textarea[placeholder*="Enter to customize"]');
+            if(!ta) ta = document.querySelector('textarea');
+            if(ta){
+                ta.focus();
+                ta.click();
+                console.log('Clicked textarea');
+                return true;
+            }
             return false;
         })();'''
 
         try:
-            # Focus textarea
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1)
             pyperclip.copy(js)
@@ -215,6 +221,19 @@ class GrokBrowserAutomation:
             pag.press("enter")
             time.sleep(0.5)
             pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+            return True
+        except:
+            return False
+
+    def type_prompt(self, prompt: str) -> bool:
+        """Nhập prompt vào textarea."""
+        if not pag or not pyperclip:
+            return False
+
+        try:
+            # Click vào textarea trước
+            self.click_prompt_textarea()
             time.sleep(0.5)
 
             # Paste prompt
@@ -352,26 +371,32 @@ class GrokBrowserAutomation:
             self.upload_file(str(image_path))
             time.sleep(3)
 
-            # 5. Nhập prompt
-            if prompt:
-                self.log(f"5. Nhập prompt: {prompt[:30]}...")
-            self.type_prompt(prompt)
+            # 5. Click vào ô nhập prompt
+            self.log("5. Click ô 'Nhập để tùy chỉnh video...'")
+            self.click_prompt_textarea()
             time.sleep(1)
 
-            # 6. Nhấn Enter
-            self.log("6. Gửi yêu cầu tạo video...")
+            # 6. Nhập prompt
+            if prompt:
+                self.log(f"6. Nhập prompt: {prompt[:50]}...")
+                pyperclip.copy(prompt)
+                pag.hotkey("ctrl", "v")
+                time.sleep(0.5)
+
+            # 7. Nhấn Enter để gửi
+            self.log("7. Nhấn Enter gửi yêu cầu...")
             self.press_enter()
 
-            # 7. Đợi video
-            self.log("7. Đang tạo video (1-5 phút)...")
+            # 8. Đợi video xong (nút "Làm lại" xuất hiện)
+            self.log("8. Đang tạo video (1-5 phút)...")
             if not self.wait_for_video_done():
                 return GrokVideoResult(False, error="Timeout chờ video")
 
             self.log("✓ Video xong!")
             time.sleep(2)
 
-            # 8. Download
-            self.log("8. Tải video...")
+            # 9. Download
+            self.log("9. Tải video...")
             self.click_download()
             time.sleep(10)
 

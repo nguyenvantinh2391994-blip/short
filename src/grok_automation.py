@@ -476,7 +476,7 @@ class GrokBrowserAutomation:
     def retry_download(self, output_path: str, product_code: str = "", max_retries: int = 2) -> bool:
         """Thử download lại khi file không hợp lệ.
 
-        Flow: F5 refresh → F12 mở DevTools → chờ → click download
+        Flow: F5 refresh → chờ done icon → chờ 15s → F12 mở DevTools → click download
 
         Args:
             output_path: Đường dẫn file output
@@ -501,16 +501,20 @@ class GrokBrowserAutomation:
             # F5 để refresh trang
             self.log("   F5 refresh trang...")
             pag.press("f5")
-            time.sleep(5)  # Đợi trang load lại
+            time.sleep(8)  # Đợi trang load lại (lâu hơn)
 
-            # F12 mở DevTools
-            self.log("   F12 mở DevTools...")
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(1.5)
+            # Chờ done icon xuất hiện lại
+            self.log("   Chờ video load lại (tìm icon done)...")
+            self.wait_for_done_image(timeout=60)
 
-            # Chờ video load lại (15s)
-            self.log("   Chờ video load (15s)...")
+            # Chờ thêm 15s sau khi thấy done
+            self.log("   Chờ thêm 15s...")
             time.sleep(15)
+
+            # F12 mở DevTools Console
+            self.log("   Ctrl+Shift+J mở DevTools Console...")
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(2)
 
             # Click download
             self.click_download(output_path, product_code)

@@ -448,8 +448,8 @@ def grok_auto(ctx, image_path, prompt, output, headless):
         image_path=image_path,
         prompt=prompt,
         output_path=output,
-        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data"),
-        profile_name=config.get("chrome.profile_name", "Default"),
+        chrome_path=config.get("chrome.executable", r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default"),
         headless=headless,
     )
 
@@ -524,8 +524,8 @@ def grok_auto_all(ctx, headless, source):
 
     results = create_videos_batch_sync(
         tasks=tasks,
-        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data"),
-        profile_name=config.get("chrome.profile_name", "Default"),
+        chrome_path=config.get("chrome.executable", r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default"),
         headless=headless,
     )
 

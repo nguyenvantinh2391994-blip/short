@@ -393,12 +393,13 @@ def create_video_sync(
     image_path: str,
     prompt: str = "",
     output_path: str = "outputs/video.mp4",
+    chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     chrome_profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default",
-    profile_name: str = "Default",
     headless: bool = False,
 ) -> GrokVideoResult:
     """Tạo video - gọi từ CLI."""
     auto = GrokBrowserAutomation(
+        chrome_path=chrome_path,
         profile_path=chrome_profile_path,
         headless=headless,
     )
@@ -407,8 +408,8 @@ def create_video_sync(
 
 def create_videos_batch_sync(
     tasks: List[dict],
+    chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     chrome_profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default",
-    profile_name: str = "Default",
     headless: bool = False,
 ) -> List[GrokVideoResult]:
     """Tạo nhiều video."""
@@ -419,8 +420,8 @@ def create_videos_batch_sync(
             task["image"],
             task.get("prompt", ""),
             task["output"],
+            chrome_path,
             chrome_profile_path,
-            profile_name,
             headless,
         )
         results.append(result)

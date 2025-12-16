@@ -529,6 +529,10 @@ class GrokBrowserAutomation:
             self.log("6. Chờ video tạo xong (tìm icon done, max 60s)...")
             self.wait_for_done_image(timeout=60)
 
+            # Chờ thêm 6s sau khi thấy done để đảm bảo video sẵn sàng
+            self.log("   Chờ thêm 6s trước khi download...")
+            time.sleep(6)
+
             # === BƯỚC 7: Download ===
             self.log("7. Tải video...")
             self.click_download(output_path, product_code)
@@ -589,6 +593,10 @@ class GrokBrowserAutomation:
             self.log("   Chờ video tạo xong...")
             self.wait_for_done_image(timeout=60)
 
+            # Chờ thêm 6s sau khi thấy done để đảm bảo video sẵn sàng
+            self.log("   Chờ thêm 6s trước khi download...")
+            time.sleep(6)
+
             # === Download ===
             self.log("   Tải video...")
             self.click_download(output_path, product_code)
@@ -605,13 +613,13 @@ def create_videos_from_sheets(
     sheets_reader,
     input_folder: str = "input",
     output_folder: str = "outputs",
-    prompt: str = "",
     chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     chrome_profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default",
 ) -> List[GrokVideoResult]:
     """
     Tạo video batch từ Google Sheets.
-    - Đọc các sản phẩm có cột E trống
+    - Đọc các sản phẩm có cột E trống (status)
+    - Lấy prompt từ cột F
     - Ảnh từ input/{code}.jpg hoặc .png
     - Video lưu vào outputs/{code}.mp4
     - Cập nhật cột E = "VIDEO" sau khi xong
@@ -622,8 +630,8 @@ def create_videos_from_sheets(
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Lấy danh sách sản phẩm chưa làm
-    pending = sheets_reader.get_pending_products(status_column="E")
+    # Lấy danh sách sản phẩm chưa làm (cột E trống, lấy prompt từ cột F)
+    pending = sheets_reader.get_pending_products(status_column="E", prompt_column="F")
     if not pending:
         console.print("[yellow]Không có sản phẩm nào cần làm video[/]")
         return []
@@ -634,8 +642,11 @@ def create_videos_from_sheets(
     for i, item in enumerate(pending):
         code = item["code"]
         row = item["row"]
+        prompt = item.get("prompt", "")  # Lấy prompt từ cột F
 
         console.print(f"\n[bold cyan]===== [{i+1}/{len(pending)}] Mã: {code} =====[/]")
+        if prompt:
+            console.print(f"[dim]Prompt: {prompt[:50]}...[/]" if len(prompt) > 50 else f"[dim]Prompt: {prompt}[/]")
 
         # Tìm ảnh input
         image_path = None

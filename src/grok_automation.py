@@ -745,15 +745,61 @@ def create_videos_from_sheets(
         console.print("[yellow]Không có sản phẩm nào cần làm video[/]")
         return []
 
+    # === BƯỚC 0: Rà soát video đã có sẵn ===
+    console.print("\n[bold cyan]🔍 Rà soát video đã có sẵn...[/]")
+    existing_count = 0
+    still_pending = []
+
+    for item in pending:
+        code = item["code"]
+        row = item["row"]
+        video_path = output_folder / f"{code}.mp4"
+
+        # Kiểm tra file video đã tồn tại và hợp lệ chưa
+        if video_path.exists():
+            # Kiểm tra file có phải video hợp lệ không (> 100KB và có header MP4)
+            file_size = video_path.stat().st_size
+            is_valid = False
+
+            if file_size > 100 * 1024:  # > 100KB
+                try:
+                    with open(video_path, "rb") as f:
+                        header = f.read(12)
+                        if b"ftyp" in header:
+                            is_valid = True
+                except:
+                    pass
+
+            if is_valid:
+                # Video hợp lệ → cập nhật trạng thái
+                console.print(f"   [green]✓[/] {code} - video đã có ({file_size // 1024}KB)")
+                sheets_reader.update_status(row, "VIDEO", "E")
+                existing_count += 1
+                continue
+
+        # Chưa có video hợp lệ → thêm vào danh sách cần làm
+        still_pending.append(item)
+
+    if existing_count > 0:
+        console.print(f"[green]✅ Đã cập nhật {existing_count} video có sẵn[/]")
+
+    if not still_pending:
+        console.print("[yellow]Tất cả video đã có sẵn, không cần làm thêm![/]")
+        return []
+
+    console.print(f"[cyan]📝 Còn {len(still_pending)} video cần tạo[/]\n")
+
+    # === Tiếp tục tạo video cho các mã chưa có ===
     results = []
     automation = GrokBrowserAutomation(chrome_path, chrome_profile_path)
+    first_video = True  # Track xem đã mở Chrome chưa
 
-    for i, item in enumerate(pending):
+    for i, item in enumerate(still_pending):
         code = item["code"]
         row = item["row"]
         prompt = item.get("prompt", "")  # Lấy prompt từ cột F
 
-        console.print(f"\n[bold cyan]===== [{i+1}/{len(pending)}] Mã: {code} =====[/]")
+        console.print(f"\n[bold cyan]===== [{i+1}/{len(still_pending)}] Mã: {code} =====[/]")
         if prompt:
             console.print(f"[dim]Prompt: {prompt[:50]}...[/]" if len(prompt) > 50 else f"[dim]Prompt: {prompt}[/]")
 
@@ -774,9 +820,10 @@ def create_videos_from_sheets(
         video_path = output_folder / f"{code}.mp4"
 
         # Tạo video (truyền code làm tên file khi Save As)
-        if i == 0:
+        if first_video:
             # Lần đầu: mở Chrome mới
             result = automation.create_video(str(image_path), prompt, str(video_path), code)
+            first_video = False
         else:
             # Các lần sau: mở tab mới, đóng tab cũ, tiếp tục
             automation.open_new_tab_and_close_old()
@@ -791,7 +838,9 @@ def create_videos_from_sheets(
         else:
             console.print(f"[red]❌ Lỗi: {code} - {result.error}[/]")
 
-    console.print(f"\n[bold green]===== HOÀN THÀNH {len([r for r in results if r.success])}/{len(pending)} video =====[/]")
+    total_success = len([r for r in results if r.success]) + existing_count
+    total_items = len(pending)
+    console.print(f"\n[bold green]===== HOÀN THÀNH {total_success}/{total_items} video =====[/]")
     return results
 
 

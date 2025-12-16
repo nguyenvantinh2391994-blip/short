@@ -42,11 +42,35 @@ def is_chrome_debug_running(port: int = DEBUG_PORT) -> bool:
         return False
 
 
+def kill_chrome():
+    """Đóng tất cả Chrome đang chạy"""
+    import platform
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "chrome.exe"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10
+            )
+        else:
+            subprocess.run(
+                ["pkill", "-f", "chrome"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10
+            )
+        time.sleep(2)
+    except:
+        pass
+
+
 def start_chrome_debug(
     chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data",
     profile_name: str = "Default",
-    port: int = DEBUG_PORT
+    port: int = DEBUG_PORT,
+    auto_kill: bool = True
 ) -> bool:
     """Mở Chrome với debug port"""
     if is_chrome_debug_running(port):
@@ -54,6 +78,11 @@ def start_chrome_debug(
         return True
 
     console.print(f"[cyan]Đang mở Chrome với debug port {port}...[/]")
+
+    # Đóng Chrome cũ nếu cần
+    if auto_kill:
+        console.print("[dim]Đóng Chrome cũ (nếu có)...[/]")
+        kill_chrome()
 
     try:
         # Mở Chrome với debug port

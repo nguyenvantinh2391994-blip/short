@@ -16,6 +16,7 @@ from rich.markdown import Markdown
 from .config_manager import get_config, ConfigManager
 from .token_extractor import TokenExtractor, interactive_add_token
 from .grok_client import GrokClient
+from .xai_client import XAIClient, setup_xai_api
 from .sheets_reader import SheetsReader, LocalProductReader, Product
 from .video_generator import VideoGenerator, VideoConfig
 from .watcher import AutoVideoWatcher, SheetsWatcher
@@ -338,6 +339,45 @@ def quick_start(product_name, price, image_folder, promotion):
     if result:
         console.print(f"\n[bold green]Thành công![/]")
         console.print(f"Video: {result}")
+
+
+@cli.command("setup-xai")
+def setup_xai():
+    """Cấu hình x.ai API (Grok chính thức)"""
+    setup_xai_api()
+
+
+@cli.command("test-xai")
+def test_xai():
+    """Test kết nối x.ai API"""
+    client = XAIClient()
+    if client.test_connection():
+        # Thử tạo ảnh đơn giản
+        console.print("\n[cyan]Thử tạo ảnh test...[/]")
+        result = client.generate_image("A cute cat, digital art style")
+        if result.success:
+            console.print(f"[green]✅ Tạo ảnh thành công![/]")
+            if result.images:
+                console.print(f"[dim]URL: {result.images[0][:50]}...[/]")
+        else:
+            console.print(f"[yellow]⚠️ Tạo ảnh thất bại: {result.error}[/]")
+
+
+@cli.command("xai-generate")
+@click.argument("prompt")
+@click.option("--output", "-o", default="outputs/xai_image.png", help="Đường dẫn output")
+def xai_generate(prompt, output):
+    """Tạo ảnh với x.ai API"""
+    client = XAIClient()
+    result = client.generate_image(prompt)
+
+    if result.success and result.images:
+        console.print(f"[green]✅ Đã tạo ảnh![/]")
+        # Download ảnh
+        if client.download_image(result.images[0], output):
+            console.print(f"[green]Đã lưu: {output}[/]")
+    else:
+        console.print(f"[red]❌ Lỗi: {result.error}[/]")
 
 
 def main():

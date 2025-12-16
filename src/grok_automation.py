@@ -85,11 +85,30 @@ class GrokBrowserAutomation:
         sock.close()
         return result == 0
 
-    def _start_chrome_debug(self) -> bool:
+    def _kill_chrome(self) -> None:
+        """Đóng tất cả Chrome processes"""
+        console.print("[yellow]Đang đóng Chrome cũ...[/]")
+        try:
+            if os.name == 'nt':  # Windows
+                subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'],
+                             capture_output=True, timeout=10)
+            else:  # Linux/Mac
+                subprocess.run(['pkill', '-f', 'chrome'],
+                             capture_output=True, timeout=10)
+            time.sleep(2)  # Chờ Chrome đóng hoàn toàn
+            console.print("[green]✅ Đã đóng Chrome cũ[/]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Không thể đóng Chrome: {e}[/]")
+
+    def _start_chrome_debug(self, auto_kill: bool = True) -> bool:
         """Khởi động Chrome với remote debugging"""
         if self._is_chrome_running_debug():
             console.print("[green]✅ Chrome debug mode đã sẵn sàng[/]")
             return True
+
+        # Nếu Chrome đang chạy nhưng không có debug port, đóng nó
+        if auto_kill:
+            self._kill_chrome()
 
         console.print("[cyan]Đang khởi động Chrome với debug mode...[/]")
 
@@ -98,7 +117,10 @@ class GrokBrowserAutomation:
             f"--remote-debugging-port={self.DEBUG_PORT}",
             f"--user-data-dir={self.chrome_profile_path}",
             f"--profile-directory={self.profile_name}",
+            "about:blank",
         ]
+
+        console.print(f"[dim]Profile: {self.profile_name}[/]")
 
         try:
             # Khởi động Chrome như process riêng
@@ -108,14 +130,19 @@ class GrokBrowserAutomation:
                 stderr=subprocess.DEVNULL,
             )
 
+            console.print(f"[dim]Chrome PID: {self.chrome_process.pid}[/]")
+
             # Chờ Chrome khởi động
-            for _ in range(30):  # Chờ tối đa 30 giây
+            for i in range(15):  # Chờ tối đa 15 giây
                 if self._is_chrome_running_debug():
-                    console.print("[green]✅ Chrome đã khởi động[/]")
+                    console.print("[green]✅ Chrome đã khởi động với debug port[/]")
+                    time.sleep(1)  # Chờ thêm chút để Chrome ổn định
                     return True
+                console.print(f"[dim]Đang chờ Chrome... ({i+1}/15)[/]")
                 time.sleep(1)
 
             console.print("[red]❌ Timeout khởi động Chrome[/]")
+            console.print("[yellow]Thử đóng Chrome thủ công và chạy lại[/]")
             return False
 
         except Exception as e:

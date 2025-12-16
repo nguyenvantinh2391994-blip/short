@@ -365,8 +365,13 @@ class GrokBrowserAutomation:
 
         return False
 
-    def click_download(self, output_path: str = "") -> bool:
-        """Click nút download bằng JS và xử lý dialog Save As."""
+    def click_download(self, output_path: str = "", product_code: str = "") -> bool:
+        """Click nút download bằng JS và xử lý dialog Save As.
+
+        Args:
+            output_path: Đường dẫn đầy đủ đến file output (nếu có)
+            product_code: Mã sản phẩm để làm tên file (ưu tiên dùng cái này)
+        """
         js = '''document.querySelector('button[aria-label="Tải xuống"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))'''
 
         self.log("   === CLICK DOWNLOAD ===")
@@ -385,41 +390,31 @@ class GrokBrowserAutomation:
         self.log("   Đợi dialog Save As (5s)...")
         time.sleep(5)
 
-        if output_path:
-            output_path = Path(output_path).absolute()
-            folder = str(output_path.parent)
-            filename = output_path.name
+        # Lấy tên file từ product_code hoặc output_path
+        filename = ""
+        if product_code:
+            filename = product_code  # Chỉ cần mã, không cần đuôi .mp4
+        elif output_path:
+            filename = Path(output_path).stem  # Lấy tên file không có đuôi
 
-            # Bước 1: Gõ tên file (Tab để focus vào ô filename nếu chưa)
-            self.log(f"   Gõ tên file: {filename}")
-            pag.press("tab")  # Focus vào filename field
-            time.sleep(0.3)
+        if filename:
+            # Save As mở ra đã focus sẵn ở ô Name
+            # Chỉ cần paste tên file và Enter
+            self.log(f"   Paste tên file: {filename}")
             pyperclip.copy(filename)
             pag.hotkey("ctrl", "a")  # Select all text hiện tại
             time.sleep(0.2)
             pag.hotkey("ctrl", "v")  # Paste tên mới
             time.sleep(0.5)
 
-            # Bước 2: Ctrl+L để đưa về thanh địa chỉ (folder)
-            self.log(f"   Ctrl+L → folder: {folder}")
-            pag.hotkey("ctrl", "l")
-            time.sleep(0.5)
-            pyperclip.copy(folder)
-            pag.hotkey("ctrl", "a")  # Select all
-            time.sleep(0.2)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.5)
-            pag.press("enter")  # Đi đến folder
-            time.sleep(1.5)
-
-            # Bước 3: Alt+S để lưu
-            self.log("   Alt+S để lưu...")
-            pag.hotkey("alt", "s")
+            # Enter để lưu
+            self.log("   Enter để lưu...")
+            pag.press("enter")
             time.sleep(1)
 
-            self.log_ok(f"Đã lưu: {output_path}")
+            self.log_ok(f"Đã lưu với tên: {filename}")
         else:
-            # Không có output_path, chỉ nhấn Enter để lưu mặc định
+            # Không có tên, chỉ nhấn Enter để lưu mặc định
             self.log("   Enter để lưu mặc định...")
             pag.press("enter")
             time.sleep(1)
@@ -427,41 +422,51 @@ class GrokBrowserAutomation:
         return True
 
     def open_new_tab_and_close_old(self) -> bool:
-        """Mở tab mới với URL grok, đóng tab cũ."""
+        """Mở tab mới với URL grok, đóng tab cũ.
+
+        Thứ tự:
+        1. Ctrl+T mở tab mới (tab 2) - đang ở tab 2
+        2. Nhập URL và Enter - load trang ở tab 2
+        3. Ctrl+Shift+Tab quay lại tab 1 (tab cũ)
+        4. Ctrl+W đóng tab 1 (tab cũ)
+        5. Tự động chuyển sang tab 2 để tiếp tục làm việc
+        """
         self.log("   Mở tab mới...")
 
-        # Ctrl+T mở tab mới
+        # Bước 1: Ctrl+T mở tab mới (đang ở tab 2)
         pag.hotkey("ctrl", "t")
         time.sleep(1)
 
-        # Nhập URL
+        # Bước 2: Nhập URL vào tab mới
         pyperclip.copy(self.GROK_IMAGINE_URL)
         pag.hotkey("ctrl", "v")
         time.sleep(0.3)
         pag.press("enter")
-        time.sleep(3)
+        time.sleep(3)  # Đợi trang load
 
-        # Đóng tab cũ (tab bên trái)
-        self.log("   Đóng tab cũ...")
-        pag.hotkey("ctrl", "w")  # Đóng tab hiện tại? Không, cần chuyển tab trước
-
-        # Thực ra cần: Ctrl+Tab để chuyển sang tab cũ, rồi Ctrl+W đóng
-        # Hoặc đơn giản hơn: Ctrl+Shift+Tab để về tab trước, Ctrl+W đóng
-        # Nhưng vì ta vừa mở tab mới và đang ở tab mới, ta cần đóng tab cũ
-
-        # Cách đơn giản: mở tab mới đã chuyển focus sang tab mới
-        # Ctrl+Shift+Tab để về tab cũ
+        # Bước 3: Ctrl+Shift+Tab quay lại tab cũ (tab 1)
+        self.log("   Quay lại tab cũ...")
         pag.hotkey("ctrl", "shift", "tab")
         time.sleep(0.5)
-        # Ctrl+W đóng tab cũ
+
+        # Bước 4: Ctrl+W đóng tab cũ (tab 1)
+        self.log("   Đóng tab cũ...")
         pag.hotkey("ctrl", "w")
         time.sleep(1)
 
+        # Giờ đang ở tab 2 (tab mới) để tiếp tục làm việc
         self.log_ok("Đã mở tab mới, đóng tab cũ")
         return True
 
-    def create_video(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
-        """Tạo video."""
+    def create_video(self, image_path: str, prompt: str = "", output_path: str = "", product_code: str = "") -> GrokVideoResult:
+        """Tạo video.
+
+        Args:
+            image_path: Đường dẫn ảnh input
+            prompt: Prompt mô tả (tùy chọn)
+            output_path: Đường dẫn output (tùy chọn)
+            product_code: Mã sản phẩm để đặt tên file khi Save As
+        """
         if not HAS_PAG:
             console.print("[red]❌ Chưa cài pyautogui![/]")
             console.print("[yellow]Chạy: pip install pyautogui pyperclip[/]")
@@ -515,7 +520,7 @@ class GrokBrowserAutomation:
 
             # === BƯỚC 7: Download ===
             self.log("7. Tải video...")
-            self.click_download(output_path)
+            self.click_download(output_path, product_code)
             time.sleep(3)
 
             if output_path:
@@ -531,8 +536,15 @@ class GrokBrowserAutomation:
         finally:
             pass  # Không đóng Chrome để user kiểm tra
 
-    def create_video_continue(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
-        """Tạo video tiếp tục (không mở Chrome mới, dùng tab hiện tại)."""
+    def create_video_continue(self, image_path: str, prompt: str = "", output_path: str = "", product_code: str = "") -> GrokVideoResult:
+        """Tạo video tiếp tục (không mở Chrome mới, dùng tab hiện tại).
+
+        Args:
+            image_path: Đường dẫn ảnh input
+            prompt: Prompt mô tả (tùy chọn)
+            output_path: Đường dẫn output (tùy chọn)
+            product_code: Mã sản phẩm để đặt tên file khi Save As
+        """
         image_path = Path(image_path).absolute()
         if not image_path.exists():
             return GrokVideoResult(False, error=f"Không tìm thấy: {image_path}")
@@ -568,7 +580,7 @@ class GrokBrowserAutomation:
 
             # === Download ===
             self.log("   Tải video...")
-            self.click_download(output_path)
+            self.click_download(output_path, product_code)
             time.sleep(3)
 
             return GrokVideoResult(True, video_path=output_path)
@@ -630,14 +642,14 @@ def create_videos_from_sheets(
         # Output path
         video_path = output_folder / f"{code}.mp4"
 
-        # Tạo video
+        # Tạo video (truyền code làm tên file khi Save As)
         if i == 0:
             # Lần đầu: mở Chrome mới
-            result = automation.create_video(str(image_path), prompt, str(video_path))
+            result = automation.create_video(str(image_path), prompt, str(video_path), code)
         else:
             # Các lần sau: mở tab mới, đóng tab cũ, tiếp tục
             automation.open_new_tab_and_close_old()
-            result = automation.create_video_continue(str(image_path), prompt, str(video_path))
+            result = automation.create_video_continue(str(image_path), prompt, str(video_path), code)
 
         results.append(result)
 

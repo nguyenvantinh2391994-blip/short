@@ -382,8 +382,8 @@ class GrokBrowserAutomation:
         self.log_ok("Đã chạy lệnh download")
 
         # Đợi dialog Save As xuất hiện
-        self.log("   Đợi dialog Save As (3s)...")
-        time.sleep(3)
+        self.log("   Đợi dialog Save As (5s)...")
+        time.sleep(5)
 
         if output_path:
             output_path = Path(output_path).absolute()
@@ -424,6 +424,40 @@ class GrokBrowserAutomation:
             pag.press("enter")
             time.sleep(1)
 
+        return True
+
+    def open_new_tab_and_close_old(self) -> bool:
+        """Mở tab mới với URL grok, đóng tab cũ."""
+        self.log("   Mở tab mới...")
+
+        # Ctrl+T mở tab mới
+        pag.hotkey("ctrl", "t")
+        time.sleep(1)
+
+        # Nhập URL
+        pyperclip.copy(self.GROK_IMAGINE_URL)
+        pag.hotkey("ctrl", "v")
+        time.sleep(0.3)
+        pag.press("enter")
+        time.sleep(3)
+
+        # Đóng tab cũ (tab bên trái)
+        self.log("   Đóng tab cũ...")
+        pag.hotkey("ctrl", "w")  # Đóng tab hiện tại? Không, cần chuyển tab trước
+
+        # Thực ra cần: Ctrl+Tab để chuyển sang tab cũ, rồi Ctrl+W đóng
+        # Hoặc đơn giản hơn: Ctrl+Shift+Tab để về tab trước, Ctrl+W đóng
+        # Nhưng vì ta vừa mở tab mới và đang ở tab mới, ta cần đóng tab cũ
+
+        # Cách đơn giản: mở tab mới đã chuyển focus sang tab mới
+        # Ctrl+Shift+Tab để về tab cũ
+        pag.hotkey("ctrl", "shift", "tab")
+        time.sleep(0.5)
+        # Ctrl+W đóng tab cũ
+        pag.hotkey("ctrl", "w")
+        time.sleep(1)
+
+        self.log_ok("Đã mở tab mới, đóng tab cũ")
         return True
 
     def create_video(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
@@ -496,6 +530,126 @@ class GrokBrowserAutomation:
             return GrokVideoResult(False, error=str(e))
         finally:
             pass  # Không đóng Chrome để user kiểm tra
+
+    def create_video_continue(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
+        """Tạo video tiếp tục (không mở Chrome mới, dùng tab hiện tại)."""
+        image_path = Path(image_path).absolute()
+        if not image_path.exists():
+            return GrokVideoResult(False, error=f"Không tìm thấy: {image_path}")
+
+        try:
+            # Đợi trang load
+            self.log("   Đợi trang load (5s)...")
+            time.sleep(5)
+
+            # === Nhập prompt ===
+            if prompt:
+                self.log(f"   Nhập prompt: {prompt[:50]}...")
+                self.click_and_type_prompt(prompt)
+                time.sleep(1)
+
+            # === Click đính kèm ===
+            self.log("   Click nút đính kèm...")
+            self.click_attach_button()
+            time.sleep(1)
+
+            # === Click tải lên ===
+            self.log("   Click menu tải lên...")
+            self.click_upload_menu()
+            time.sleep(1)
+
+            # === Upload file ===
+            self.log(f"   Upload: {image_path.name}")
+            self.upload_file(str(image_path))
+
+            # === Chờ icon done ===
+            self.log("   Chờ video tạo xong...")
+            self.wait_for_done_image(timeout=60)
+
+            # === Download ===
+            self.log("   Tải video...")
+            self.click_download(output_path)
+            time.sleep(3)
+
+            return GrokVideoResult(True, video_path=output_path)
+
+        except Exception as e:
+            self.log_err(f"Exception: {e}")
+            return GrokVideoResult(False, error=str(e))
+
+
+def create_videos_from_sheets(
+    sheets_reader,
+    input_folder: str = "input",
+    output_folder: str = "outputs",
+    prompt: str = "",
+    chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    chrome_profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default",
+) -> List[GrokVideoResult]:
+    """
+    Tạo video batch từ Google Sheets.
+    - Đọc các sản phẩm có cột E trống
+    - Ảnh từ input/{code}.jpg hoặc .png
+    - Video lưu vào outputs/{code}.mp4
+    - Cập nhật cột E = "VIDEO" sau khi xong
+    """
+    from pathlib import Path
+
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    # Lấy danh sách sản phẩm chưa làm
+    pending = sheets_reader.get_pending_products(status_column="E")
+    if not pending:
+        console.print("[yellow]Không có sản phẩm nào cần làm video[/]")
+        return []
+
+    results = []
+    automation = GrokBrowserAutomation(chrome_path, chrome_profile_path)
+
+    for i, item in enumerate(pending):
+        code = item["code"]
+        row = item["row"]
+
+        console.print(f"\n[bold cyan]===== [{i+1}/{len(pending)}] Mã: {code} =====[/]")
+
+        # Tìm ảnh input
+        image_path = None
+        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            candidate = input_folder / f"{code}{ext}"
+            if candidate.exists():
+                image_path = candidate
+                break
+
+        if not image_path:
+            console.print(f"[red]❌ Không tìm thấy ảnh cho mã {code}[/]")
+            results.append(GrokVideoResult(False, error=f"Không tìm thấy ảnh: {code}"))
+            continue
+
+        # Output path
+        video_path = output_folder / f"{code}.mp4"
+
+        # Tạo video
+        if i == 0:
+            # Lần đầu: mở Chrome mới
+            result = automation.create_video(str(image_path), prompt, str(video_path))
+        else:
+            # Các lần sau: mở tab mới, đóng tab cũ, tiếp tục
+            automation.open_new_tab_and_close_old()
+            result = automation.create_video_continue(str(image_path), prompt, str(video_path))
+
+        results.append(result)
+
+        # Cập nhật trạng thái nếu thành công
+        if result.success:
+            sheets_reader.update_status(row, "VIDEO", "E")
+            console.print(f"[green]✅ Hoàn thành: {code}[/]")
+        else:
+            console.print(f"[red]❌ Lỗi: {code} - {result.error}[/]")
+
+    console.print(f"\n[bold green]===== HOÀN THÀNH {len([r for r in results if r.success])}/{len(pending)} video =====[/]")
+    return results
 
 
 def create_video_sync(

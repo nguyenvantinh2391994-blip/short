@@ -128,9 +128,10 @@ class SheetsReader:
             return False
 
         try:
+            # Cho phép đọc VÀ ghi
             scopes = [
-                "https://www.googleapis.com/auth/spreadsheets.readonly",
-                "https://www.googleapis.com/auth/drive.readonly"
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
             ]
 
             credentials = Credentials.from_service_account_file(
@@ -268,6 +269,60 @@ class SheetsReader:
             if product.id == product_id:
                 return product
         return None
+
+    def get_pending_products(self, status_column: str = "E") -> List[Dict]:
+        """Lấy các sản phẩm có cột trạng thái trống (chưa làm video)"""
+        if not self.sheet:
+            if not self.open_spreadsheet():
+                return []
+
+        try:
+            # Lấy tất cả dữ liệu
+            all_values = self.sheet.get_all_values()
+            if not all_values:
+                return []
+
+            headers = all_values[0]
+            pending = []
+
+            # Tìm index của cột trạng thái (E = 4, index từ 0)
+            status_col_idx = ord(status_column.upper()) - ord('A')
+
+            for row_idx, row in enumerate(all_values[1:], start=2):  # Bắt đầu từ row 2
+                # Kiểm tra cột trạng thái có trống không
+                status_value = row[status_col_idx] if len(row) > status_col_idx else ""
+
+                if not status_value.strip():  # Trống
+                    # Lấy mã sản phẩm từ cột A
+                    code = row[0] if row else ""
+                    if code:
+                        pending.append({
+                            "row": row_idx,
+                            "code": code,
+                            "data": row
+                        })
+
+            console.print(f"[green]✅ Tìm thấy {len(pending)} sản phẩm chưa làm video[/]")
+            return pending
+
+        except Exception as e:
+            console.print(f"[red]❌ Lỗi đọc dữ liệu: {e}[/]")
+            return []
+
+    def update_status(self, row: int, status: str = "VIDEO", status_column: str = "E") -> bool:
+        """Cập nhật trạng thái cho sản phẩm"""
+        if not self.sheet:
+            if not self.open_spreadsheet():
+                return False
+
+        try:
+            cell = f"{status_column}{row}"
+            self.sheet.update_acell(cell, status)
+            console.print(f"[green]✅ Đã cập nhật {cell} = {status}[/]")
+            return True
+        except Exception as e:
+            console.print(f"[red]❌ Lỗi cập nhật trạng thái: {e}[/]")
+            return False
 
     def display_products(self, products: Optional[List[Product]] = None) -> None:
         """Hiển thị bảng sản phẩm"""

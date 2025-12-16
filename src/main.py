@@ -20,6 +20,7 @@ from .xai_client import XAIClient, setup_xai_api
 from .grok_automation import (
     create_video_sync,
     create_videos_batch_sync,
+    create_videos_from_sheets,
     GrokVideoResult,
     start_chrome_debug,
     is_chrome_debug_running,
@@ -532,6 +533,62 @@ def grok_auto_all(ctx, headless, source):
     # Summary
     success = sum(1 for r in results if r.success)
     console.print(f"\n[bold]Kết quả: {success}/{len(results)} video thành công[/]")
+
+
+@cli.command("grok-batch")
+@click.option("--input", "-i", "input_folder", default="input", help="Thư mục chứa ảnh (mặc định: input)")
+@click.option("--output", "-o", "output_folder", default="outputs", help="Thư mục lưu video (mặc định: outputs)")
+@click.option("--prompt", "-p", default="", help="Prompt tùy chỉnh video")
+@click.pass_context
+def grok_batch(ctx, input_folder, output_folder, prompt):
+    """
+    Tạo video BATCH từ Google Sheets.
+
+    - Đọc các mã có cột E trống (chưa làm)
+    - Ảnh từ input/{mã}.jpg hoặc .png
+    - Video lưu vào outputs/{mã}.mp4
+    - Cập nhật cột E = "VIDEO" sau khi xong
+    - Tự động mở tab mới, đóng tab cũ cho mỗi video
+    """
+    config = get_config(ctx.obj["config_path"])
+
+    # Khởi tạo Sheets reader
+    reader = SheetsReader(
+        credentials_file=config.get("google_sheets.credentials_file"),
+        spreadsheet_id=config.get("google_sheets.spreadsheet_id"),
+        sheet_name=config.get("google_sheets.sheet_name")
+    )
+
+    if not reader.connect():
+        console.print("[red]❌ Không thể kết nối Google Sheets[/]")
+        return
+
+    if not reader.open_spreadsheet():
+        console.print("[red]❌ Không thể mở spreadsheet[/]")
+        return
+
+    console.print(Panel(
+        f"[bold]Grok Batch - Tạo Video Tự Động[/]\n\n"
+        f"Input: {input_folder}/\n"
+        f"Output: {output_folder}/\n"
+        f"Prompt: {prompt or '(mặc định)'}\n\n"
+        f"[dim]Đọc mã từ Google Sheets, cột E trống = chưa làm[/]",
+        title="Batch Mode"
+    ))
+
+    results = create_videos_from_sheets(
+        sheets_reader=reader,
+        input_folder=input_folder,
+        output_folder=output_folder,
+        prompt=prompt,
+        chrome_path=config.get("chrome.executable", r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default"),
+    )
+
+    # Summary
+    if results:
+        success = sum(1 for r in results if r.success)
+        console.print(f"\n[bold green]===== KẾT QUẢ: {success}/{len(results)} video thành công =====[/]")
 
 
 def main():

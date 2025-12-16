@@ -39,6 +39,9 @@ class GrokVideoResult:
 class GrokBrowserAutomation:
     GROK_IMAGINE_URL = "https://grok.com/imagine"
 
+    # Đường dẫn đến icon done.PNG (cạnh run.bat)
+    DONE_ICON_PATH = Path(__file__).parent.parent / "icon" / "done.PNG"
+
     def __init__(
         self,
         chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -60,6 +63,43 @@ class GrokBrowserAutomation:
 
     def log_warn(self, msg: str):
         console.print(f"[yellow]   ⚠ {msg}[/]")
+
+    def wait_for_done_image(self, timeout: int = 60) -> bool:
+        """Chờ cho đến khi thấy icon done.PNG trên màn hình."""
+        if not pag:
+            return False
+
+        icon_path = str(self.DONE_ICON_PATH)
+        self.log(f"   Tìm icon: {icon_path}")
+
+        if not Path(icon_path).exists():
+            self.log_warn(f"Không tìm thấy file icon: {icon_path}")
+            self.log_warn("Sẽ chờ 20s thay thế...")
+            time.sleep(20)
+            return True
+
+        start_time = time.time()
+        check_interval = 2  # Check mỗi 2 giây
+
+        while time.time() - start_time < timeout:
+            elapsed = int(time.time() - start_time)
+            try:
+                # Tìm icon trên màn hình
+                location = pag.locateOnScreen(icon_path, confidence=0.8)
+                if location:
+                    self.log_ok(f"Tìm thấy icon done! ({elapsed}s)")
+                    return True
+            except Exception as e:
+                # Có thể lỗi nếu thiếu opencv-python
+                pass
+
+            if elapsed % 10 == 0 and elapsed > 0:
+                self.log(f"   ...đã chờ {elapsed}s")
+
+            time.sleep(check_interval)
+
+        self.log_warn(f"Timeout {timeout}s, tiếp tục download anyway...")
+        return False
 
     def run_js(self, js: str, close_devtools: bool = True) -> bool:
         """Chạy JS qua DevTools Console."""
@@ -443,9 +483,9 @@ class GrokBrowserAutomation:
             if not self.upload_file(str(image_path)):
                 return GrokVideoResult(False, error="Không upload được file")
 
-            # === BƯỚC 6: Chờ 20s để video tạo xong ===
-            self.log("6. Chờ video tạo xong (20s)...")
-            time.sleep(20)
+            # === BƯỚC 6: Chờ icon done (tối đa 60s) ===
+            self.log("6. Chờ video tạo xong (tìm icon done, max 60s)...")
+            self.wait_for_done_image(timeout=60)
 
             # === BƯỚC 7: Download ===
             self.log("7. Tải video...")

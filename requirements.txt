@@ -10,6 +10,7 @@ aiohttp==3.9.5
 # Browser automation (PyAutoGUI)
 pyautogui>=0.9.54
 pyperclip>=1.8.2
+opencv-python>=4.8.0  # Cho locateOnScreen với confidence
 
 # Video processing
 moviepy==1.0.3

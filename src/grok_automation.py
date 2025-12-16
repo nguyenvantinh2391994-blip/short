@@ -65,8 +65,25 @@ def kill_chrome():
         pass
 
 
+def find_chrome_path() -> str:
+    """Tìm đường dẫn Chrome"""
+    import platform
+    import os
+
+    if platform.system() == "Windows":
+        paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+        for p in paths:
+            if Path(p).exists():
+                return p
+    return "chrome"
+
+
 def start_chrome_debug(
-    chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    chrome_path: str = None,
     profile_path: str = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data",
     profile_name: str = "Default",
     port: int = DEBUG_PORT,
@@ -77,11 +94,16 @@ def start_chrome_debug(
         console.print(f"[green]✅ Chrome debug đã chạy trên port {port}[/]")
         return True
 
-    console.print(f"[cyan]Đang mở Chrome với debug port {port}...[/]")
+    # Tìm Chrome
+    if not chrome_path:
+        chrome_path = find_chrome_path()
+
+    console.print(f"[cyan]Chrome: {chrome_path}[/]")
+    console.print(f"[cyan]Profile: {profile_path}[/]")
 
     # Đóng Chrome cũ nếu cần
     if auto_kill:
-        console.print("[dim]Đóng Chrome cũ (nếu có)...[/]")
+        console.print("[dim]Đóng Chrome cũ...[/]")
         kill_chrome()
 
     try:
@@ -94,26 +116,40 @@ def start_chrome_debug(
             "https://grok.com/imagine"
         ]
 
-        subprocess.Popen(
+        console.print(f"[dim]Đang chạy: {' '.join(cmd[:2])}...[/]")
+
+        # Không ẩn window để debug
+        process = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
 
         # Đợi Chrome khởi động
+        console.print("[cyan]Đợi Chrome mở (tối đa 30s)...[/]")
         for i in range(30):
             time.sleep(1)
+            console.print(f"[dim]...{i+1}s[/]", end=" ")
             if is_chrome_debug_running(port):
-                console.print(f"[green]✅ Chrome đã mở![/]")
-                time.sleep(2)  # Đợi thêm để trang load
+                console.print(f"\n[green]✅ Chrome đã mở trên port {port}![/]")
+                time.sleep(3)  # Đợi trang load
                 return True
 
-        console.print("[red]❌ Không thể mở Chrome debug[/]")
+        # Kiểm tra lỗi
+        if process.poll() is not None:
+            _, stderr = process.communicate()
+            if stderr:
+                console.print(f"\n[red]Lỗi Chrome: {stderr.decode()[:200]}[/]")
+
+        console.print("\n[red]❌ Chrome không mở được![/]")
         return False
 
+    except FileNotFoundError:
+        console.print(f"[red]❌ Không tìm thấy Chrome tại: {chrome_path}[/]")
+        console.print("[yellow]Hãy kiểm tra Chrome đã cài đặt chưa[/]")
+        return False
     except Exception as e:
-        console.print(f"[red]❌ Lỗi mở Chrome: {e}[/]")
+        console.print(f"[red]❌ Lỗi: {e}[/]")
         return False
 
 

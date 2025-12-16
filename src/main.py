@@ -17,6 +17,7 @@ from .config_manager import get_config, ConfigManager
 from .token_extractor import TokenExtractor, interactive_add_token
 from .grok_client import GrokClient
 from .xai_client import XAIClient, setup_xai_api
+from .grok_automation import create_video_sync, create_videos_batch_sync, GrokVideoResult
 from .sheets_reader import SheetsReader, LocalProductReader, Product
 from .video_generator import VideoGenerator, VideoConfig
 from .watcher import AutoVideoWatcher, SheetsWatcher
@@ -378,6 +379,121 @@ def xai_generate(prompt, output):
             console.print(f"[green]Đã lưu: {output}[/]")
     else:
         console.print(f"[red]❌ Lỗi: {result.error}[/]")
+
+
+@cli.command("grok-auto")
+@click.argument("image_path")
+@click.option("--prompt", "-p", default="", help="Prompt tùy chỉnh video")
+@click.option("--output", "-o", default="", help="Đường dẫn output video")
+@click.option("--headless", is_flag=True, help="Chạy browser ẩn")
+@click.pass_context
+def grok_auto(ctx, image_path, prompt, output, headless):
+    """Tạo video với Grok qua Browser Automation"""
+    config = get_config(ctx.obj["config_path"])
+
+    # Output mặc định
+    if not output:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output = f"outputs/grok_{timestamp}.mp4"
+
+    console.print(Panel(
+        f"[bold]Grok Browser Automation[/]\n\n"
+        f"Ảnh: {image_path}\n"
+        f"Prompt: {prompt or '(mặc định)'}\n"
+        f"Output: {output}\n"
+        f"Headless: {headless}",
+        title="Tạo Video"
+    ))
+
+    result = create_video_sync(
+        image_path=image_path,
+        prompt=prompt,
+        output_path=output,
+        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data"),
+        profile_name=config.get("chrome.profile_name", "Default"),
+        headless=headless,
+    )
+
+    if result.success:
+        console.print(f"\n[bold green]✅ Thành công![/]")
+        console.print(f"Video: {result.video_path}")
+    else:
+        console.print(f"\n[bold red]❌ Thất bại: {result.error}[/]")
+
+
+@cli.command("grok-auto-all")
+@click.option("--headless", is_flag=True, help="Chạy browser ẩn")
+@click.option("--source", "-s", type=click.Choice(["sheets", "local"]), default="sheets")
+@click.pass_context
+def grok_auto_all(ctx, headless, source):
+    """Tạo video cho TẤT CẢ sản phẩm với Grok Browser Automation"""
+    config = get_config(ctx.obj["config_path"])
+
+    # Lấy danh sách sản phẩm
+    if source == "sheets":
+        reader = SheetsReader(
+            credentials_file=config.get("google_sheets.credentials_file"),
+            spreadsheet_id=config.get("google_sheets.spreadsheet_id"),
+            sheet_name=config.get("google_sheets.sheet_name")
+        )
+    else:
+        reader = LocalProductReader()
+
+    products = reader.get_products()
+    if not products:
+        console.print("[yellow]Không có sản phẩm nào[/]")
+        return
+
+    # Chuẩn bị tasks
+    tasks = []
+    products_dir = Path(config.get("products.images_dir", "products"))
+
+    for product in products:
+        # Tìm ảnh đầu tiên của sản phẩm
+        product_folder = products_dir / product.id
+        if not product_folder.exists():
+            console.print(f"[yellow]⚠️ Không tìm thấy thư mục: {product_folder}[/]")
+            continue
+
+        images = list(product_folder.glob("*.jpg")) + list(product_folder.glob("*.png"))
+        if not images:
+            console.print(f"[yellow]⚠️ Không có ảnh trong: {product_folder}[/]")
+            continue
+
+        # Lấy prompt từ extra nếu có
+        prompt = product.extra.get("prompt", "")
+
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        tasks.append({
+            "image": str(images[0]),
+            "prompt": prompt,
+            "output": f"outputs/{product.id}_{timestamp}.mp4"
+        })
+
+    if not tasks:
+        console.print("[yellow]Không có task nào để xử lý[/]")
+        return
+
+    console.print(Panel(
+        f"[bold]Grok Browser Automation - Batch[/]\n\n"
+        f"Số sản phẩm: {len(tasks)}\n"
+        f"Headless: {headless}",
+        title="Tạo Video Hàng Loạt"
+    ))
+
+    results = create_videos_batch_sync(
+        tasks=tasks,
+        chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data"),
+        profile_name=config.get("chrome.profile_name", "Default"),
+        headless=headless,
+    )
+
+    # Summary
+    success = sum(1 for r in results if r.success)
+    console.print(f"\n[bold]Kết quả: {success}/{len(results)} video thành công[/]")
 
 
 def main():

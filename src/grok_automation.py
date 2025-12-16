@@ -432,6 +432,98 @@ class GrokBrowserAutomation:
         self.log_ok(f"Đã lưu: {filename} vào {folder}")
         return True
 
+    def verify_video_file(self, file_path: str, min_size_kb: int = 100) -> bool:
+        """Kiểm tra file video có hợp lệ không.
+
+        Args:
+            file_path: Đường dẫn file
+            min_size_kb: Kích thước tối thiểu (KB)
+
+        Returns:
+            True nếu file hợp lệ (tồn tại, đủ lớn, đúng định dạng)
+        """
+        file_path = Path(file_path)
+
+        # Chờ file được ghi xong
+        time.sleep(2)
+
+        # Kiểm tra file tồn tại
+        if not file_path.exists():
+            self.log_warn(f"File không tồn tại: {file_path}")
+            return False
+
+        # Kiểm tra kích thước (file video thường > 100KB)
+        file_size = file_path.stat().st_size
+        if file_size < min_size_kb * 1024:
+            self.log_warn(f"File quá nhỏ: {file_size} bytes (< {min_size_kb}KB)")
+            return False
+
+        # Kiểm tra header của file (MP4 bắt đầu bằng ftyp)
+        try:
+            with open(file_path, "rb") as f:
+                header = f.read(12)
+                # MP4 files có "ftyp" ở byte 4-7
+                if b"ftyp" in header:
+                    self.log_ok(f"File video hợp lệ: {file_size // 1024}KB")
+                    return True
+                else:
+                    self.log_warn(f"File không phải MP4 (header không đúng)")
+                    return False
+        except Exception as e:
+            self.log_warn(f"Lỗi đọc file: {e}")
+            return False
+
+    def retry_download(self, output_path: str, product_code: str = "", max_retries: int = 2) -> bool:
+        """Thử download lại khi file không hợp lệ.
+
+        Flow: F5 refresh → F12 mở DevTools → chờ → click download
+
+        Args:
+            output_path: Đường dẫn file output
+            product_code: Mã sản phẩm
+            max_retries: Số lần thử tối đa
+
+        Returns:
+            True nếu download thành công
+        """
+        for attempt in range(max_retries):
+            self.log(f"   === RETRY {attempt + 1}/{max_retries} ===")
+
+            # Xóa file lỗi nếu có
+            file_path = Path(output_path)
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                    self.log(f"   Đã xóa file lỗi")
+                except:
+                    pass
+
+            # F5 để refresh trang
+            self.log("   F5 refresh trang...")
+            pag.press("f5")
+            time.sleep(5)  # Đợi trang load lại
+
+            # F12 mở DevTools
+            self.log("   F12 mở DevTools...")
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1.5)
+
+            # Chờ video load lại (15s)
+            self.log("   Chờ video load (15s)...")
+            time.sleep(15)
+
+            # Click download
+            self.click_download(output_path, product_code)
+            time.sleep(3)
+
+            # Kiểm tra lại file
+            if self.verify_video_file(output_path):
+                self.log_ok(f"Retry thành công!")
+                return True
+
+        self.log_err(f"Retry thất bại sau {max_retries} lần")
+        return False
+
     def open_new_tab_and_close_old(self) -> bool:
         """Mở tab mới với URL grok, đóng tab cũ.
 
@@ -529,18 +621,27 @@ class GrokBrowserAutomation:
             self.log("6. Chờ video tạo xong (tìm icon done, max 60s)...")
             self.wait_for_done_image(timeout=60)
 
-            # Chờ thêm 6s sau khi thấy done để đảm bảo video sẵn sàng
-            self.log("   Chờ thêm 6s trước khi download...")
-            time.sleep(6)
+            # Chờ thêm 15s sau khi thấy done để đảm bảo video sẵn sàng
+            self.log("   Chờ thêm 15s trước khi download...")
+            time.sleep(15)
 
             # === BƯỚC 7: Download ===
             self.log("7. Tải video...")
             self.click_download(output_path, product_code)
             time.sleep(3)
 
+            # === BƯỚC 8: Kiểm tra file video ===
             if output_path:
-                console.print(f"[green]✅ Xong! Video lưu tại: {output_path}[/]")
-                return GrokVideoResult(True, video_path=output_path)
+                if not self.verify_video_file(output_path):
+                    self.log_warn("File không hợp lệ, thử lại...")
+                    if self.retry_download(output_path, product_code):
+                        console.print(f"[green]✅ Xong! Video lưu tại: {output_path}[/]")
+                        return GrokVideoResult(True, video_path=output_path)
+                    else:
+                        return GrokVideoResult(False, error="File video không hợp lệ sau khi retry")
+                else:
+                    console.print(f"[green]✅ Xong! Video lưu tại: {output_path}[/]")
+                    return GrokVideoResult(True, video_path=output_path)
             else:
                 console.print("[green]✅ Xong! Kiểm tra thư mục Downloads[/]")
                 return GrokVideoResult(True, video_path="Downloads")
@@ -593,14 +694,22 @@ class GrokBrowserAutomation:
             self.log("   Chờ video tạo xong...")
             self.wait_for_done_image(timeout=60)
 
-            # Chờ thêm 6s sau khi thấy done để đảm bảo video sẵn sàng
-            self.log("   Chờ thêm 6s trước khi download...")
-            time.sleep(6)
+            # Chờ thêm 15s sau khi thấy done để đảm bảo video sẵn sàng
+            self.log("   Chờ thêm 15s trước khi download...")
+            time.sleep(15)
 
             # === Download ===
             self.log("   Tải video...")
             self.click_download(output_path, product_code)
             time.sleep(3)
+
+            # === Kiểm tra file video ===
+            if output_path and not self.verify_video_file(output_path):
+                self.log_warn("File không hợp lệ, thử lại...")
+                if self.retry_download(output_path, product_code):
+                    return GrokVideoResult(True, video_path=output_path)
+                else:
+                    return GrokVideoResult(False, error="File video không hợp lệ sau khi retry")
 
             return GrokVideoResult(True, video_path=output_path)
 

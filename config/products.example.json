@@ -1,0 +1,28 @@
+{
+  "products": [
+    {
+      "id": "SP001",
+      "name": "Áo thun nam basic",
+      "price": "299.000đ",
+      "original_price": "399.000đ",
+      "promotion": "Giảm 25%",
+      "description": "Áo thun nam cotton 100%, form regular fit",
+      "category": "Thời trang nam",
+      "images_folder": "SP001",
+      "status": "active",
+      "tags": ["bestseller", "sale"]
+    },
+    {
+      "id": "SP002",
+      "name": "Quần jean slim fit",
+      "price": "499.000đ",
+      "original_price": null,
+      "promotion": null,
+      "description": "Quần jean nam slim fit, chất liệu co giãn",
+      "category": "Thời trang nam",
+      "images_folder": "SP002",
+      "status": "active",
+      "tags": ["new"]
+    }
+  ]
+}

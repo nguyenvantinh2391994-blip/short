@@ -1,0 +1,31 @@
+{
+  "google_sheets": {
+    "spreadsheet_id": "YOUR_SPREADSHEET_ID",
+    "sheet_name": "Products",
+    "credentials_file": "config/credentials.json"
+  },
+  "grok": {
+    "base_url": "https://grok.com",
+    "imagine_url": "https://grok.com/imagine",
+    "tokens_file": "config/grok_tokens.json"
+  },
+  "chrome": {
+    "profile_path": "C:\\Users\\trant\\AppData\\Local\\Google\\Chrome\\User Data",
+    "profile_name": "Default"
+  },
+  "video": {
+    "output_dir": "outputs",
+    "format": "mp4",
+    "resolution": {
+      "width": 1080,
+      "height": 1920
+    },
+    "fps": 30,
+    "duration_per_image": 3,
+    "transition_duration": 0.5
+  },
+  "products": {
+    "images_dir": "products",
+    "supported_formats": [".jpg", ".jpeg", ".png", ".webp"]
+  }
+}

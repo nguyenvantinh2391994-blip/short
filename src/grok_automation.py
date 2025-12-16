@@ -326,21 +326,47 @@ class GrokBrowserAutomation:
         return False
 
     def click_download(self, output_path: str = "") -> bool:
-        """Click nút download bằng JS và xử lý dialog Save As (giống upload)."""
-        # JS click nút download
+        """Click nút download bằng JS và xử lý dialog Save As."""
+        # JS click nút download - thử nhiều cách
         js = '''(function(){
-            // Tìm nút Tải xuống
+            // Cách 1: Tìm button với aria-label chính xác
             var btn = document.querySelector('button[aria-label="Tải xuống"]');
-            if(btn){ btn.click(); console.log('OK: Clicked download button'); return true; }
+            if(btn){
+                console.log('Found button[aria-label="Tải xuống"]');
+                btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                console.log('OK: Dispatched click event');
+                return true;
+            }
 
-            // Tìm qua SVG
+            // Cách 2: Tìm qua SVG lucide-download
             var svg = document.querySelector('svg.lucide-download');
             if(svg){
+                console.log('Found svg.lucide-download');
                 btn = svg.closest('button');
-                if(btn){ btn.click(); console.log('OK: Clicked via SVG'); return true; }
+                if(btn){
+                    btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                    console.log('OK: Clicked via SVG parent');
+                    return true;
+                }
+            }
+
+            // Cách 3: Tìm tất cả button và filter
+            var allBtns = document.querySelectorAll('button');
+            for(var b of allBtns){
+                var label = b.getAttribute('aria-label') || '';
+                if(label.includes('Tải') || label.includes('Download')){
+                    console.log('Found button with label:', label);
+                    b.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                    console.log('OK: Clicked');
+                    return true;
+                }
             }
 
             console.log('FAIL: Download button not found');
+            console.log('Available buttons with aria-label:');
+            document.querySelectorAll('button[aria-label]').forEach(b => {
+                console.log(' -', b.getAttribute('aria-label'));
+            });
             return false;
         })();'''
 

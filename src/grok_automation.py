@@ -327,63 +327,31 @@ class GrokBrowserAutomation:
 
     def click_download(self, output_path: str = "") -> bool:
         """Click nút download bằng JS và xử lý dialog Save As."""
-        # JS click nút download - thử nhiều cách
-        js = '''(function(){
-            // Cách 1: Tìm button với aria-label chính xác
-            var btn = document.querySelector('button[aria-label="Tải xuống"]');
-            if(btn){
-                console.log('Found button[aria-label="Tải xuống"]');
-                btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
-                console.log('OK: Dispatched click event');
-                return true;
-            }
-
-            // Cách 2: Tìm qua SVG lucide-download
-            var svg = document.querySelector('svg.lucide-download');
-            if(svg){
-                console.log('Found svg.lucide-download');
-                btn = svg.closest('button');
-                if(btn){
-                    btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
-                    console.log('OK: Clicked via SVG parent');
-                    return true;
-                }
-            }
-
-            // Cách 3: Tìm tất cả button và filter
-            var allBtns = document.querySelectorAll('button');
-            for(var b of allBtns){
-                var label = b.getAttribute('aria-label') || '';
-                if(label.includes('Tải') || label.includes('Download')){
-                    console.log('Found button with label:', label);
-                    b.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
-                    console.log('OK: Clicked');
-                    return true;
-                }
-            }
-
-            console.log('FAIL: Download button not found');
-            console.log('Available buttons with aria-label:');
-            document.querySelectorAll('button[aria-label]').forEach(b => {
-                console.log(' -', b.getAttribute('aria-label'));
-            });
-            return false;
-        })();'''
+        # JS đơn giản - chỉ click
+        js = '''document.querySelector('button[aria-label="Tải xuống"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))'''
 
         self.log("   JS: Click nút Tải xuống...")
-        if not self.run_js(js):
-            self.log_err("Không tìm thấy nút download")
-            return False
+
+        # Mở DevTools
+        pag.hotkey("ctrl", "shift", "j")
+        time.sleep(1)
+
+        # Paste và chạy JS
+        pyperclip.copy(js)
+        pag.hotkey("ctrl", "v")
+        time.sleep(0.3)
+        pag.press("enter")
+        time.sleep(1)
+
+        # Đóng DevTools
+        pag.hotkey("ctrl", "shift", "j")
+        time.sleep(0.5)
 
         self.log_ok("Đã click nút download")
 
-        # Đợi dialog Save As xuất hiện (3s để chắc chắn)
+        # Đợi dialog Save As xuất hiện
         self.log("   Đợi dialog Save As (3s)...")
         time.sleep(3)
-
-        # Đảm bảo DevTools đã đóng (nhấn Escape)
-        pag.press("escape")
-        time.sleep(0.3)
 
         if output_path:
             output_path = Path(output_path).absolute()

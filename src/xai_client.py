@@ -85,7 +85,7 @@ class XAIClient:
             console.print(f"[red]❌ Lỗi kết nối: {e}[/]")
             return False
 
-    def chat(self, prompt: str, model: str = "grok-beta") -> XAIResponse:
+    def chat(self, prompt: str, model: str = "grok-4-latest") -> XAIResponse:
         """Chat với Grok"""
         if not self.api_key:
             return XAIResponse(success=False, error="Chưa có API key")

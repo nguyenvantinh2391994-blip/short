@@ -2,6 +2,7 @@
 config/config.json
 config/credentials.json
 config/grok_tokens.json
+config/xai_config.json
 
 # Keep example files
 !config/*.example.json

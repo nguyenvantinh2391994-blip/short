@@ -371,10 +371,7 @@ class GrokBrowserAutomation:
 
         self.log("   === CLICK DOWNLOAD ===")
 
-        # Mở Console và paste lệnh
-        pag.hotkey("ctrl", "shift", "j")
-        time.sleep(1.5)
-
+        # DevTools đang mở sẵn - chỉ cần paste và chạy
         pyperclip.copy(js)
         pag.hotkey("ctrl", "v")
         time.sleep(0.3)

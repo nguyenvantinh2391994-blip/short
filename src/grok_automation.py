@@ -823,6 +823,11 @@ def create_videos_from_sheets(
         # Output path
         video_path = output_folder / f"{code}.mp4"
 
+        # Mở tab mới cho mã tiếp theo (trừ video đầu tiên)
+        if not first_video:
+            console.print(f"[cyan]   Mở tab mới cho mã tiếp theo...[/]")
+            automation.open_new_tab_and_close_old()
+
         # Tạo video với retry (tối đa 3 lần)
         max_attempts = 3
         result = None

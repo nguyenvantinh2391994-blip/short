@@ -207,68 +207,42 @@ class GrokBrowserAutomation:
         return True
 
     def click_and_type_prompt(self, prompt: str) -> bool:
-        """Click vào textarea và nhập prompt bằng JS."""
-        # Escape prompt cho JS string
-        escaped_prompt = prompt.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n').replace('\r', '')
-
-        # Selector chính xác từ HTML:
-        # <textarea aria-label="Tạo video" placeholder="Nhập để tùy chỉnh video...">
-        js = f'''(function(){{
-            // Cách 1: aria-label chính xác
-            var ta = document.querySelector('textarea[aria-label="Tạo video"]');
-
-            // Cách 2: placeholder chính xác
-            if(!ta) ta = document.querySelector('textarea[placeholder="Nhập để tùy chỉnh video..."]');
-
-            // Cách 3: placeholder contains
-            if(!ta) ta = document.querySelector('textarea[placeholder*="tùy chỉnh video"]');
-
-            // Cách 4: bất kỳ textarea nào
-            if(!ta) ta = document.querySelector('textarea');
-
-            if(ta){{
-                console.log('FOUND textarea:', ta.placeholder || ta.getAttribute('aria-label'));
-                ta.focus();
-                ta.click();
-                ta.value = '{escaped_prompt}';
-                ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                ta.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                console.log('OK: Typed prompt into textarea');
-                return true;
-            }}
-            console.log('FAIL: Textarea not found');
-            return false;
-        }})();'''
-
-        self.log(f"   JS: Tìm textarea[aria-label='Tạo video']...")
-        if self.run_js(js):
-            self.log_ok("Đã nhập prompt vào textarea")
-            return True
-
-        self.log_err("Không tìm thấy textarea")
-        return False
-
-    def press_enter_to_send(self) -> bool:
-        """Nhấn Enter để gửi - focus textarea trước."""
-        # Focus lại textarea rồi Enter (dùng selector chính xác)
+        """Click vào textarea rồi paste prompt (giống upload_file)."""
+        # Bước 1: JS chỉ click/focus textarea (KHÔNG set value)
         js = '''(function(){
             var ta = document.querySelector('textarea[aria-label="Tạo video"]');
             if(!ta) ta = document.querySelector('textarea[placeholder="Nhập để tùy chỉnh video..."]');
             if(!ta) ta = document.querySelector('textarea');
             if(ta){
                 ta.focus();
-                console.log('OK: Focused textarea for Enter');
+                ta.click();
+                console.log('OK: Clicked textarea:', ta.placeholder || ta.getAttribute('aria-label'));
                 return true;
             }
-            console.log('FAIL: Textarea not found for focus');
+            console.log('FAIL: Textarea not found');
             return false;
         })();'''
 
-        self.log("   JS: Focus textarea trước khi Enter...")
-        self.run_js(js)
+        self.log("   JS: Click vào textarea...")
+        if not self.run_js(js):
+            self.log_err("Không tìm thấy textarea")
+            return False
+
+        # Bước 2: Đợi DevTools đóng, page focus lại
+        time.sleep(1)
+
+        # Bước 3: Paste prompt bằng PyAutoGUI (giống upload_file)
+        self.log("   PyAutoGUI: Paste prompt...")
+        pyperclip.copy(prompt)
+        pag.hotkey("ctrl", "v")
         time.sleep(0.5)
 
-        # Nhấn Enter
+        self.log_ok(f"Đã paste prompt: {prompt[:30]}...")
+        return True
+
+    def press_enter_to_send(self) -> bool:
+        """Nhấn Enter để gửi."""
+        self.log("   PyAutoGUI: Nhấn Enter...")
         pag.press("enter")
         time.sleep(0.5)
         self.log_ok("Đã nhấn Enter gửi yêu cầu")
@@ -326,65 +300,33 @@ class GrokBrowserAutomation:
         return False
 
     def click_download(self) -> bool:
-        """Click nút download."""
-        # HTML thực tế: <button aria-label="Tải xuống"><svg class="lucide lucide-download">
+        """Click nút download (giống cách click attach/upload)."""
+        # HTML: <button aria-label="Tải xuống"><svg class="lucide lucide-download">
         js = '''(function(){
-            // Cách 1: aria-label="Tải xuống" (chính xác từ HTML)
+            // Cách 1: aria-label chính xác
             var btn = document.querySelector('button[aria-label="Tải xuống"]');
-            if(btn){
-                console.log('FOUND: button[aria-label="Tải xuống"]');
-                btn.click();
-                console.log('OK: Clicked download');
-                return true;
-            }
+            if(btn){ btn.click(); console.log('OK: Clicked button[aria-label="Tải xuống"]'); return true; }
 
-            // Cách 2: SVG với class lucide-download (cũng từ HTML)
+            // Cách 2: SVG lucide-download
             var svg = document.querySelector('svg.lucide-download');
             if(svg){
-                console.log('FOUND: svg.lucide-download');
-                btn = svg.closest('button') || svg.parentElement;
-                if(btn){ btn.click(); console.log('OK: Clicked download (svg)'); return true; }
+                btn = svg.closest('button');
+                if(btn){ btn.click(); console.log('OK: Clicked via svg.lucide-download'); return true; }
             }
 
-            // Cách 3: class chứa lucide-download
-            svg = document.querySelector('svg[class*="lucide-download"]');
-            if(svg){
-                console.log('FOUND: svg[class*="lucide-download"]');
-                btn = svg.closest('button') || svg.parentElement;
-                if(btn){ btn.click(); console.log('OK: Clicked download'); return true; }
-            }
-
-            // Cách 4: aria-label contains tải
+            // Cách 3: aria-label chứa "Tải"
             btn = document.querySelector('button[aria-label*="Tải"]');
-            if(btn){
-                console.log('FOUND: button[aria-label*="Tải"]:', btn.getAttribute('aria-label'));
-                btn.click();
-                console.log('OK: Clicked download');
-                return true;
-            }
+            if(btn){ btn.click(); console.log('OK: Clicked button[aria-label*="Tải"]'); return true; }
 
-            // Cách 5: Tìm SVG có path của icon download
-            var allSvgs = document.querySelectorAll('svg');
-            for(var s of allSvgs){
-                var paths = s.querySelectorAll('path');
-                for(var p of paths){
-                    var d = p.getAttribute('d') || '';
-                    if(d.includes('M21 15v4a2')){
-                        console.log('FOUND: SVG with download path');
-                        btn = s.closest('button') || s.parentElement;
-                        if(btn){ btn.click(); console.log('OK: Clicked download (path)'); return true; }
-                    }
-                }
-            }
-
-            console.log('FAIL: Download button not found. Available buttons:');
+            // Log các button có aria-label để debug
+            console.log('FAIL: Download not found. Available:');
             document.querySelectorAll('button[aria-label]').forEach(b => {
-                console.log(' - aria-label:', b.getAttribute('aria-label'));
+                console.log(' -', b.getAttribute('aria-label'));
             });
             return false;
         })();'''
 
-        self.log(f"   JS: Tìm button[aria-label='Tải xuống']...")
+        self.log("   JS: Click button[aria-label='Tải xuống']...")
         if self.run_js(js):
             self.log_ok("Đã click nút download")
             return True

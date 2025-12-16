@@ -823,15 +823,32 @@ def create_videos_from_sheets(
         # Output path
         video_path = output_folder / f"{code}.mp4"
 
-        # Tạo video (truyền code làm tên file khi Save As)
-        if first_video:
-            # Lần đầu: mở Chrome mới
-            result = automation.create_video(str(image_path), prompt, str(video_path), code)
-            first_video = False
-        else:
-            # Các lần sau: mở tab mới, đóng tab cũ, tiếp tục
-            automation.open_new_tab_and_close_old()
-            result = automation.create_video_continue(str(image_path), prompt, str(video_path), code)
+        # Tạo video với retry (tối đa 3 lần)
+        max_attempts = 3
+        result = None
+
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                console.print(f"[yellow]   🔄 Thử lại lần {attempt + 1}/{max_attempts}...[/]")
+                # Mở tab mới, đóng tab cũ để làm lại
+                automation.open_new_tab_and_close_old()
+
+            # Tạo video
+            if first_video and attempt == 0:
+                # Lần đầu: mở Chrome mới
+                result = automation.create_video(str(image_path), prompt, str(video_path), code)
+                first_video = False
+            else:
+                # Các lần sau hoặc retry: dùng tab hiện tại
+                result = automation.create_video_continue(str(image_path), prompt, str(video_path), code)
+
+            # Nếu thành công thì thoát vòng retry
+            if result.success:
+                break
+            else:
+                console.print(f"[yellow]   ⚠ Lỗi: {result.error}[/]")
+                if attempt < max_attempts - 1:
+                    console.print(f"[yellow]   → Mở tab mới, đóng tab cũ, thử lại...[/]")
 
         results.append(result)
 
@@ -840,7 +857,7 @@ def create_videos_from_sheets(
             sheets_reader.update_status(row, "VIDEO", "E")
             console.print(f"[green]✅ Hoàn thành: {code}[/]")
         else:
-            console.print(f"[red]❌ Lỗi: {code} - {result.error}[/]")
+            console.print(f"[red]❌ Lỗi sau {max_attempts} lần thử: {code} - {result.error}[/]")
 
     total_success = len([r for r in results if r.success]) + existing_count
     total_items = len(pending)

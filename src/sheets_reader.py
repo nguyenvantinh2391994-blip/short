@@ -61,23 +61,24 @@ class SheetsReader:
 
         # Name
         "ten": "name", "tên": "name", "ten_sp": "name", "tên_sp": "name",
-        "product_name": "name", "name": "name", "tên sản phẩm": "name",
+        "product_name": "name", "name": "name",
+        "tên_sản_phẩm": "name", "ten_san_pham": "name",
 
         # Price
         "gia": "price", "giá": "price", "gia_ban": "price", "giá_bán": "price",
-        "price": "price", "giá bán": "price",
+        "price": "price", "giá_bán": "price",
 
         # Original price
         "gia_goc": "original_price", "giá_gốc": "original_price",
-        "original_price": "original_price", "giá gốc": "original_price",
+        "original_price": "original_price",
 
         # Promotion
         "khuyen_mai": "promotion", "khuyến_mãi": "promotion",
-        "promotion": "promotion", "sale": "promotion", "khuyến mãi": "promotion",
+        "promotion": "promotion", "sale": "promotion",
 
         # Description
         "mo_ta": "description", "mô_tả": "description",
-        "description": "description", "mô tả": "description",
+        "description": "description",
 
         # Category
         "danh_muc": "category", "danh_mục": "category",
@@ -86,14 +87,17 @@ class SheetsReader:
         # Images folder
         "thu_muc_anh": "images_folder", "thư_mục_ảnh": "images_folder",
         "images": "images_folder", "folder": "images_folder",
-        "thư mục ảnh": "images_folder",
 
         # Status
         "trang_thai": "status", "trạng_thái": "status",
-        "status": "status", "trạng thái": "status",
+        "status": "status",
 
         # Tags
         "tags": "tags", "nhan": "tags", "nhãn": "tags",
+
+        # Extra fields (sẽ lưu vào product.extra)
+        "prompt": "prompt",
+        "link": "link",
     }
 
     def __init__(

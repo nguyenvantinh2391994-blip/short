@@ -84,8 +84,8 @@ class GrokBrowserAutomation:
         while time.time() - start_time < timeout:
             elapsed = int(time.time() - start_time)
             try:
-                # Tìm icon trên màn hình
-                location = pag.locateOnScreen(icon_path, confidence=0.8)
+                # Tìm icon trên màn hình (confidence >= 0.95)
+                location = pag.locateOnScreen(icon_path, confidence=0.95)
                 if location:
                     self.log_ok(f"Tìm thấy icon done! ({elapsed}s)")
                     return True
@@ -372,11 +372,20 @@ class GrokBrowserAutomation:
 
         self.log("   JS: Click nút Tải xuống...")
 
-        # Mở DevTools
+        # Đóng DevTools trước (nếu đang mở) để reset
+        self.log("   Đóng DevTools (nếu có)...")
+        pag.hotkey("ctrl", "shift", "j")
+        time.sleep(0.5)
+        pag.hotkey("ctrl", "shift", "j")  # Đóng
+        time.sleep(0.5)
+
+        # Mở DevTools mới
+        self.log("   Mở DevTools...")
         pag.hotkey("ctrl", "shift", "j")
         time.sleep(1)
 
         # Paste và chạy JS
+        self.log("   Chạy lệnh JS...")
         pyperclip.copy(js)
         pag.hotkey("ctrl", "v")
         time.sleep(0.3)

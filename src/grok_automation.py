@@ -355,32 +355,40 @@ class GrokBrowserAutomation:
 
         self.log_ok("Đã click nút download")
 
-        # Đợi dialog Save As xuất hiện
-        self.log("   Đợi dialog Save As (2s)...")
-        time.sleep(2)
+        # Đợi dialog Save As xuất hiện (3s để chắc chắn)
+        self.log("   Đợi dialog Save As (3s)...")
+        time.sleep(3)
+
+        # Đảm bảo DevTools đã đóng (nhấn Escape)
+        pag.press("escape")
+        time.sleep(0.3)
 
         if output_path:
             output_path = Path(output_path).absolute()
             folder = str(output_path.parent)
             filename = output_path.name
 
-            # Bước 1: Gõ tên file (cursor đang ở ô filename)
+            # Bước 1: Gõ tên file (Tab để focus vào ô filename nếu chưa)
             self.log(f"   Gõ tên file: {filename}")
+            pag.press("tab")  # Focus vào filename field
+            time.sleep(0.3)
             pyperclip.copy(filename)
             pag.hotkey("ctrl", "a")  # Select all text hiện tại
             time.sleep(0.2)
             pag.hotkey("ctrl", "v")  # Paste tên mới
-            time.sleep(0.3)
+            time.sleep(0.5)
 
             # Bước 2: Ctrl+L để đưa về thanh địa chỉ (folder)
             self.log(f"   Ctrl+L → folder: {folder}")
             pag.hotkey("ctrl", "l")
             time.sleep(0.5)
             pyperclip.copy(folder)
+            pag.hotkey("ctrl", "a")  # Select all
+            time.sleep(0.2)
             pag.hotkey("ctrl", "v")
-            time.sleep(0.3)
+            time.sleep(0.5)
             pag.press("enter")  # Đi đến folder
-            time.sleep(1)
+            time.sleep(1.5)
 
             # Bước 3: Alt+S để lưu
             self.log("   Alt+S để lưu...")

@@ -232,12 +232,14 @@ class GrokBrowserAutomation:
         return True
 
     def click_and_type_prompt(self, prompt: str) -> bool:
-        """Click vào textarea bằng chuột rồi paste prompt."""
-        # Thử nhiều selector
+        """Click vào ô prompt bằng chuột rồi paste."""
+        # Selector mới: <p data-placeholder="Gõ để tưởng tượng">
         selectors = [
+            'p[data-placeholder="Gõ để tưởng tượng"]',
+            'p[data-placeholder*="tưởng tượng"]',
+            '.ProseMirror',
             'textarea[aria-label="Tạo video"]',
             'textarea[placeholder="Nhập để tùy chỉnh video..."]',
-            'textarea[placeholder*="tùy chỉnh"]',
             'textarea'
         ]
 
@@ -250,10 +252,10 @@ class GrokBrowserAutomation:
                 break
 
         if not pos:
-            self.log_err("Không tìm thấy textarea")
+            self.log_err("Không tìm thấy ô nhập prompt")
             return False
 
-        # Click vào vị trí textarea bằng chuột
+        # Click vào vị trí bằng chuột
         self.log(f"   Mouse click tại ({pos[0]}, {pos[1]})...")
         pag.click(pos[0], pos[1])
         time.sleep(0.5)
@@ -418,52 +420,37 @@ class GrokBrowserAutomation:
             self.log("   Đợi trang load (10s)...")
             time.sleep(10)
 
-            # === BƯỚC 2: Click đính kèm ===
-            self.log("2. Click nút đính kèm...")
+            # === BƯỚC 2: Nhập prompt TRƯỚC (click "Gõ để tưởng tượng") ===
+            if prompt:
+                self.log(f"2. Nhập prompt: {prompt[:50]}...")
+                self.click_and_type_prompt(prompt)
+                time.sleep(1)
+            else:
+                self.log("2. Không có prompt, bỏ qua...")
+
+            # === BƯỚC 3: Click đính kèm ===
+            self.log("3. Click nút đính kèm...")
             if not self.click_attach_button():
                 self.log_warn("Có thể không click được, tiếp tục...")
             time.sleep(1)
 
-            # === BƯỚC 3: Click tải lên ===
-            self.log("3. Click menu tải lên...")
+            # === BƯỚC 4: Click tải lên ===
+            self.log("4. Click menu tải lên...")
             if not self.click_upload_menu():
                 self.log_warn("Có thể không click được, tiếp tục...")
             time.sleep(1)
 
-            # === BƯỚC 4: Upload file ===
-            self.log(f"4. Upload: {image_path.name}")
+            # === BƯỚC 5: Upload file ===
+            self.log(f"5. Upload: {image_path.name}")
             if not self.upload_file(str(image_path)):
                 return GrokVideoResult(False, error="Không upload được file")
 
-            # Đợi ảnh load
-            self.log("   Đợi ảnh load (10s)...")
-            time.sleep(10)
+            # === BƯỚC 6: Chờ 20s để video tạo xong ===
+            self.log("6. Chờ video tạo xong (20s)...")
+            time.sleep(20)
 
-            # === BƯỚC 5: Nhập prompt ===
-            if prompt:
-                self.log(f"5. Nhập prompt: {prompt[:50]}...")
-                self.click_and_type_prompt(prompt)
-                time.sleep(1)
-            else:
-                self.log("5. Không có prompt, bỏ qua...")
-
-            # === BƯỚC 6: Gửi yêu cầu ===
-            self.log("6. Nhấn Enter gửi yêu cầu...")
-            self.press_enter_to_send()
-
-            # === BƯỚC 7: Đợi video ===
-            self.log("7. Đang tạo video (1-5 phút)...")
-            video_done = self.wait_for_video_done(timeout=300)
-
-            if video_done:
-                self.log_ok("Video tạo xong!")
-            else:
-                self.log_warn("Timeout hoặc không detect được, thử download anyway...")
-
-            time.sleep(2)
-
-            # === BƯỚC 8: Download ===
-            self.log("8. Tải video...")
+            # === BƯỚC 7: Download ===
+            self.log("7. Tải video...")
             self.click_download(output_path)
             time.sleep(3)
 

@@ -538,13 +538,13 @@ def grok_auto_all(ctx, headless, source):
 @cli.command("grok-batch")
 @click.option("--input", "-i", "input_folder", default="input", help="Thư mục chứa ảnh (mặc định: input)")
 @click.option("--output", "-o", "output_folder", default="outputs", help="Thư mục lưu video (mặc định: outputs)")
-@click.option("--prompt", "-p", default="", help="Prompt tùy chỉnh video")
 @click.pass_context
-def grok_batch(ctx, input_folder, output_folder, prompt):
+def grok_batch(ctx, input_folder, output_folder):
     """
     Tạo video BATCH từ Google Sheets.
 
     - Đọc các mã có cột E trống (chưa làm)
+    - Lấy prompt từ cột F
     - Ảnh từ input/{mã}.jpg hoặc .png
     - Video lưu vào outputs/{mã}.mp4
     - Cập nhật cột E = "VIDEO" sau khi xong
@@ -571,8 +571,8 @@ def grok_batch(ctx, input_folder, output_folder, prompt):
         f"[bold]Grok Batch - Tạo Video Tự Động[/]\n\n"
         f"Input: {input_folder}/\n"
         f"Output: {output_folder}/\n"
-        f"Prompt: {prompt or '(mặc định)'}\n\n"
-        f"[dim]Đọc mã từ Google Sheets, cột E trống = chưa làm[/]",
+        f"Prompt: [dim]từ cột F[/]\n\n"
+        f"[dim]Cột A = mã, E = trạng thái (trống = chưa làm), F = prompt[/]",
         title="Batch Mode"
     ))
 
@@ -580,7 +580,6 @@ def grok_batch(ctx, input_folder, output_folder, prompt):
         sheets_reader=reader,
         input_folder=input_folder,
         output_folder=output_folder,
-        prompt=prompt,
         chrome_path=config.get("chrome.executable", r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
         chrome_profile_path=config.get("chrome.profile_path", r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default"),
     )

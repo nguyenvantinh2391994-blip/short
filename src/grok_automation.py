@@ -233,13 +233,12 @@ class GrokBrowserAutomation:
 
     def click_and_type_prompt(self, prompt: str) -> bool:
         """Click vào ô prompt bằng chuột rồi paste."""
-        # Selector mới: <p data-placeholder="Gõ để tưởng tượng">
+        # Selector: <p data-placeholder="Gõ để tưởng tượng">
         selectors = [
             'p[data-placeholder="Gõ để tưởng tượng"]',
             'p[data-placeholder*="tưởng tượng"]',
             '.ProseMirror',
-            'textarea[aria-label="Tạo video"]',
-            'textarea[placeholder="Nhập để tùy chỉnh video..."]',
+            'div[contenteditable="true"]',
             'textarea'
         ]
 
@@ -255,18 +254,30 @@ class GrokBrowserAutomation:
             self.log_err("Không tìm thấy ô nhập prompt")
             return False
 
-        # Click vào vị trí bằng chuột
+        # Click vào vị trí bằng chuột (click 2 lần để chắc chắn focus)
         self.log(f"   Mouse click tại ({pos[0]}, {pos[1]})...")
         pag.click(pos[0], pos[1])
+        time.sleep(0.3)
+        pag.click(pos[0], pos[1])  # Click lần 2
         time.sleep(0.5)
 
-        # Paste prompt
-        self.log("   Paste prompt...")
+        # Copy prompt vào clipboard trước
+        self.log(f"   Copy prompt: {prompt[:30]}...")
         pyperclip.copy(prompt)
+        time.sleep(0.2)
+
+        # Paste bằng Ctrl+V
+        self.log("   Ctrl+V paste...")
         pag.hotkey("ctrl", "v")
         time.sleep(0.5)
 
-        self.log_ok(f"Đã paste: {prompt[:30]}...")
+        # Verify clipboard
+        current = pyperclip.paste()
+        if current == prompt:
+            self.log_ok("Clipboard OK")
+        else:
+            self.log_warn(f"Clipboard: {current[:20]}...")
+
         return True
 
     def press_enter_to_send(self) -> bool:
@@ -329,30 +340,31 @@ class GrokBrowserAutomation:
         return False
 
     def click_download(self, output_path: str = "") -> bool:
-        """Click nút download và xử lý dialog Save As."""
+        """Click nút download bằng chuột và xử lý dialog Save As."""
         # HTML: <button aria-label="Tải xuống"><svg class="lucide lucide-download">
-        js = '''(function(){
-            var btn = document.querySelector('button[aria-label="Tải xuống"]');
-            if(btn){ btn.click(); console.log('OK: Clicked download'); return true; }
+        selectors = [
+            'button[aria-label="Tải xuống"]',
+            'svg.lucide-download',
+            'svg[class*="lucide-download"]',
+            'button[aria-label*="Tải"]'
+        ]
 
-            var svg = document.querySelector('svg.lucide-download');
-            if(svg){
-                btn = svg.closest('button');
-                if(btn){ btn.click(); console.log('OK: Clicked via svg'); return true; }
-            }
+        pos = None
+        for sel in selectors:
+            self.log(f"   Tìm vị trí: {sel}")
+            pos = self.get_element_position(sel)
+            if pos:
+                self.log_ok(f"Tìm thấy tại ({pos[0]}, {pos[1]})")
+                break
 
-            btn = document.querySelector('button[aria-label*="Tải"]');
-            if(btn){ btn.click(); console.log('OK: Clicked button with Tải'); return true; }
-
-            console.log('FAIL: Download not found');
-            return false;
-        })();'''
-
-        self.log("   JS: Click nút download...")
-        if not self.run_js(js):
+        if not pos:
             self.log_err("Không tìm thấy nút download")
             return False
 
+        # Click bằng chuột
+        self.log(f"   Mouse click tại ({pos[0]}, {pos[1]})...")
+        pag.click(pos[0], pos[1])
+        time.sleep(0.5)
         self.log_ok("Đã click nút download")
 
         # Đợi dialog Save As xuất hiện (3s để chắc chắn)

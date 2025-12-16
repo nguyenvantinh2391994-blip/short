@@ -367,44 +367,41 @@ class GrokBrowserAutomation:
 
     def click_download(self, output_path: str = "") -> bool:
         """Click nút download bằng JS và xử lý dialog Save As."""
-        # JS đơn giản - chỉ click
         js = '''document.querySelector('button[aria-label="Tải xuống"]').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))'''
 
-        self.log("   JS: Click nút Tải xuống...")
+        self.log("   === BẮT ĐẦU CLICK DOWNLOAD ===")
 
-        # Đóng DevTools trước (nếu đang mở)
-        self.log("   Đóng DevTools (nếu có)...")
-        pag.press("f12")
+        # Bước 1: Nhấn Escape để đóng mọi thứ đang mở
+        self.log("   [1] Escape để reset...")
+        pag.press("escape")
         time.sleep(0.5)
-        pag.press("f12")  # Đóng
-        time.sleep(1)
 
-        # Mở DevTools Console (Ctrl+Shift+J mở thẳng Console)
-        self.log("   Mở DevTools Console...")
+        # Bước 2: Mở DevTools Console
+        self.log("   [2] Ctrl+Shift+J mở Console...")
         pag.hotkey("ctrl", "shift", "j")
-        time.sleep(2)  # Đợi lâu hơn
+        time.sleep(2)
 
-        # Copy JS vào clipboard
-        self.log(f"   Copy JS: {js[:50]}...")
+        # Bước 3: Copy JS
+        self.log(f"   [3] Copy JS vào clipboard...")
         pyperclip.copy(js)
         time.sleep(0.3)
 
-        # Paste
-        self.log("   Paste JS...")
+        # Bước 4: Paste
+        self.log("   [4] Ctrl+V paste...")
         pag.hotkey("ctrl", "v")
         time.sleep(0.5)
 
-        # Chạy
-        self.log("   Enter để chạy...")
+        # Bước 5: Enter để chạy
+        self.log("   [5] Enter để chạy JS...")
         pag.press("enter")
         time.sleep(1)
 
-        # Đóng DevTools
-        self.log("   Đóng DevTools...")
+        # Bước 6: Đóng DevTools
+        self.log("   [6] F12 đóng DevTools...")
         pag.press("f12")
         time.sleep(0.5)
 
-        self.log_ok("Đã click nút download")
+        self.log_ok("=== ĐÃ CHẠY LỆNH DOWNLOAD ===")
 
         # Đợi dialog Save As xuất hiện
         self.log("   Đợi dialog Save As (3s)...")

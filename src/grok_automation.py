@@ -253,49 +253,71 @@ class GrokBrowserAutomation:
             time.sleep(0.5)
 
     def wait_for_video_done(self, timeout: int = 300) -> bool:
-        """Đợi video tạo xong."""
+        """Đợi video tạo xong - check nút 'Làm lại' hoặc nút download."""
         if not pag or not pyperclip:
             return False
 
+        # JS check cả nút "Làm lại" và nút download
         js = '''(function(){
+            // Check nút Làm lại
             var btns = document.querySelectorAll('button');
             for(var b of btns){
                 var text = b.textContent || '';
                 if(text.includes('Làm lại') || text.includes('Redo')){
-                    return true;
+                    return 'done';
                 }
             }
-            return false;
+            // Check nút download (video đã sẵn sàng)
+            var svgs = document.querySelectorAll('svg.lucide-download');
+            if(svgs.length > 0) return 'download_ready';
+            return 'waiting';
         })();'''
 
         for i in range(timeout // 5):
             time.sleep(5)
-            if i % 6 == 0:
-                self.log(f"...đã chờ {i*5}s")
+            elapsed = i * 5
+            if elapsed % 30 == 0:
+                self.log(f"...đã chờ {elapsed}s")
 
             try:
                 pag.hotkey("ctrl", "shift", "j")
                 time.sleep(1)
-                pyperclip.copy(js)
-                pag.hotkey("ctrl", "v")
-                time.sleep(0.3)
-                pag.press("enter")
-                time.sleep(0.5)
 
-                # Check console output
-                check_js = 'copy(document.querySelector("button")?.textContent?.includes("Làm lại") || false)'
+                # Copy kết quả check vào clipboard
+                check_js = f'''(function(){{
+                    var btns = document.querySelectorAll('button');
+                    for(var b of btns){{
+                        var text = b.textContent || '';
+                        if(text.includes('Làm lại') || text.includes('Redo')){{
+                            copy('done'); return;
+                        }}
+                    }}
+                    var svgs = document.querySelectorAll('svg.lucide-download');
+                    if(svgs.length > 0){{ copy('download_ready'); return; }}
+                    copy('waiting');
+                }})();'''
+
                 pyperclip.copy(check_js)
                 pag.hotkey("ctrl", "v")
                 time.sleep(0.3)
                 pag.press("enter")
-                time.sleep(0.5)
+                time.sleep(0.8)
 
                 pag.hotkey("ctrl", "shift", "j")
                 time.sleep(0.3)
 
                 result = pyperclip.paste()
-                if result == "true":
+                if result in ['done', 'download_ready']:
                     return True
+
+                # Sau 30s, thử click download xem có được không
+                if elapsed >= 30 and elapsed % 30 == 0:
+                    self.log(f"   Thử click download...")
+                    if self.click_download():
+                        time.sleep(3)
+                        # Nếu có file tải về thì coi như thành công
+                        return True
+
             except:
                 pass
 
@@ -369,7 +391,10 @@ class GrokBrowserAutomation:
             # 4. Upload file
             self.log(f"4. Upload: {image_path.name}")
             self.upload_file(str(image_path))
-            time.sleep(3)
+
+            # Đợi ảnh load xong (quan trọng!)
+            self.log("   Đợi ảnh load (8s)...")
+            time.sleep(8)
 
             # 5. Click vào ô nhập prompt
             self.log("5. Click ô 'Nhập để tùy chỉnh video...'")
@@ -389,10 +414,14 @@ class GrokBrowserAutomation:
 
             # 8. Đợi video xong (nút "Làm lại" xuất hiện)
             self.log("8. Đang tạo video (1-5 phút)...")
-            if not self.wait_for_video_done():
-                return GrokVideoResult(False, error="Timeout chờ video")
+            video_done = self.wait_for_video_done(timeout=300)
 
-            self.log("✓ Video xong!")
+            if video_done:
+                self.log("✓ Video xong!")
+            else:
+                # Fallback: thử download luôn dù chưa detect được nút "Làm lại"
+                self.log("[yellow]⚠️ Không detect được nút 'Làm lại', thử download...[/]")
+
             time.sleep(2)
 
             # 9. Download

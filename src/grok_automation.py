@@ -372,28 +372,36 @@ class GrokBrowserAutomation:
 
         self.log("   JS: Click nút Tải xuống...")
 
-        # Đóng DevTools trước (nếu đang mở) để reset
+        # Đóng DevTools trước (nếu đang mở)
         self.log("   Đóng DevTools (nếu có)...")
-        pag.hotkey("ctrl", "shift", "j")
+        pag.press("f12")
         time.sleep(0.5)
-        pag.hotkey("ctrl", "shift", "j")  # Đóng
-        time.sleep(0.5)
-
-        # Mở DevTools mới
-        self.log("   Mở DevTools...")
-        pag.hotkey("ctrl", "shift", "j")
+        pag.press("f12")  # Đóng
         time.sleep(1)
 
-        # Paste và chạy JS
-        self.log("   Chạy lệnh JS...")
+        # Mở DevTools Console (Ctrl+Shift+J mở thẳng Console)
+        self.log("   Mở DevTools Console...")
+        pag.hotkey("ctrl", "shift", "j")
+        time.sleep(2)  # Đợi lâu hơn
+
+        # Copy JS vào clipboard
+        self.log(f"   Copy JS: {js[:50]}...")
         pyperclip.copy(js)
-        pag.hotkey("ctrl", "v")
         time.sleep(0.3)
+
+        # Paste
+        self.log("   Paste JS...")
+        pag.hotkey("ctrl", "v")
+        time.sleep(0.5)
+
+        # Chạy
+        self.log("   Enter để chạy...")
         pag.press("enter")
         time.sleep(1)
 
         # Đóng DevTools
-        pag.hotkey("ctrl", "shift", "j")
+        self.log("   Đóng DevTools...")
+        pag.press("f12")
         time.sleep(0.5)
 
         self.log_ok("Đã click nút download")

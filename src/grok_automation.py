@@ -1,10 +1,8 @@
 """
 Grok Browser Automation
-Copy profile để giữ đăng nhập + không conflict Chrome đang mở
+Dùng trực tiếp Chrome profile - PHẢI ĐÓNG CHROME TRƯỚC
 """
 
-import shutil
-import tempfile
 import time
 from pathlib import Path
 from typing import Optional, List
@@ -34,47 +32,9 @@ class GrokBrowserAutomation:
         self.profile_path = profile_path
         self.headless = headless
         self.driver = None
-        self.temp_profile_dir = None
-
-    def _copy_profile(self) -> str:
-        """Copy profile sang thư mục tạm - GIỮ ĐĂNG NHẬP."""
-        src = Path(self.profile_path)
-        if not src.exists():
-            console.print(f"[red]❌ Profile không tồn tại: {src}[/]")
-            return None
-
-        self.temp_profile_dir = tempfile.mkdtemp(prefix="grok_chrome_")
-        dst = Path(self.temp_profile_dir) / "Default"
-        dst.mkdir(parents=True, exist_ok=True)
-
-        # Copy các file quan trọng (cookies, login)
-        important = ["Cookies", "Login Data", "Web Data", "Preferences",
-                     "Secure Preferences", "Network"]
-
-        for item in important:
-            src_path = src / item
-            if src_path.exists():
-                try:
-                    if src_path.is_file():
-                        shutil.copy2(src_path, dst / item)
-                    else:
-                        shutil.copytree(src_path, dst / item, dirs_exist_ok=True)
-                except:
-                    pass
-
-        # Copy Local State
-        local_state = src.parent / "Local State"
-        if local_state.exists():
-            try:
-                shutil.copy2(local_state, Path(self.temp_profile_dir) / "Local State")
-            except:
-                pass
-
-        console.print(f"[green]✓ Đã copy profile (giữ đăng nhập)[/]")
-        return self.temp_profile_dir
 
     def _create_driver(self):
-        """Tạo Chrome driver."""
+        """Mở Chrome với profile gốc."""
         try:
             from selenium import webdriver
             from selenium.webdriver.chrome.service import Service
@@ -84,15 +44,14 @@ class GrokBrowserAutomation:
             console.print("[yellow]Chạy: pip install selenium webdriver-manager[/]")
             return False
 
-        # Copy profile
-        temp_dir = self._copy_profile()
-        if not temp_dir:
-            return False
+        profile = Path(self.profile_path)
+        user_data_dir = profile.parent
+        profile_name = profile.name
 
         options = Options()
         options.binary_location = self.chrome_path
-        options.add_argument(f"--user-data-dir={temp_dir}")
-        options.add_argument("--profile-directory=Default")
+        options.add_argument(f"--user-data-dir={user_data_dir}")
+        options.add_argument(f"--profile-directory={profile_name}")
 
         if self.headless:
             options.add_argument("--headless=new")
@@ -114,7 +73,10 @@ class GrokBrowserAutomation:
             console.print("[green]✓ Chrome đã mở![/]")
             return True
         except Exception as e:
-            console.print(f"[red]❌ Lỗi mở Chrome: {e}[/]")
+            if "user data directory is already in use" in str(e).lower():
+                console.print("[red]❌ ĐÓNG CHROME TRƯỚC rồi chạy lại![/]")
+            else:
+                console.print(f"[red]❌ Lỗi: {e}[/]")
             return False
 
     def _wait(self, by, value, timeout=10, clickable=False):
@@ -134,7 +96,7 @@ class GrokBrowserAutomation:
         try:
             console.print("[cyan]1. Mở Chrome...[/]")
             if not self._create_driver():
-                return GrokVideoResult(False, error="Không mở được Chrome")
+                return GrokVideoResult(False, error="Đóng Chrome trước!")
 
             console.print("[cyan]2. Vào grok.com/imagine...[/]")
             self.driver.get(self.GROK_IMAGINE_URL)
@@ -142,8 +104,8 @@ class GrokBrowserAutomation:
 
             # Check login
             if "x.com/login" in self.driver.current_url:
-                console.print("[yellow]⚠️ Chưa đăng nhập! Đợi...[/]")
-                for _ in range(60):
+                console.print("[yellow]⚠️ Chưa đăng nhập! Đợi bạn đăng nhập...[/]")
+                for _ in range(120):
                     time.sleep(2)
                     if "x.com/login" not in self.driver.current_url:
                         self.driver.get(self.GROK_IMAGINE_URL)
@@ -211,19 +173,8 @@ class GrokBrowserAutomation:
         except Exception as e:
             return GrokVideoResult(False, error=str(e))
         finally:
-            self._cleanup()
-
-    def _cleanup(self):
-        if self.driver:
-            try:
+            if self.driver:
                 self.driver.quit()
-            except:
-                pass
-        if self.temp_profile_dir:
-            try:
-                shutil.rmtree(self.temp_profile_dir, ignore_errors=True)
-            except:
-                pass
 
 
 def create_video_sync(

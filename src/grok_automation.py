@@ -110,6 +110,31 @@ class GrokBrowserAutomation:
         except:
             return None
 
+    def get_element_position(self, selector: str) -> Optional[tuple]:
+        """Lấy vị trí element qua JS, trả về (x, y) để click."""
+        js = f'''(function(){{
+            var el = document.querySelector('{selector}');
+            if(el){{
+                var rect = el.getBoundingClientRect();
+                var x = Math.round(rect.left + rect.width/2);
+                var y = Math.round(rect.top + rect.height/2);
+                copy(x + ',' + y);
+                return;
+            }}
+            copy('notfound');
+        }})();'''
+
+        result = self.run_js_get_result(js)
+        if result and result != 'notfound' and ',' in result:
+            try:
+                parts = result.split(',')
+                x, y = int(parts[0]), int(parts[1])
+                # Cộng thêm offset cho window position (50,50) và Chrome UI (~100px)
+                return (x + 50, y + 50 + 80)
+            except:
+                pass
+        return None
+
     def open_chrome(self, url: str) -> bool:
         """Mở Chrome bình thường."""
         try:
@@ -207,37 +232,39 @@ class GrokBrowserAutomation:
         return True
 
     def click_and_type_prompt(self, prompt: str) -> bool:
-        """Click vào textarea rồi paste prompt (giống upload_file)."""
-        # Bước 1: JS chỉ click/focus textarea (KHÔNG set value)
-        js = '''(function(){
-            var ta = document.querySelector('textarea[aria-label="Tạo video"]');
-            if(!ta) ta = document.querySelector('textarea[placeholder="Nhập để tùy chỉnh video..."]');
-            if(!ta) ta = document.querySelector('textarea');
-            if(ta){
-                ta.focus();
-                ta.click();
-                console.log('OK: Clicked textarea:', ta.placeholder || ta.getAttribute('aria-label'));
-                return true;
-            }
-            console.log('FAIL: Textarea not found');
-            return false;
-        })();'''
+        """Click vào textarea bằng chuột rồi paste prompt."""
+        # Thử nhiều selector
+        selectors = [
+            'textarea[aria-label="Tạo video"]',
+            'textarea[placeholder="Nhập để tùy chỉnh video..."]',
+            'textarea[placeholder*="tùy chỉnh"]',
+            'textarea'
+        ]
 
-        self.log("   JS: Click vào textarea...")
-        if not self.run_js(js):
+        pos = None
+        for sel in selectors:
+            self.log(f"   Tìm vị trí: {sel}")
+            pos = self.get_element_position(sel)
+            if pos:
+                self.log_ok(f"Tìm thấy tại ({pos[0]}, {pos[1]})")
+                break
+
+        if not pos:
             self.log_err("Không tìm thấy textarea")
             return False
 
-        # Bước 2: Đợi DevTools đóng, page focus lại
-        time.sleep(1)
+        # Click vào vị trí textarea bằng chuột
+        self.log(f"   Mouse click tại ({pos[0]}, {pos[1]})...")
+        pag.click(pos[0], pos[1])
+        time.sleep(0.5)
 
-        # Bước 3: Paste prompt bằng PyAutoGUI (giống upload_file)
-        self.log("   PyAutoGUI: Paste prompt...")
+        # Paste prompt
+        self.log("   Paste prompt...")
         pyperclip.copy(prompt)
         pag.hotkey("ctrl", "v")
         time.sleep(0.5)
 
-        self.log_ok(f"Đã paste prompt: {prompt[:30]}...")
+        self.log_ok(f"Đã paste: {prompt[:30]}...")
         return True
 
     def press_enter_to_send(self) -> bool:
@@ -299,40 +326,73 @@ class GrokBrowserAutomation:
 
         return False
 
-    def click_download(self) -> bool:
-        """Click nút download (giống cách click attach/upload)."""
+    def click_download(self, output_path: str = "") -> bool:
+        """Click nút download và xử lý dialog Save As."""
         # HTML: <button aria-label="Tải xuống"><svg class="lucide lucide-download">
         js = '''(function(){
-            // Cách 1: aria-label chính xác
             var btn = document.querySelector('button[aria-label="Tải xuống"]');
-            if(btn){ btn.click(); console.log('OK: Clicked button[aria-label="Tải xuống"]'); return true; }
+            if(btn){ btn.click(); console.log('OK: Clicked download'); return true; }
 
-            // Cách 2: SVG lucide-download
             var svg = document.querySelector('svg.lucide-download');
             if(svg){
                 btn = svg.closest('button');
-                if(btn){ btn.click(); console.log('OK: Clicked via svg.lucide-download'); return true; }
+                if(btn){ btn.click(); console.log('OK: Clicked via svg'); return true; }
             }
 
-            // Cách 3: aria-label chứa "Tải"
             btn = document.querySelector('button[aria-label*="Tải"]');
-            if(btn){ btn.click(); console.log('OK: Clicked button[aria-label*="Tải"]'); return true; }
+            if(btn){ btn.click(); console.log('OK: Clicked button with Tải'); return true; }
 
-            // Log các button có aria-label để debug
-            console.log('FAIL: Download not found. Available:');
-            document.querySelectorAll('button[aria-label]').forEach(b => {
-                console.log(' -', b.getAttribute('aria-label'));
-            });
+            console.log('FAIL: Download not found');
             return false;
         })();'''
 
-        self.log("   JS: Click button[aria-label='Tải xuống']...")
-        if self.run_js(js):
-            self.log_ok("Đã click nút download")
-            return True
+        self.log("   JS: Click nút download...")
+        if not self.run_js(js):
+            self.log_err("Không tìm thấy nút download")
+            return False
 
-        self.log_err("Không tìm thấy nút download")
-        return False
+        self.log_ok("Đã click nút download")
+
+        # Đợi dialog Save As xuất hiện
+        self.log("   Đợi dialog Save As (2s)...")
+        time.sleep(2)
+
+        if output_path:
+            output_path = Path(output_path).absolute()
+            folder = str(output_path.parent)
+            filename = output_path.name
+
+            # Bước 1: Gõ tên file (cursor đang ở ô filename)
+            self.log(f"   Gõ tên file: {filename}")
+            pyperclip.copy(filename)
+            pag.hotkey("ctrl", "a")  # Select all text hiện tại
+            time.sleep(0.2)
+            pag.hotkey("ctrl", "v")  # Paste tên mới
+            time.sleep(0.3)
+
+            # Bước 2: Ctrl+L để đưa về thanh địa chỉ (folder)
+            self.log(f"   Ctrl+L → folder: {folder}")
+            pag.hotkey("ctrl", "l")
+            time.sleep(0.5)
+            pyperclip.copy(folder)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")  # Đi đến folder
+            time.sleep(1)
+
+            # Bước 3: Alt+S để lưu
+            self.log("   Alt+S để lưu...")
+            pag.hotkey("alt", "s")
+            time.sleep(1)
+
+            self.log_ok(f"Đã lưu: {output_path}")
+        else:
+            # Không có output_path, chỉ nhấn Enter để lưu mặc định
+            self.log("   Enter để lưu mặc định...")
+            pag.press("enter")
+            time.sleep(1)
+
+        return True
 
     def create_video(self, image_path: str, prompt: str = "", output_path: str = "") -> GrokVideoResult:
         """Tạo video."""
@@ -382,13 +442,7 @@ class GrokBrowserAutomation:
             # === BƯỚC 5: Nhập prompt ===
             if prompt:
                 self.log(f"5. Nhập prompt: {prompt[:50]}...")
-                if not self.click_and_type_prompt(prompt):
-                    self.log_warn("Không nhập được prompt bằng JS, thử PyAutoGUI...")
-                    # Fallback: click và paste
-                    pag.click(600, 400)  # Click vào giữa màn hình
-                    time.sleep(0.5)
-                    pyperclip.copy(prompt)
-                    pag.hotkey("ctrl", "v")
+                self.click_and_type_prompt(prompt)
                 time.sleep(1)
             else:
                 self.log("5. Không có prompt, bỏ qua...")
@@ -410,11 +464,15 @@ class GrokBrowserAutomation:
 
             # === BƯỚC 8: Download ===
             self.log("8. Tải video...")
-            self.click_download()
-            time.sleep(10)
+            self.click_download(output_path)
+            time.sleep(3)
 
-            console.print("[green]✅ Xong! Kiểm tra thư mục Downloads[/]")
-            return GrokVideoResult(True, video_path="Downloads")
+            if output_path:
+                console.print(f"[green]✅ Xong! Video lưu tại: {output_path}[/]")
+                return GrokVideoResult(True, video_path=output_path)
+            else:
+                console.print("[green]✅ Xong! Kiểm tra thư mục Downloads[/]")
+                return GrokVideoResult(True, video_path="Downloads")
 
         except Exception as e:
             self.log_err(f"Exception: {e}")

@@ -70,63 +70,80 @@ class GrokSeleniumAutomation:
             self.on_log(msg, "warning")
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
-    def setup_driver(self, download_dir: str = None) -> bool:
-        """Setup Chrome driver sử dụng undetected-chromedriver"""
-        try:
-            self.log("Đang khởi tạo Chrome (undetected-chromedriver)...")
+    def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
+        """Setup Chrome driver sử dụng undetected-chromedriver - có retry"""
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    self.log(f"Thử lại lần {attempt + 1}...")
+                    time.sleep(2)
 
-            # Options cho undetected-chromedriver
-            options = uc.ChromeOptions()
+                self.log("Đang khởi tạo Chrome...")
 
-            # Window size
-            options.add_argument("--window-size=1920,1080")
+                # Options cho undetected-chromedriver
+                options = uc.ChromeOptions()
 
-            # Download preferences
-            if download_dir:
-                self.download_dir = download_dir
-                prefs = {
-                    "download.default_directory": download_dir,
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "safebrowsing.enabled": True
-                }
-                options.add_experimental_option("prefs", prefs)
-                self.log(f"   Download dir: {download_dir}")
+                # Tối ưu tốc độ khởi động
+                options.add_argument("--window-size=1920,1080")
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                options.add_argument("--disable-extensions")
+                options.add_argument("--disable-popup-blocking")
+                options.add_argument("--disable-infobars")
+                options.add_argument("--disable-dev-shm-usage")  # Giảm memory issues
+                options.add_argument("--disable-gpu")  # Tắt GPU nếu headless
 
-            # Profile path - dùng thư mục riêng cho automation
-            user_data_dir = None
-            if self.profile_path:
-                profile = Path(self.profile_path)
-                self.log(f"   Profile path: {profile}")
+                # Download preferences
+                if download_dir:
+                    self.download_dir = download_dir
+                    prefs = {
+                        "download.default_directory": download_dir,
+                        "download.prompt_for_download": False,
+                        "download.directory_upgrade": True,
+                        "safebrowsing.enabled": False  # Bỏ scan file
+                    }
+                    options.add_experimental_option("prefs", prefs)
 
-                # Tạo thư mục nếu chưa có
-                profile.mkdir(parents=True, exist_ok=True)
-                user_data_dir = str(profile)
-                self.log(f"   User data dir: {user_data_dir}")
+                # Profile path
+                user_data_dir = None
+                if self.profile_path:
+                    profile = Path(self.profile_path)
+                    profile.mkdir(parents=True, exist_ok=True)
+                    user_data_dir = str(profile)
+                    self.log(f"   Profile: {user_data_dir}")
 
-            # Headless mode
-            if self.headless:
-                self.log("   Chế độ ẩn (headless) đã bật")
-            else:
-                self.log("   Chế độ hiện browser")
+                # Headless mode
+                if self.headless:
+                    self.log("   Chế độ ẩn")
 
-            # Khởi tạo driver
-            self.log("   Đang khởi động Chrome...")
-            self.driver = uc.Chrome(
-                options=options,
-                headless=self.headless,
-                user_data_dir=user_data_dir,
-                use_subprocess=True  # Tránh conflict
-            )
+                # Khởi tạo driver - version_main để không phải tải lại driver
+                self.driver = uc.Chrome(
+                    options=options,
+                    headless=self.headless,
+                    user_data_dir=user_data_dir,
+                    use_subprocess=True,
+                    version_main=None  # Auto detect
+                )
 
-            self.log_ok("Đã khởi tạo Chrome driver thành công!")
-            return True
+                self.log_ok("Chrome đã sẵn sàng!")
+                return True
 
-        except Exception as e:
-            self.log_err(f"Lỗi khởi tạo driver: {e}")
-            import traceback
-            self.log_err(traceback.format_exc())
-            return False
+            except Exception as e:
+                self.log_err(f"Lỗi lần {attempt + 1}: {e}")
+                # Cleanup nếu có
+                if hasattr(self, 'driver') and self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self.driver = None
+
+                if attempt == max_retries - 1:
+                    import traceback
+                    self.log_err(traceback.format_exc())
+                    return False
+
+        return False
 
     def close_driver(self):
         """Close driver"""

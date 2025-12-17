@@ -306,69 +306,105 @@ class GrokSeleniumAutomation:
             self.log_err(f"Lỗi upload ảnh: {e}")
             return False
 
-    def submit_and_wait(self, timeout: int = 180) -> bool:
+    def submit_and_wait(self, timeout: int = 90) -> bool:
         """Submit và chờ video tạo xong - sử dụng fetch hook + DOM check"""
         try:
-            self.log("Đang chờ video được tạo...")
+            self.log("Đang chờ video được tạo (tối đa 90s)...")
             start_time = time.time()
 
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check bằng JavaScript - ưu tiên DOM video có mp4, sau đó hook
+                # Check bằng JavaScript - log chi tiết
                 js_check = '''
                 (function() {
-                    // 1. Check video #sd-video có src mp4 (ưu tiên cao nhất)
+                    var result = {status: 'waiting', url: null, debug: {}};
+
+                    // 1. Check video #sd-video
                     var sdVideo = document.querySelector('#sd-video');
-                    if (sdVideo && sdVideo.src && sdVideo.src.includes('.mp4')) {
-                        return {status: 'video_found', url: sdVideo.src};
+                    result.debug.sdVideo = sdVideo ? 'found' : 'not found';
+                    result.debug.sdVideoSrc = sdVideo ? sdVideo.src : null;
+
+                    if (sdVideo && sdVideo.src) {
+                        var src = sdVideo.src;
+                        if (src.includes('.mp4') || src.includes('generated_video')) {
+                            result.status = 'video_found';
+                            result.url = src;
+                            return result;
+                        }
                     }
 
                     // 2. Check tất cả video elements
                     var videos = document.querySelectorAll('video');
-                    for (var v of videos) {
+                    result.debug.videoCount = videos.length;
+
+                    for (var i = 0; i < videos.length; i++) {
+                        var v = videos[i];
                         var src = v.src || '';
-                        if (src.includes('generated_video.mp4') || src.includes('assets.grok.com')) {
-                            return {status: 'video_found', url: src};
+                        result.debug['video_' + i] = src.substring(0, 100);
+
+                        if (src.includes('generated_video.mp4') ||
+                            (src.includes('assets.grok.com') && src.includes('.mp4'))) {
+                            result.status = 'video_found';
+                            result.url = src;
+                            return result;
                         }
                     }
 
                     // 3. Check từ fetch hook
+                    result.debug.hookReady = window._videoReady || false;
+                    result.debug.hookUrl = window._capturedVideoUrl ? 'has url' : null;
+
                     if (window._videoReady && window._capturedVideoUrl) {
-                        return {status: 'hook_ready', url: window._capturedVideoUrl};
+                        result.status = 'hook_ready';
+                        result.url = window._capturedVideoUrl;
+                        return result;
                     }
 
-                    // 4. Check nút download
-                    var dlBtn = document.querySelector('button[aria-label="Tải xuống"]') ||
-                                document.querySelector('button[aria-label="Download"]');
-                    if (dlBtn) return {status: 'download_ready', url: null};
+                    // 4. Check nút download (SVG lucide-download)
+                    var dlSvg = document.querySelector('svg.lucide-download');
+                    result.debug.downloadSvg = dlSvg ? 'found' : 'not found';
 
-                    // 5. Check nút Làm lại (done)
+                    if (dlSvg) {
+                        result.status = 'download_ready';
+                        return result;
+                    }
+
+                    // 5. Check nút Làm lại
                     var btns = document.querySelectorAll('button');
                     for (var b of btns) {
                         var text = b.textContent || '';
-                        if (text.includes('Làm lại') || text.includes('Redo')) {
-                            return {status: 'done', url: null};
+                        if (text.includes('Làm lại') || text.includes('Redo') || text.includes('Regenerate')) {
+                            result.status = 'done';
+                            result.debug.redoButton = 'found';
+                            return result;
                         }
                     }
 
-                    return {status: 'waiting', url: null};
+                    return result;
                 })();
                 '''
 
                 result = self.driver.execute_script(js_check)
-                status = result.get('status', 'waiting') if isinstance(result, dict) else result
-                url = result.get('url') if isinstance(result, dict) else None
 
-                if status in ['hook_ready', 'video_found', 'download_ready', 'done']:
-                    self.log_ok(f"Video sẵn sàng! ({elapsed}s) - {status}")
-                    if url:
-                        self._captured_video_url = url
-                        self.log(f"   URL: {url[:80]}...")
-                    return True
+                if isinstance(result, dict):
+                    status = result.get('status', 'waiting')
+                    url = result.get('url')
+                    debug = result.get('debug', {})
 
-                if elapsed % 10 == 0 and elapsed > 0:
-                    self.log(f"   Đã chờ {elapsed}s...")
+                    # Log debug info mỗi 10s
+                    if elapsed % 10 == 0 and elapsed > 0:
+                        self.log(f"   [{elapsed}s] Status: {status}, Debug: {debug}")
+
+                    if status in ['hook_ready', 'video_found', 'download_ready', 'done']:
+                        self.log_ok(f"Video sẵn sàng! ({elapsed}s) - {status}")
+                        if url:
+                            self._captured_video_url = url
+                            self.log(f"   URL: {url[:80]}...")
+                        return True
+                else:
+                    if elapsed % 10 == 0:
+                        self.log(f"   [{elapsed}s] Result type: {type(result)}")
 
                 time.sleep(2)
 
@@ -377,6 +413,8 @@ class GrokSeleniumAutomation:
 
         except Exception as e:
             self.log_err(f"Lỗi chờ video: {e}")
+            import traceback
+            self.log_err(traceback.format_exc())
             return False
 
     def download_video(self, output_path: str) -> bool:
@@ -606,9 +644,9 @@ class GrokSeleniumAutomation:
             if not self.upload_image(image_path):
                 return GrokVideoResult(False, error="Không thể upload ảnh")
 
-            # Submit and wait (180s timeout)
-            self.log("4. Chờ video (tối đa 3 phút)...")
-            if not self.submit_and_wait(timeout=180):
+            # Submit and wait (90s timeout)
+            self.log("4. Chờ video (tối đa 90s)...")
+            if not self.submit_and_wait(timeout=90):
                 return GrokVideoResult(False, error="Timeout chờ video")
 
             # Wait thêm 5s để video load hoàn toàn

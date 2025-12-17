@@ -84,14 +84,20 @@ class GrokSeleniumAutomation:
                 options = uc.ChromeOptions()
 
                 # Tối ưu tốc độ khởi động
-                options.add_argument("--window-size=1920,1080")
                 options.add_argument("--no-first-run")
                 options.add_argument("--no-default-browser-check")
                 options.add_argument("--disable-extensions")
                 options.add_argument("--disable-popup-blocking")
                 options.add_argument("--disable-infobars")
                 options.add_argument("--disable-dev-shm-usage")  # Giảm memory issues
-                options.add_argument("--disable-gpu")  # Tắt GPU nếu headless
+                options.add_argument("--disable-gpu")  # Tắt GPU
+
+                # Nếu chạy ẩn: khởi động ngay ở vị trí ngoài màn hình
+                if self.headless:
+                    options.add_argument("--window-size=800,600")
+                    options.add_argument("--window-position=-2000,-2000")  # Ngoài màn hình ngay từ đầu
+                else:
+                    options.add_argument("--window-size=1920,1080")
 
                 # Download preferences
                 if download_dir:
@@ -121,14 +127,8 @@ class GrokSeleniumAutomation:
                     version_main=None  # Auto detect
                 )
 
-                # Nếu chạy ẩn thì đẩy window ra ngoài màn hình (không thấy)
                 if self.headless:
-                    self.log("   Chế độ ẩn (giấu window)")
-                    try:
-                        # Đẩy window ra ngoài màn hình để không nhìn thấy
-                        self.driver.set_window_position(-10000, -10000)
-                    except:
-                        pass
+                    self.log("   Chế độ ẩn (window ngoài màn hình)")
 
                 self.log_ok("Chrome đã sẵn sàng!")
                 return True

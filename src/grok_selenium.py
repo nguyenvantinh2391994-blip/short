@@ -1,6 +1,6 @@
 """
-Grok Selenium Automation - Hỗ trợ chạy ẩn (headless)
-Sử dụng undetected-chromedriver để tránh bị phát hiện bot
+Grok Selenium Automation
+Sử dụng Chrome đã cài trên máy để ổn định hơn
 """
 
 import time
@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Optional, List, Callable
 from dataclasses import dataclass
 
-# Sử dụng undetected-chromedriver thay vì selenium thường
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -20,6 +21,15 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from rich.console import Console
 
 console = Console()
+
+# Chrome paths mặc định
+DEFAULT_CHROME_PATHS = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+]
 
 
 @dataclass
@@ -70,8 +80,21 @@ class GrokSeleniumAutomation:
             self.on_log(msg, "warning")
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
+    def _find_chrome_path(self) -> Optional[str]:
+        """Tìm Chrome executable trên máy"""
+        # Ưu tiên chrome_path được set
+        if self.chrome_path and os.path.exists(self.chrome_path):
+            return self.chrome_path
+
+        # Tìm trong các path mặc định
+        for path in DEFAULT_CHROME_PATHS:
+            if os.path.exists(path):
+                return path
+
+        return None
+
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
-        """Setup Chrome driver - dùng mini window thay vì headless để ổn định hơn"""
+        """Setup Chrome driver - dùng Chrome đã cài trên máy"""
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
@@ -80,7 +103,12 @@ class GrokSeleniumAutomation:
 
                 self.log("Đang khởi tạo Chrome...")
 
-                options = uc.ChromeOptions()
+                # Tìm Chrome path
+                chrome_exe = self._find_chrome_path()
+                if chrome_exe:
+                    self.log(f"   Chrome: {chrome_exe}")
+
+                options = Options()
 
                 # Tối ưu tốc độ
                 options.add_argument("--no-first-run")
@@ -89,16 +117,37 @@ class GrokSeleniumAutomation:
                 options.add_argument("--disable-popup-blocking")
                 options.add_argument("--disable-infobars")
                 options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-blink-features=AutomationControlled")
 
-                # KHÔNG dùng headless - thay bằng mini window
+                # Chế độ ẩn = mini window + minimize
                 if self.headless:
-                    # Mini window: cửa sổ nhỏ góc màn hình
                     options.add_argument("--window-size=400,300")
                     options.add_argument("--window-position=0,0")
                     self.log("   Chế độ mini window (400x300)")
                 else:
                     options.add_argument("--window-size=1920,1080")
                     self.log("   Chế độ full window")
+
+                # Set Chrome binary nếu có
+                if chrome_exe:
+                    options.binary_location = chrome_exe
+
+                # Profile path - dùng user-data-dir
+                if self.profile_path:
+                    profile = Path(self.profile_path)
+                    # Nếu là full path đến User Data
+                    if "User Data" in str(profile):
+                        # Tách thành user-data-dir và profile-directory
+                        parts = str(profile).split("User Data")
+                        user_data = parts[0] + "User Data"
+                        profile_name = parts[1].strip("\\/") if len(parts) > 1 else "Default"
+                        options.add_argument(f"--user-data-dir={user_data}")
+                        options.add_argument(f"--profile-directory={profile_name}")
+                        self.log(f"   Profile: {profile_name}")
+                    else:
+                        profile.mkdir(parents=True, exist_ok=True)
+                        options.add_argument(f"--user-data-dir={profile}")
+                        self.log(f"   User data: {profile}")
 
                 # Download preferences
                 if download_dir:
@@ -111,22 +160,11 @@ class GrokSeleniumAutomation:
                     }
                     options.add_experimental_option("prefs", prefs)
 
-                # Profile path
-                user_data_dir = None
-                if self.profile_path:
-                    profile = Path(self.profile_path)
-                    profile.mkdir(parents=True, exist_ok=True)
-                    user_data_dir = str(profile)
-                    self.log(f"   Profile: {user_data_dir}")
+                # Tắt logging selenium
+                options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
-                # Khởi tạo driver - KHÔNG dùng headless
-                self.driver = uc.Chrome(
-                    options=options,
-                    headless=False,  # Luôn False, dùng mini window thay thế
-                    user_data_dir=user_data_dir,
-                    use_subprocess=True,
-                    version_main=None
-                )
+                # Khởi tạo driver
+                self.driver = webdriver.Chrome(options=options)
 
                 # Minimize window nếu chạy ẩn
                 if self.headless:

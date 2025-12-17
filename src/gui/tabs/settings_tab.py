@@ -190,47 +190,59 @@ class SettingsTab:
         self.app.save_config()
 
     def open_browser_login(self, index: int):
-        """Mở browser với profile RIÊNG để login (tránh conflict với Chrome đang mở)"""
+        """Mở browser để login - dùng subprocess như Windows Run"""
         profile = self.app.config.browser_profiles[index]
-        profile_name = profile.get("name", "Profile")
+        profile_name = profile.get("profile_path", "Profile 5")  # profile_path giờ chứa tên profile
         chrome_path = profile.get("chrome_path", "")
 
-        # Tạo thư mục profile RIÊNG cho automation
-        home = Path.home()
-        automation_dir = home / ".grok_automation" / profile_name.replace(" ", "_")
-        automation_dir.mkdir(parents=True, exist_ok=True)
-
-        # Mở Chrome bằng Selenium
+        # Mở Chrome bằng subprocess (như Windows Run)
         def run_chrome():
             try:
+                import subprocess
+                import socket
+
+                # Tìm chrome path
+                chrome_exe = chrome_path
+                if not chrome_exe or not Path(chrome_exe).exists():
+                    chrome_exe = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+                self.app.log(f"Mở browser để login: {profile_name}")
+                self.app.log(f"   Chrome: {chrome_exe}")
+
+                # Tìm port trống
+                debug_port = 9222
+                for port in range(9222, 9322):
+                    try:
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind(('127.0.0.1', port))
+                            debug_port = port
+                            break
+                    except OSError:
+                        continue
+
+                # Mở Chrome đơn giản bằng subprocess
+                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port}'
+                self.app.log(f"   Lệnh: {cmd}")
+
+                process = subprocess.Popen(cmd, shell=True)
+                self.app.log(f"   Chrome đã mở (PID: {process.pid})")
+
+                # Đợi Chrome khởi động rồi connect Selenium
+                import time
+                time.sleep(3)
+
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
                 from selenium.webdriver.chrome.service import Service
                 from webdriver_manager.chrome import ChromeDriverManager
 
-                self.app.log(f"Mở browser để login: {profile_name}")
-                self.app.log(f"   Profile: {automation_dir}")
-                self.app.log("   Đang tải ChromeDriver...")
-
                 options = Options()
-                options.add_argument("--window-size=1200,800")
-                options.add_argument("--no-first-run")
-                options.add_argument("--no-default-browser-check")
-                options.add_argument("--disable-blink-features=AutomationControlled")
+                options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
 
-                # Set Chrome path
-                if chrome_path and Path(chrome_path).exists():
-                    options.binary_location = chrome_path
-
-                # Dùng profile RIÊNG (không dùng profile Chrome đang mở)
-                options.add_argument(f"--user-data-dir={automation_dir}")
-
-                options.add_experimental_option('excludeSwitches', ['enable-logging'])
-
-                # Dùng webdriver-manager để tự động tải ChromeDriver
                 service = Service(ChromeDriverManager().install())
                 driver = webdriver.Chrome(service=service, options=options)
                 driver.get("https://grok.com")
+
                 self.app.log("Browser đã mở. Hãy đăng nhập và đóng browser khi xong.")
 
             except Exception as e:
@@ -499,28 +511,25 @@ class ProfileDialog(ctk.CTkToplevel):
             command=self.browse_chrome
         ).pack(side="left", padx=5)
 
-        # Profile path
-        ctk.CTkLabel(self, text="Thư mục Profile Chrome:").pack(anchor="w", padx=20, pady=(15, 5))
-        profile_row = ctk.CTkFrame(self, fg_color="transparent")
-        profile_row.pack(fill="x", padx=20)
+        # Profile name (ví dụ: "Profile 5", "Default")
+        ctk.CTkLabel(self, text="Tên Profile Chrome:").pack(anchor="w", padx=20, pady=(15, 5))
 
-        self.profile_entry = ctk.CTkEntry(profile_row, width=350)
-        self.profile_entry.pack(side="left")
+        self.profile_entry = ctk.CTkEntry(self, width=400)
+        self.profile_entry.pack(anchor="w", padx=20)
+        default_profile = "Profile 5"
         if self.profile:
-            self.profile_entry.insert(0, self.profile.get("profile_path", ""))
-
-        ctk.CTkButton(
-            profile_row,
-            text="📁",
-            width=40,
-            command=self.browse_profile
-        ).pack(side="left", padx=5)
+            self.profile_entry.insert(0, self.profile.get("profile_path", default_profile))
+        else:
+            self.profile_entry.insert(0, default_profile)
 
         # Help text
         help_text = """
-Thư mục Profile Chrome thường ở:
-• Windows: C:\\Users\\<username>\\AppData\\Local\\Google\\Chrome\\User Data\\Profile 1
+Tên Profile Chrome (ví dụ: "Profile 5", "Default"):
+• Mở chrome://version để xem Profile Path
+• Tên profile là phần cuối cùng của đường dẫn (ví dụ: "Profile 5")
 • Mỗi profile khác nhau sẽ có tài khoản Grok khác nhau
+
+⚠️ QUAN TRỌNG: Đóng TẤT CẢ Chrome trước khi chạy!
         """
         ctk.CTkLabel(
             self,
@@ -566,12 +575,6 @@ Thư mục Profile Chrome thường ở:
             self.chrome_entry.delete(0, "end")
             self.chrome_entry.insert(0, file)
 
-    def browse_profile(self):
-        """Browse for Chrome profile folder"""
-        folder = filedialog.askdirectory()
-        if folder:
-            self.profile_entry.delete(0, "end")
-            self.profile_entry.insert(0, folder)
 
     def save(self):
         """Save profile"""
@@ -589,38 +592,47 @@ Thư mục Profile Chrome thường ở:
         self.destroy()
 
     def open_login(self):
-        """Mở browser để login ngay (dùng profile RIÊNG)"""
-        profile_name = self.name_entry.get().strip() or "temp_profile"
+        """Mở browser để login - dùng subprocess như Windows Run"""
+        profile_name = self.profile_entry.get().strip() or "Profile 5"
         chrome_path = self.chrome_entry.get()
-
-        # Tạo thư mục profile RIÊNG cho automation
-        home = Path.home()
-        automation_dir = home / ".grok_automation" / profile_name.replace(" ", "_")
-        automation_dir.mkdir(parents=True, exist_ok=True)
 
         def run_chrome():
             try:
+                import subprocess
+                import socket
+                import time
+
+                # Tìm chrome path
+                chrome_exe = chrome_path
+                if not chrome_exe or not Path(chrome_exe).exists():
+                    chrome_exe = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+                # Tìm port trống
+                debug_port = 9222
+                for port in range(9222, 9322):
+                    try:
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind(('127.0.0.1', port))
+                            debug_port = port
+                            break
+                    except OSError:
+                        continue
+
+                # Mở Chrome đơn giản bằng subprocess
+                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port}'
+                process = subprocess.Popen(cmd, shell=True)
+
+                # Đợi Chrome khởi động rồi connect Selenium
+                time.sleep(3)
+
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
                 from selenium.webdriver.chrome.service import Service
                 from webdriver_manager.chrome import ChromeDriverManager
 
                 options = Options()
-                options.add_argument("--window-size=1200,800")
-                options.add_argument("--no-first-run")
-                options.add_argument("--no-default-browser-check")
-                options.add_argument("--disable-blink-features=AutomationControlled")
+                options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
 
-                # Set Chrome path
-                if chrome_path and Path(chrome_path).exists():
-                    options.binary_location = chrome_path
-
-                # Dùng profile RIÊNG
-                options.add_argument(f"--user-data-dir={automation_dir}")
-
-                options.add_experimental_option('excludeSwitches', ['enable-logging'])
-
-                # Dùng webdriver-manager để tự động tải ChromeDriver
                 service = Service(ChromeDriverManager().install())
                 driver = webdriver.Chrome(service=service, options=options)
                 driver.get("https://grok.com")
@@ -632,7 +644,8 @@ Thư mục Profile Chrome thường ở:
 
         messagebox.showinfo(
             "Login",
-            "Đang mở Chrome...\n\n"
+            f"Đang mở Chrome với profile '{profile_name}'...\n\n"
+            "⚠️ Đóng TẤT CẢ Chrome trước!\n\n"
             "1. Đăng nhập tài khoản Grok\n"
             "2. Đóng browser khi xong\n"
             "3. Nhấn 'Lưu' để lưu profile"

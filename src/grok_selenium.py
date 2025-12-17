@@ -1,10 +1,12 @@
 """
 Grok Selenium Automation
-Sử dụng Chrome đã cài trên máy để ổn định hơn
+Sử dụng Chrome đã cài trên máy với cách mở đơn giản (subprocess + remote debugging)
 """
 
 import time
 import os
+import subprocess
+import socket
 from pathlib import Path
 from typing import Optional, List, Callable
 from dataclasses import dataclass
@@ -32,13 +34,39 @@ DEFAULT_CHROME_PATHS = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ]
 
-# Profile riêng cho automation (tránh conflict với Chrome đang mở)
-def get_automation_profile_dir(profile_name: str = "default") -> str:
-    """Tạo thư mục profile riêng cho automation"""
-    home = Path.home()
-    profile_dir = home / ".grok_automation" / profile_name
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    return str(profile_dir)
+# Default Chrome User Data dir
+DEFAULT_USER_DATA_DIRS = [
+    r"C:\Users\{user}\AppData\Local\Google\Chrome\User Data",
+    "~/.config/google-chrome",
+    "~/Library/Application Support/Google/Chrome"
+]
+
+
+def find_free_port(start_port: int = 9222) -> int:
+    """Tìm port trống để dùng cho remote debugging"""
+    for port in range(start_port, start_port + 100):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', port))
+                return port
+        except OSError:
+            continue
+    return start_port
+
+
+def get_default_user_data_dir() -> str:
+    """Lấy thư mục User Data mặc định của Chrome"""
+    import getpass
+    user = getpass.getuser()
+
+    for path_template in DEFAULT_USER_DATA_DIRS:
+        path = path_template.format(user=user)
+        path = os.path.expanduser(path)
+        if os.path.exists(path):
+            return path
+
+    # Fallback
+    return os.path.expanduser(DEFAULT_USER_DATA_DIRS[0].format(user=user))
 
 
 @dataclass
@@ -50,23 +78,27 @@ class GrokVideoResult:
 
 
 class GrokSeleniumAutomation:
-    """Grok Automation sử dụng Selenium - hỗ trợ chạy ẩn"""
+    """Grok Automation sử dụng Selenium với cách mở Chrome đơn giản (subprocess + remote debugging)"""
 
     GROK_IMAGINE_URL = "https://grok.com/imagine"
 
     def __init__(
         self,
         chrome_path: str = None,
-        profile_path: str = None,
+        profile_name: str = None,  # Tên profile Chrome, ví dụ "Profile 5"
+        user_data_dir: str = None,  # Thư mục User Data của Chrome
         headless: bool = True,
         on_log: Optional[Callable[[str, str], None]] = None
     ):
         self.chrome_path = chrome_path
-        self.profile_path = profile_path
+        self.profile_name = profile_name or "Default"
+        self.user_data_dir = user_data_dir or get_default_user_data_dir()
         self.headless = headless
         self.on_log = on_log
-        self.driver: Optional[uc.Chrome] = None
-        self._captured_video_url = None  # URL video bắt được từ hook
+        self.driver = None
+        self.chrome_process = None  # Process Chrome được mở bằng subprocess
+        self.debug_port = None  # Port remote debugging
+        self._captured_video_url = None
 
     def log(self, msg: str, level: str = "info"):
         """Log message"""
@@ -102,8 +134,48 @@ class GrokSeleniumAutomation:
 
         return None
 
+    def _launch_chrome_subprocess(self) -> bool:
+        """Mở Chrome bằng subprocess (như Windows Run) với remote debugging"""
+        try:
+            chrome_exe = self._find_chrome_path()
+            if not chrome_exe:
+                self.log_err("Không tìm thấy Chrome!")
+                return False
+
+            # Tìm port trống
+            self.debug_port = find_free_port()
+
+            # Build command - đơn giản như Windows Run
+            cmd_parts = [
+                f'"{chrome_exe}"',
+                f'--remote-debugging-port={self.debug_port}',
+                f'--profile-directory="{self.profile_name}"',
+            ]
+
+            # Thêm window size nếu cần
+            if self.headless:
+                cmd_parts.append('--window-size=400,300')
+                cmd_parts.append('--window-position=-1000,-1000')  # Ẩn ra ngoài màn hình
+            else:
+                cmd_parts.append('--window-size=1200,800')
+
+            cmd = ' '.join(cmd_parts)
+            self.log(f"   Lệnh: {cmd}")
+
+            # Mở Chrome bằng subprocess
+            self.chrome_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.log(f"   Chrome đã mở (PID: {self.chrome_process.pid})")
+
+            # Đợi Chrome khởi động
+            time.sleep(3)
+            return True
+
+        except Exception as e:
+            self.log_err(f"Lỗi mở Chrome subprocess: {e}")
+            return False
+
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
-        """Setup Chrome driver - dùng Chrome đã cài trên máy"""
+        """Setup Chrome driver - Dùng subprocess mở Chrome + Selenium connect vào"""
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
@@ -111,83 +183,35 @@ class GrokSeleniumAutomation:
                     time.sleep(2)
 
                 self.log("Đang khởi tạo Chrome...")
+                self.log(f"   Chrome: {self._find_chrome_path()}")
+                self.log(f"   Profile: {self.profile_name}")
 
-                # Tìm Chrome path
-                chrome_exe = self._find_chrome_path()
-                if chrome_exe:
-                    self.log(f"   Chrome: {chrome_exe}")
+                # Bước 1: Mở Chrome bằng subprocess
+                if not self._launch_chrome_subprocess():
+                    raise Exception("Không thể mở Chrome")
+
+                # Bước 2: Selenium connect vào Chrome đang chạy
+                self.log(f"   Connect vào Chrome (port {self.debug_port})...")
 
                 options = Options()
+                # CHỈ CẦN 1 DÒNG NÀY - connect vào Chrome đang chạy
+                options.add_experimental_option("debuggerAddress", f"127.0.0.1:{self.debug_port}")
 
-                # Tối ưu tốc độ
-                options.add_argument("--no-first-run")
-                options.add_argument("--no-default-browser-check")
-                options.add_argument("--disable-extensions")
-                options.add_argument("--disable-popup-blocking")
-                options.add_argument("--disable-infobars")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-blink-features=AutomationControlled")
-
-                # Chế độ ẩn = mini window + minimize
-                if self.headless:
-                    options.add_argument("--window-size=400,300")
-                    options.add_argument("--window-position=0,0")
-                    self.log("   Chế độ mini window (400x300)")
-                else:
-                    options.add_argument("--window-size=1920,1080")
-                    self.log("   Chế độ full window")
-
-                # Set Chrome binary nếu có
-                if chrome_exe:
-                    options.binary_location = chrome_exe
-
-                # Profile - dùng thư mục riêng cho automation (tránh conflict)
-                if self.profile_path:
-                    # Lấy tên profile từ path
-                    profile_name = Path(self.profile_path).name or "default"
-                    # Tạo thư mục automation riêng
-                    automation_dir = get_automation_profile_dir(profile_name)
-                    options.add_argument(f"--user-data-dir={automation_dir}")
-                    self.log(f"   Profile: {automation_dir}")
-
-                # Download preferences
+                # Download preferences (nếu cần)
                 if download_dir:
                     self.download_dir = download_dir
-                    prefs = {
-                        "download.default_directory": download_dir,
-                        "download.prompt_for_download": False,
-                        "download.directory_upgrade": True,
-                        "safebrowsing.enabled": False
-                    }
-                    options.add_experimental_option("prefs", prefs)
 
-                # Tắt logging selenium
-                options.add_experimental_option('excludeSwitches', ['enable-logging'])
-
-                # Khởi tạo driver với webdriver-manager (tự tải ChromeDriver)
+                # Tải ChromeDriver và connect
                 self.log("   Đang tải ChromeDriver...")
                 service = Service(ChromeDriverManager().install())
                 self.driver = webdriver.Chrome(service=service, options=options)
-
-                # Minimize window nếu chạy ẩn
-                if self.headless:
-                    try:
-                        self.driver.minimize_window()
-                        self.log("   Đã minimize window")
-                    except:
-                        pass
 
                 self.log_ok("Chrome đã sẵn sàng!")
                 return True
 
             except Exception as e:
                 self.log_err(f"Lỗi lần {attempt + 1}: {e}")
-                if hasattr(self, 'driver') and self.driver:
-                    try:
-                        self.driver.quit()
-                    except:
-                        pass
-                    self.driver = None
+                self._cleanup_chrome()
 
                 if attempt == max_retries - 1:
                     import traceback
@@ -196,14 +220,25 @@ class GrokSeleniumAutomation:
 
         return False
 
-    def close_driver(self):
-        """Close driver"""
+    def _cleanup_chrome(self):
+        """Dọn dẹp Chrome process và driver"""
         if self.driver:
             try:
                 self.driver.quit()
             except:
                 pass
             self.driver = None
+
+        if self.chrome_process:
+            try:
+                self.chrome_process.terminate()
+            except:
+                pass
+            self.chrome_process = None
+
+    def close_driver(self):
+        """Close driver và Chrome process"""
+        self._cleanup_chrome()
 
     def navigate_to_grok(self) -> bool:
         """Navigate to Grok Imagine"""

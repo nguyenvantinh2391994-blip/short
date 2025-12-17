@@ -12,9 +12,9 @@ pyautogui>=0.9.54
 pyperclip>=1.8.2
 opencv-python>=4.8.0
 
-# Selenium (chạy ẩn headless)
+# Selenium + undetected-chromedriver (chạy ẩn, tránh bị phát hiện bot)
 selenium>=4.15.0
-webdriver-manager>=4.0.0
+undetected-chromedriver>=3.5.0
 
 # Video processing
 moviepy==1.0.3

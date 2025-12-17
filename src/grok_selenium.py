@@ -1,6 +1,6 @@
 """
 Grok Selenium Automation - Hỗ trợ chạy ẩn (headless)
-Sử dụng Selenium để điều khiển browser thay vì PyAutoGUI
+Sử dụng undetected-chromedriver để tránh bị phát hiện bot
 """
 
 import time
@@ -8,15 +8,14 @@ import os
 from pathlib import Path
 from typing import Optional, List, Callable
 from dataclasses import dataclass
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+
+# Sử dụng undetected-chromedriver thay vì selenium thường
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
 
 from rich.console import Console
 
@@ -71,65 +70,40 @@ class GrokSeleniumAutomation:
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
     def setup_driver(self) -> bool:
-        """Setup Chrome driver"""
+        """Setup Chrome driver sử dụng undetected-chromedriver"""
         try:
-            self.log("Đang khởi tạo Chrome driver...")
-            options = Options()
+            self.log("Đang khởi tạo Chrome (undetected-chromedriver)...")
 
-            # Headless mode
-            if self.headless:
-                options.add_argument("--headless=new")
-                self.log("   Chế độ ẩn (headless) đã bật")
-            else:
-                self.log("   Chế độ hiện browser")
+            # Options cho undetected-chromedriver
+            options = uc.ChromeOptions()
 
-            # Basic options
+            # Window size
             options.add_argument("--window-size=1920,1080")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_argument("--remote-debugging-port=0")  # Random port
 
-            # Hide automation
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option("useAutomationExtension", False)
-
-            # Profile path - Xử lý đúng format
+            # Profile path - dùng thư mục riêng cho automation
+            user_data_dir = None
             if self.profile_path:
                 profile = Path(self.profile_path)
                 self.log(f"   Profile path: {profile}")
 
-                if profile.exists():
-                    # Kiểm tra xem đây là User Data dir hay Profile dir
-                    if (profile / "Default").exists() or (profile / "Local State").exists():
-                        # Đây là User Data directory
-                        options.add_argument(f"--user-data-dir={profile}")
-                        self.log(f"   User data dir: {profile}")
-                    else:
-                        # Đây là Profile directory (vd: Profile 1)
-                        options.add_argument(f"--user-data-dir={profile.parent}")
-                        options.add_argument(f"--profile-directory={profile.name}")
-                        self.log(f"   User data dir: {profile.parent}")
-                        self.log(f"   Profile dir: {profile.name}")
-                else:
-                    self.log_warn(f"   Profile không tồn tại: {profile}")
+                # Tạo thư mục nếu chưa có
+                profile.mkdir(parents=True, exist_ok=True)
+                user_data_dir = str(profile)
+                self.log(f"   User data dir: {user_data_dir}")
 
-            # Chrome binary path
-            if self.chrome_path and Path(self.chrome_path).exists():
-                options.binary_location = self.chrome_path
-                self.log(f"   Chrome path: {self.chrome_path}")
+            # Headless mode
+            if self.headless:
+                self.log("   Chế độ ẩn (headless) đã bật")
+            else:
+                self.log("   Chế độ hiện browser")
 
-            # Setup driver
-            self.log("   Đang download/kiểm tra ChromeDriver...")
-            service = Service(ChromeDriverManager().install())
-
+            # Khởi tạo driver
             self.log("   Đang khởi động Chrome...")
-            self.driver = webdriver.Chrome(service=service, options=options)
-
-            # Hide webdriver flag
-            self.driver.execute_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            self.driver = uc.Chrome(
+                options=options,
+                headless=self.headless,
+                user_data_dir=user_data_dir,
+                use_subprocess=True  # Tránh conflict
             )
 
             self.log_ok("Đã khởi tạo Chrome driver thành công!")

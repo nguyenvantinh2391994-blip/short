@@ -190,39 +190,54 @@ class SettingsTab:
         self.app.save_config()
 
     def open_browser_login(self, index: int):
-        """Mở browser với profile để user login tài khoản"""
+        """Mở browser với profile để user login tài khoản (dùng undetected-chromedriver)"""
         profile = self.app.config.browser_profiles[index]
-        chrome_path = profile.get("chrome_path", "")
         profile_path = profile.get("profile_path", "")
         profile_name = profile.get("name", "Profile")
 
-        if not chrome_path or not Path(chrome_path).exists():
-            messagebox.showerror("Lỗi", f"Không tìm thấy Chrome tại:\n{chrome_path}")
+        if not profile_path:
+            messagebox.showerror("Lỗi", "Chưa cấu hình thư mục Profile!")
             return
 
-        # Mở Chrome với profile (không phải headless)
+        # Tạo thư mục profile nếu chưa có
+        Path(profile_path).mkdir(parents=True, exist_ok=True)
+
+        # Mở Chrome với undetected-chromedriver (không headless)
         def run_chrome():
             try:
-                args = [chrome_path]
-                if profile_path:
-                    args.append(f"--user-data-dir={profile_path}")
-                args.append("https://grok.com")  # Mở thẳng trang Grok
+                import undetected_chromedriver as uc
 
                 self.app.log(f"Mở browser để login: {profile_name}")
-                subprocess.Popen(args)
+
+                options = uc.ChromeOptions()
+                options.add_argument("--window-size=1200,800")
+
+                driver = uc.Chrome(
+                    options=options,
+                    headless=False,
+                    user_data_dir=profile_path,
+                    use_subprocess=True
+                )
+
+                driver.get("https://grok.com")
+                self.app.log("Browser đã mở. Hãy đăng nhập và đóng browser khi xong.")
+
+                # Không tự đóng - để user tự đóng sau khi login
 
             except Exception as e:
                 self.app.log(f"Lỗi mở browser: {e}", "ERROR")
+                import traceback
+                self.app.log(traceback.format_exc(), "ERROR")
 
         # Chạy trong thread để không block UI
         threading.Thread(target=run_chrome, daemon=True).start()
 
         messagebox.showinfo(
             "Login",
-            f"Đã mở Chrome với profile '{profile_name}'.\n\n"
-            "Hãy đăng nhập tài khoản Grok của bạn.\n"
-            "Sau khi login xong, bạn có thể đóng browser.\n\n"
-            "Lần sau chạy ẩn sẽ tự dùng tài khoản này."
+            f"Đang mở Chrome với profile '{profile_name}'...\n\n"
+            "1. Đăng nhập tài khoản Grok của bạn\n"
+            "2. Sau khi login xong, ĐÓNG browser\n"
+            "3. Lần sau chạy sẽ tự dùng tài khoản này"
         )
 
     def setup_sheets_config(self):
@@ -565,21 +580,32 @@ Thư mục Profile Chrome thường ở:
         self.destroy()
 
     def open_login(self):
-        """Mở browser để login ngay"""
-        chrome_path = self.chrome_entry.get()
+        """Mở browser để login ngay (dùng undetected-chromedriver)"""
         profile_path = self.profile_entry.get()
 
-        if not chrome_path or not Path(chrome_path).exists():
-            messagebox.showerror("Lỗi", f"Không tìm thấy Chrome tại:\n{chrome_path}")
+        if not profile_path:
+            messagebox.showerror("Lỗi", "Vui lòng nhập thư mục Profile trước!")
             return
+
+        # Tạo thư mục nếu chưa có
+        Path(profile_path).mkdir(parents=True, exist_ok=True)
 
         def run_chrome():
             try:
-                args = [chrome_path]
-                if profile_path:
-                    args.append(f"--user-data-dir={profile_path}")
-                args.append("https://grok.com")
-                subprocess.Popen(args)
+                import undetected_chromedriver as uc
+
+                options = uc.ChromeOptions()
+                options.add_argument("--window-size=1200,800")
+
+                driver = uc.Chrome(
+                    options=options,
+                    headless=False,
+                    user_data_dir=profile_path,
+                    use_subprocess=True
+                )
+
+                driver.get("https://grok.com")
+
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể mở browser: {e}")
 
@@ -587,9 +613,10 @@ Thư mục Profile Chrome thường ở:
 
         messagebox.showinfo(
             "Login",
-            "Đã mở Chrome.\n\n"
-            "Hãy đăng nhập tài khoản Grok của bạn.\n"
-            "Sau khi login xong, đóng browser và nhấn 'Lưu'."
+            "Đang mở Chrome...\n\n"
+            "1. Đăng nhập tài khoản Grok\n"
+            "2. Đóng browser khi xong\n"
+            "3. Nhấn 'Lưu' để lưu profile"
         )
 
     def cancel(self):

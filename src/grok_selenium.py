@@ -73,12 +73,15 @@ class GrokSeleniumAutomation:
     def setup_driver(self) -> bool:
         """Setup Chrome driver"""
         try:
+            self.log("Đang khởi tạo Chrome driver...")
             options = Options()
 
             # Headless mode
             if self.headless:
                 options.add_argument("--headless=new")
-                self.log("Chế độ ẩn (headless) đã bật")
+                self.log("   Chế độ ẩn (headless) đã bật")
+            else:
+                self.log("   Chế độ hiện browser")
 
             # Basic options
             options.add_argument("--window-size=1920,1080")
@@ -86,24 +89,42 @@ class GrokSeleniumAutomation:
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--remote-debugging-port=0")  # Random port
 
             # Hide automation
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option("useAutomationExtension", False)
 
-            # Profile path
-            if self.profile_path and Path(self.profile_path).exists():
+            # Profile path - Xử lý đúng format
+            if self.profile_path:
                 profile = Path(self.profile_path)
-                options.add_argument(f"--user-data-dir={profile.parent}")
-                options.add_argument(f"--profile-directory={profile.name}")
-                self.log(f"Sử dụng profile: {profile.name}")
+                self.log(f"   Profile path: {profile}")
+
+                if profile.exists():
+                    # Kiểm tra xem đây là User Data dir hay Profile dir
+                    if (profile / "Default").exists() or (profile / "Local State").exists():
+                        # Đây là User Data directory
+                        options.add_argument(f"--user-data-dir={profile}")
+                        self.log(f"   User data dir: {profile}")
+                    else:
+                        # Đây là Profile directory (vd: Profile 1)
+                        options.add_argument(f"--user-data-dir={profile.parent}")
+                        options.add_argument(f"--profile-directory={profile.name}")
+                        self.log(f"   User data dir: {profile.parent}")
+                        self.log(f"   Profile dir: {profile.name}")
+                else:
+                    self.log_warn(f"   Profile không tồn tại: {profile}")
 
             # Chrome binary path
             if self.chrome_path and Path(self.chrome_path).exists():
                 options.binary_location = self.chrome_path
+                self.log(f"   Chrome path: {self.chrome_path}")
 
             # Setup driver
+            self.log("   Đang download/kiểm tra ChromeDriver...")
             service = Service(ChromeDriverManager().install())
+
+            self.log("   Đang khởi động Chrome...")
             self.driver = webdriver.Chrome(service=service, options=options)
 
             # Hide webdriver flag
@@ -111,11 +132,13 @@ class GrokSeleniumAutomation:
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
 
-            self.log_ok("Đã khởi tạo Chrome driver")
+            self.log_ok("Đã khởi tạo Chrome driver thành công!")
             return True
 
         except Exception as e:
             self.log_err(f"Lỗi khởi tạo driver: {e}")
+            import traceback
+            self.log_err(traceback.format_exc())
             return False
 
     def close_driver(self):

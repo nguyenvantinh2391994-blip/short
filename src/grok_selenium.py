@@ -785,24 +785,13 @@ class GrokSeleniumAutomation:
                 )
                 results.append(result)
 
-                # Đóng tab cũ và mở tab mới cho video tiếp theo
+                # Quay lại trang Grok Imagine cho video tiếp theo
                 if i < total - 1:
-                    self.log("   Đóng tab cũ, mở tab mới...")
-                    # Mở tab mới trước
-                    self.driver.execute_script("window.open('');")
-                    # Lấy handle tab cũ và tab mới
-                    old_tab = self.driver.window_handles[0]
-                    new_tab = self.driver.window_handles[-1]
-                    # Chuyển sang tab mới
-                    self.driver.switch_to.window(new_tab)
-                    # Đóng tab cũ
-                    self.driver.execute_script(f"window.close();", old_tab)
-                    # Đóng tất cả tab cũ, chỉ giữ tab mới
-                    for handle in self.driver.window_handles[:-1]:
-                        self.driver.switch_to.window(handle)
-                        self.driver.close()
-                    self.driver.switch_to.window(self.driver.window_handles[0])
-                    time.sleep(2)
+                    self.log("   Quay lại trang Grok Imagine...")
+                    self.driver.get(self.GROK_IMAGINE_URL)
+                    time.sleep(3)
+                    # Cài lại video hook
+                    self.install_video_hook()
 
             if on_progress:
                 on_progress(total, total, "Hoàn thành")

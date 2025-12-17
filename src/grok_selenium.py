@@ -326,26 +326,26 @@ class GrokSeleniumAutomation:
             return False
 
     def submit_and_wait(self, timeout: int = 90) -> bool:
-        """Submit và chờ video tạo xong"""
+        """Submit và chờ video tạo xong - dấu hiệu: svg.lucide-film xuất hiện"""
         try:
             self.log("Đang chờ video được tạo (tối đa 90s)...")
+            self.log("   Dấu hiệu xong: icon film (svg.lucide-film) xuất hiện")
             start_time = time.time()
 
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check đơn giản bằng JavaScript - trả về string
+                # Check icon film (lucide-film) - dấu hiệu video đã xong
                 js_check = '''
+                var filmIcon = document.querySelector('svg.lucide-film');
+                if (filmIcon) {
+                    return 'film_ready|';
+                }
                 var video = document.querySelector('#sd-video');
                 if (video && video.src && video.src.includes('.mp4')) {
-                    return 'video_ready|' + video.src;
+                    return 'video_src|' + video.src;
                 }
-                var svg = document.querySelector('svg.lucide-download');
-                if (svg) {
-                    return 'download_ready|';
-                }
-                var videoCount = document.querySelectorAll('video').length;
-                return 'waiting|' + videoCount;
+                return 'waiting|';
                 '''
 
                 try:
@@ -357,14 +357,17 @@ class GrokSeleniumAutomation:
                         data = parts[1] if len(parts) > 1 else ''
 
                         if elapsed % 10 == 0:
-                            self.log(f"   [{elapsed}s] {status} - {data[:60]}")
+                            self.log(f"   [{elapsed}s] {status}")
 
-                        if status == 'video_ready':
-                            self.log_ok(f"Video sẵn sàng! ({elapsed}s)")
-                            self._captured_video_url = data
+                        if status == 'film_ready':
+                            self.log_ok(f"Thấy icon film - Video đã xong! ({elapsed}s)")
+                            self.log("   Chờ thêm 10s để video load hoàn toàn...")
+                            time.sleep(10)
                             return True
-                        elif status == 'download_ready':
-                            self.log_ok(f"Nút download sẵn sàng! ({elapsed}s)")
+                        elif status == 'video_src':
+                            self.log_ok(f"Thấy video src! ({elapsed}s)")
+                            self._captured_video_url = data
+                            time.sleep(5)
                             return True
                     else:
                         if elapsed % 10 == 0:
@@ -384,13 +387,11 @@ class GrokSeleniumAutomation:
             return False
 
     def download_video(self, output_path: str) -> bool:
-        """Download video bằng cách click nút Download"""
+        """Download video bằng cách click nút Download, thử lại nếu không có file"""
         try:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Click nút download (blob download bị 403, phải click button)
-            self.log("   Click nút download...")
+            download_dir = getattr(self, 'download_dir', None)
 
             js_click = '''
             var svg = document.querySelector('svg.lucide-download');
@@ -409,47 +410,47 @@ class GrokSeleniumAutomation:
             return 'not_found';
             '''
 
-            result = self.driver.execute_script(js_click)
-            self.log(f"   Click result: {result}")
+            # Thử click download tối đa 3 lần
+            for attempt in range(3):
+                self.log(f"   Click nút download (lần {attempt + 1})...")
 
-            if result and result.startswith('clicked'):
+                result = self.driver.execute_script(js_click)
+                self.log(f"   Click result: {result}")
+
+                if not result or not result.startswith('clicked'):
+                    self.log_warn("Không tìm thấy nút download")
+                    if attempt < 2:
+                        time.sleep(3)
+                        continue
+                    return False
+
                 self.log_ok("Đã click download!")
-                # Chờ file download
-                time.sleep(5)
 
-                # Check download folder
-                download_dir = getattr(self, 'download_dir', None)
-                if download_dir:
-                    # Tìm file mới nhất trong download folder
-                    import glob
-                    files = glob.glob(f"{download_dir}/*.mp4")
-                    if files:
-                        newest = max(files, key=os.path.getctime)
-                        # Move/rename to output_path
-                        import shutil
-                        shutil.move(newest, output_path)
-                        self.log_ok(f"Đã lưu: {output_path}")
-                        return True
+                # Chờ file download (tối đa 15s mỗi lần click)
+                import glob
+                import shutil
 
-                # File có thể đang tải, chờ thêm
-                self.log("   Chờ file download...")
-                for i in range(10):
-                    time.sleep(2)
+                for i in range(15):
+                    time.sleep(1)
                     if download_dir:
+                        # Tìm file mp4 mới nhất
                         files = glob.glob(f"{download_dir}/*.mp4")
-                        files += glob.glob(f"{download_dir}/grok_video*.mp4")
                         if files:
                             newest = max(files, key=os.path.getctime)
-                            if os.path.getsize(newest) > 10000:  # > 10KB
-                                import shutil
+                            file_size = os.path.getsize(newest)
+                            if file_size > 10000:  # > 10KB = file hợp lệ
                                 shutil.move(newest, output_path)
-                                self.log_ok(f"Đã lưu: {output_path}")
+                                self.log_ok(f"Đã lưu: {output_path} ({file_size} bytes)")
                                 return True
+                            elif i > 5:  # Sau 5s mà file vẫn nhỏ
+                                self.log(f"   File nhỏ ({file_size} bytes), chờ...")
 
-                self.log_warn("File chưa tải xong hoặc không tìm thấy")
-                return True  # Coi như thành công vì đã click
+                # Không thấy file sau 15s, thử click lại
+                if attempt < 2:
+                    self.log_warn(f"Không thấy file mp4 sau 15s, thử click lại...")
+                    time.sleep(2)
 
-            self.log_warn("Không tìm thấy nút download")
+            self.log_warn("Không tải được file sau 3 lần thử")
             return False
 
         except Exception as e:

@@ -32,6 +32,14 @@ DEFAULT_CHROME_PATHS = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ]
 
+# Profile riêng cho automation (tránh conflict với Chrome đang mở)
+def get_automation_profile_dir(profile_name: str = "default") -> str:
+    """Tạo thư mục profile riêng cho automation"""
+    home = Path.home()
+    profile_dir = home / ".grok_automation" / profile_name
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    return str(profile_dir)
+
 
 @dataclass
 class GrokVideoResult:
@@ -133,22 +141,14 @@ class GrokSeleniumAutomation:
                 if chrome_exe:
                     options.binary_location = chrome_exe
 
-                # Profile path - dùng user-data-dir
+                # Profile - dùng thư mục riêng cho automation (tránh conflict)
                 if self.profile_path:
-                    profile = Path(self.profile_path)
-                    # Nếu là full path đến User Data
-                    if "User Data" in str(profile):
-                        # Tách thành user-data-dir và profile-directory
-                        parts = str(profile).split("User Data")
-                        user_data = parts[0] + "User Data"
-                        profile_name = parts[1].strip("\\/") if len(parts) > 1 else "Default"
-                        options.add_argument(f"--user-data-dir={user_data}")
-                        options.add_argument(f"--profile-directory={profile_name}")
-                        self.log(f"   Profile: {profile_name}")
-                    else:
-                        profile.mkdir(parents=True, exist_ok=True)
-                        options.add_argument(f"--user-data-dir={profile}")
-                        self.log(f"   User data: {profile}")
+                    # Lấy tên profile từ path
+                    profile_name = Path(self.profile_path).name or "default"
+                    # Tạo thư mục automation riêng
+                    automation_dir = get_automation_profile_dir(profile_name)
+                    options.add_argument(f"--user-data-dir={automation_dir}")
+                    self.log(f"   Profile: {automation_dir}")
 
                 # Download preferences
                 if download_dir:

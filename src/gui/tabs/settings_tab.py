@@ -190,18 +190,15 @@ class SettingsTab:
         self.app.save_config()
 
     def open_browser_login(self, index: int):
-        """Mở browser với profile để user login tài khoản (dùng Chrome đã cài)"""
+        """Mở browser với profile RIÊNG để login (tránh conflict với Chrome đang mở)"""
         profile = self.app.config.browser_profiles[index]
-        profile_path = profile.get("profile_path", "")
-        chrome_path = profile.get("chrome_path", "")
         profile_name = profile.get("name", "Profile")
+        chrome_path = profile.get("chrome_path", "")
 
-        if not profile_path:
-            messagebox.showerror("Lỗi", "Chưa cấu hình thư mục Profile!")
-            return
-
-        # Tạo thư mục profile nếu chưa có
-        Path(profile_path).mkdir(parents=True, exist_ok=True)
+        # Tạo thư mục profile RIÊNG cho automation
+        home = Path.home()
+        automation_dir = home / ".grok_automation" / profile_name.replace(" ", "_")
+        automation_dir.mkdir(parents=True, exist_ok=True)
 
         # Mở Chrome bằng Selenium
         def run_chrome():
@@ -212,6 +209,7 @@ class SettingsTab:
                 from webdriver_manager.chrome import ChromeDriverManager
 
                 self.app.log(f"Mở browser để login: {profile_name}")
+                self.app.log(f"   Profile: {automation_dir}")
                 self.app.log("   Đang tải ChromeDriver...")
 
                 options = Options()
@@ -224,15 +222,8 @@ class SettingsTab:
                 if chrome_path and Path(chrome_path).exists():
                     options.binary_location = chrome_path
 
-                # Profile path
-                if "User Data" in profile_path:
-                    parts = profile_path.split("User Data")
-                    user_data = parts[0] + "User Data"
-                    profile_dir = parts[1].strip("\\/") if len(parts) > 1 else "Default"
-                    options.add_argument(f"--user-data-dir={user_data}")
-                    options.add_argument(f"--profile-directory={profile_dir}")
-                else:
-                    options.add_argument(f"--user-data-dir={profile_path}")
+                # Dùng profile RIÊNG (không dùng profile Chrome đang mở)
+                options.add_argument(f"--user-data-dir={automation_dir}")
 
                 options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
@@ -598,16 +589,14 @@ Thư mục Profile Chrome thường ở:
         self.destroy()
 
     def open_login(self):
-        """Mở browser để login ngay (dùng Chrome đã cài)"""
-        profile_path = self.profile_entry.get()
+        """Mở browser để login ngay (dùng profile RIÊNG)"""
+        profile_name = self.name_entry.get().strip() or "temp_profile"
         chrome_path = self.chrome_entry.get()
 
-        if not profile_path:
-            messagebox.showerror("Lỗi", "Vui lòng nhập thư mục Profile trước!")
-            return
-
-        # Tạo thư mục nếu chưa có
-        Path(profile_path).mkdir(parents=True, exist_ok=True)
+        # Tạo thư mục profile RIÊNG cho automation
+        home = Path.home()
+        automation_dir = home / ".grok_automation" / profile_name.replace(" ", "_")
+        automation_dir.mkdir(parents=True, exist_ok=True)
 
         def run_chrome():
             try:
@@ -626,15 +615,8 @@ Thư mục Profile Chrome thường ở:
                 if chrome_path and Path(chrome_path).exists():
                     options.binary_location = chrome_path
 
-                # Profile path
-                if "User Data" in profile_path:
-                    parts = profile_path.split("User Data")
-                    user_data = parts[0] + "User Data"
-                    profile_dir = parts[1].strip("\\/") if len(parts) > 1 else "Default"
-                    options.add_argument(f"--user-data-dir={user_data}")
-                    options.add_argument(f"--profile-directory={profile_dir}")
-                else:
-                    options.add_argument(f"--user-data-dir={profile_path}")
+                # Dùng profile RIÊNG
+                options.add_argument(f"--user-data-dir={automation_dir}")
 
                 options.add_experimental_option('excludeSwitches', ['enable-logging'])
 

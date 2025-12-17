@@ -746,6 +746,8 @@ class GrokSeleniumAutomation:
             self.log("5. Download video...")
             if output_path:
                 if self.download_video(output_path):
+                    # Đóng tab thừa (nếu Grok mở tab khi download)
+                    self.close_extra_tabs()
                     # Verify
                     if self.verify_video_file(output_path):
                         self.log_ok(f"Video hợp lệ: {output_path}")
@@ -756,6 +758,8 @@ class GrokSeleniumAutomation:
                 else:
                     return GrokVideoResult(False, error="Không thể download video")
 
+            # Đóng tab thừa trước khi return
+            self.close_extra_tabs()
             return GrokVideoResult(True, video_path="Downloads")
 
         except Exception as e:

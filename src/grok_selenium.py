@@ -270,73 +270,104 @@ class GrokSeleniumAutomation:
             return False
 
     def upload_image(self, image_path: str) -> bool:
-        """Upload ảnh bằng JavaScript + file input"""
+        """Upload ảnh - có retry cho headless mode"""
         try:
             image_path = Path(image_path).absolute()
             if not image_path.exists():
                 self.log_err(f"Không tìm thấy ảnh: {image_path}")
                 return False
 
-            # Lưu URL hiện tại để check redirect
             current_url = self.driver.current_url
             self.log(f"   URL trước upload: {current_url}")
 
-            # Click nút đính kèm bằng JS
-            js_attach = '''
-            (function() {
-                var btns = document.querySelectorAll('button');
-                for (var b of btns) {
-                    var label = b.getAttribute('aria-label') || '';
-                    if (label.includes('Đính kèm') || label.includes('Attach')) {
-                        b.click();
-                        return true;
-                    }
-                }
-                return false;
-            })();
-            '''
-            self.driver.execute_script(js_attach)
-            time.sleep(1)
+            # Thử upload tối đa 3 lần (headless có thể cần retry)
+            for attempt in range(3):
+                if attempt > 0:
+                    self.log(f"   Thử lại upload lần {attempt + 1}...")
+                    time.sleep(2)
+                    # Refresh nếu cần
+                    if attempt == 2:
+                        self.driver.refresh()
+                        time.sleep(3)
 
-            # Click menu Tải lên bằng JS
-            js_upload = '''
-            (function() {
-                var items = document.querySelectorAll('div[role="menuitem"]');
-                for (var item of items) {
-                    var text = item.textContent || '';
-                    if (text.includes('Tải lên') || text.includes('Upload')) {
-                        item.click();
-                        return true;
-                    }
-                }
-                return false;
-            })();
-            '''
-            self.driver.execute_script(js_upload)
-            time.sleep(1)
+                try:
+                    # Click nút đính kèm
+                    js_attach = '''
+                    (function() {
+                        var btns = document.querySelectorAll('button');
+                        for (var b of btns) {
+                            var label = b.getAttribute('aria-label') || '';
+                            if (label.includes('Đính kèm') || label.includes('Attach')) {
+                                b.click();
+                                return 'clicked';
+                            }
+                        }
+                        return 'not_found';
+                    })();
+                    '''
+                    attach_result = self.driver.execute_script(js_attach)
+                    self.log(f"   Attach button: {attach_result}")
+                    time.sleep(1.5)  # Chờ menu mở
 
-            # Tìm file input và gửi file
-            file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
-            file_input.send_keys(str(image_path))
+                    # Click menu Tải lên
+                    js_upload = '''
+                    (function() {
+                        var items = document.querySelectorAll('div[role="menuitem"]');
+                        for (var item of items) {
+                            var text = item.textContent || '';
+                            if (text.includes('Tải lên') || text.includes('Upload')) {
+                                item.click();
+                                return 'clicked';
+                            }
+                        }
+                        return 'not_found';
+                    })();
+                    '''
+                    upload_result = self.driver.execute_script(js_upload)
+                    self.log(f"   Upload menu: {upload_result}")
+                    time.sleep(1.5)  # Chờ file input xuất hiện
 
-            self.log_ok(f"Đã upload: {image_path.name}")
+                    # Chờ file input với timeout
+                    file_input = None
+                    for wait in range(10):  # Chờ tối đa 10s
+                        try:
+                            file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
+                            if file_input:
+                                break
+                        except:
+                            pass
+                        time.sleep(1)
 
-            # Chờ redirect sang /imagine/post/
-            self.log("   Chờ redirect sang trang video...")
-            for i in range(30):  # Chờ tối đa 30s
-                time.sleep(1)
-                new_url = self.driver.current_url
-                if '/imagine/post/' in new_url:
-                    self.log_ok(f"   Đã redirect: {new_url}")
-                    # Cài lại hook sau khi redirect
-                    self.install_video_hook()
-                    time.sleep(2)  # Chờ page load
+                    if not file_input:
+                        self.log_warn("Không tìm thấy file input, thử lại...")
+                        continue
+
+                    # Gửi file
+                    file_input.send_keys(str(image_path))
+                    self.log_ok(f"Đã upload: {image_path.name}")
+
+                    # Chờ redirect sang /imagine/post/
+                    self.log("   Chờ redirect sang trang video...")
+                    for i in range(30):
+                        time.sleep(1)
+                        new_url = self.driver.current_url
+                        if '/imagine/post/' in new_url:
+                            self.log_ok(f"   Đã redirect: {new_url}")
+                            self.install_video_hook()
+                            time.sleep(2)
+                            return True
+                        if i % 5 == 0 and i > 0:
+                            self.log(f"   Chờ redirect... {i}s")
+
+                    self.log_warn("Không thấy redirect, tiếp tục...")
                     return True
-                if i % 5 == 0 and i > 0:
-                    self.log(f"   Chờ redirect... {i}s (URL: {new_url[:50]})")
 
-            self.log_warn("Không thấy redirect, tiếp tục...")
-            return True
+                except Exception as e:
+                    self.log_warn(f"Lỗi lần {attempt + 1}: {e}")
+                    if attempt == 2:
+                        raise
+
+            return False
 
         except Exception as e:
             self.log_err(f"Lỗi upload ảnh: {e}")

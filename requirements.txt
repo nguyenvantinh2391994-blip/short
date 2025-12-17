@@ -22,5 +22,11 @@ rich==13.9.2
 python-dotenv==1.0.1
 watchdog==4.0.2
 
+# GUI
+customtkinter>=5.2.0
+
 # Async support
 asyncio-throttle==1.0.2
+
+# Packaging
+pyinstaller>=6.0.0

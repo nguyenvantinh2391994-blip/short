@@ -1,5 +1,6 @@
 """
 Grok Worker - Background worker for Grok video creation
+Sử dụng Selenium để chạy ẩn (headless mode)
 """
 
 import threading
@@ -19,7 +20,8 @@ class GrokWorker:
         config: Any,
         stop_flag: threading.Event,
         on_progress: Callable[[int, int, str], None],
-        on_log: Callable[[str, str], None]
+        on_log: Callable[[str, str], None],
+        headless: bool = True  # Mặc định chạy ẩn
     ):
         self.input_folder = Path(input_folder)
         self.output_folder = Path(output_folder)
@@ -28,6 +30,7 @@ class GrokWorker:
         self.stop_flag = stop_flag
         self.on_progress = on_progress
         self.on_log = on_log
+        self.headless = headless
 
     def log(self, message: str, status: str = "info"):
         """Log message"""
@@ -43,9 +46,10 @@ class GrokWorker:
         """Run the video creation process"""
         try:
             self.log("Bắt đầu quá trình tạo video Grok...", "progress")
+            self.log(f"Chế độ ẩn: {'BẬT' if self.headless else 'TẮT'}", "info")
 
-            # Import grok automation
-            from ...grok_automation import GrokBrowserAutomation, GrokVideoResult
+            # Import grok automation (Selenium version)
+            from ...grok_selenium import GrokSeleniumAutomation, GrokVideoResult
             from ...sheets_reader import SheetsReader
 
             # Setup output folder
@@ -128,22 +132,20 @@ class GrokWorker:
 
             self.log(f"Còn {len(still_pending)} video cần tạo", "info")
 
-            # Create automation instance
-            automation = GrokBrowserAutomation(chrome_path, profile_path)
-            first_video = True
+            # Create Selenium automation instance (hỗ trợ headless)
+            automation = GrokSeleniumAutomation(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                headless=self.headless,
+                on_log=self.log
+            )
+
             total = len(still_pending)
 
-            for i, item in enumerate(still_pending):
-                if self.stop_flag.is_set():
-                    self.log("Đã dừng theo yêu cầu", "warning")
-                    break
-
+            # Tạo danh sách tasks
+            tasks = []
+            for item in still_pending:
                 code = item["code"]
-                row = item["row"]
-                prompt = item.get("prompt", "")
-
-                self.progress(i, total, f"Đang xử lý: {code}")
-                self.log(f"[{i+1}/{total}] Mã: {code}", "progress")
 
                 # Find input image
                 image_path = None
@@ -157,44 +159,53 @@ class GrokWorker:
                     self.log(f"Không tìm thấy ảnh cho mã {code}", "error")
                     continue
 
-                video_path = self.output_folder / f"{code}.mp4"
+                tasks.append({
+                    "code": code,
+                    "row": item["row"],
+                    "image": str(image_path),
+                    "prompt": item.get("prompt", ""),
+                    "output": str(self.output_folder / f"{code}.mp4")
+                })
 
-                # Open new tab for subsequent videos
-                if not first_video:
-                    self.log("Mở tab mới...", "info")
-                    automation.open_new_tab_and_close_old()
+            # Chạy batch với Selenium
+            for i, task in enumerate(tasks):
+                if self.stop_flag.is_set():
+                    self.log("Đã dừng theo yêu cầu", "warning")
+                    break
 
-                # Create video with retries
-                max_attempts = self.config.max_retries
-                result = None
+                code = task["code"]
+                row = task["row"]
 
-                for attempt in range(max_attempts):
-                    if self.stop_flag.is_set():
-                        break
+                self.progress(i, total, f"Đang xử lý: {code}")
+                self.log(f"[{i+1}/{total}] Mã: {code}", "progress")
 
-                    if attempt > 0:
-                        self.log(f"Thử lại lần {attempt + 1}/{max_attempts}...", "warning")
-                        automation.open_new_tab_and_close_old()
+                # Tạo video với Selenium
+                result = automation.create_video(
+                    image_path=task["image"],
+                    prompt=task["prompt"],
+                    output_path=task["output"],
+                    product_code=code
+                )
 
-                    if first_video and attempt == 0:
-                        result = automation.create_video(str(image_path), prompt, str(video_path), code)
-                        first_video = False
-                    else:
-                        result = automation.create_video_continue(str(image_path), prompt, str(video_path), code)
-
-                    if result.success:
-                        break
-                    else:
-                        self.log(f"Lỗi: {result.error}", "warning")
-
-                if result and result.success:
+                if result.success:
                     reader.update_status(row, "VIDEO", self.config.status_column)
                     self.log(f"✓ Hoàn thành: {code}", "success")
                 else:
-                    self.log(f"✗ Thất bại: {code}", "error")
+                    self.log(f"✗ Thất bại: {code} - {result.error}", "error")
+
+                # Mở tab mới cho video tiếp theo
+                if i < len(tasks) - 1:
+                    try:
+                        automation.driver.execute_script("window.open('');")
+                        automation.driver.switch_to.window(automation.driver.window_handles[-1])
+                    except:
+                        pass
 
             self.progress(total, total, "Hoàn thành")
             self.log(f"Hoàn thành xử lý {total} video!", "success")
+
+            # Đóng browser
+            automation.close_driver()
 
         except Exception as e:
             self.log(f"Lỗi: {str(e)}", "error")

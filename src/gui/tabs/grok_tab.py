@@ -138,14 +138,16 @@ class GrokTab:
         self.wait_spinbox.pack(side="left", padx=10)
         self.wait_spinbox.insert(0, str(self.app.config.wait_after_done))
 
-        # Hidden mode checkbox
-        self.hidden_var = ctk.BooleanVar(value=False)
+        # Hidden mode checkbox - MẶC ĐỊNH BẬT
+        self.hidden_var = ctk.BooleanVar(value=True)
         self.hidden_check = ctk.CTkCheckBox(
             options_frame,
-            text="Chạy ẩn (không hiện browser)",
-            variable=self.hidden_var
+            text="🔒 Chạy ẩn (headless - không hiện browser)",
+            variable=self.hidden_var,
+            font=ctk.CTkFont(size=13)
         )
         self.hidden_check.pack(anchor="w", padx=15, pady=(0, 10))
+        self.hidden_check.select()  # Mặc định chọn
 
         # Action buttons
         btn_frame = ctk.CTkFrame(controls_frame, fg_color="transparent")
@@ -318,6 +320,9 @@ class GrokTab:
                     profile = p
                     break
 
+            # Get headless setting
+            headless = self.hidden_var.get()
+
             # Create worker
             worker = GrokWorker(
                 input_folder=input_folder,
@@ -326,7 +331,8 @@ class GrokTab:
                 config=self.app.config,
                 stop_flag=self.stop_flag,
                 on_progress=self.on_worker_progress,
-                on_log=self.on_worker_log
+                on_log=self.on_worker_log,
+                headless=headless  # Truyền setting chạy ẩn
             )
 
             # Run

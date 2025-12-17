@@ -70,7 +70,7 @@ class GrokSeleniumAutomation:
             self.on_log(msg, "warning")
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
-    def setup_driver(self) -> bool:
+    def setup_driver(self, download_dir: str = None) -> bool:
         """Setup Chrome driver sử dụng undetected-chromedriver"""
         try:
             self.log("Đang khởi tạo Chrome (undetected-chromedriver)...")
@@ -80,6 +80,18 @@ class GrokSeleniumAutomation:
 
             # Window size
             options.add_argument("--window-size=1920,1080")
+
+            # Download preferences
+            if download_dir:
+                self.download_dir = download_dir
+                prefs = {
+                    "download.default_directory": download_dir,
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": True
+                }
+                options.add_experimental_option("prefs", prefs)
+                self.log(f"   Download dir: {download_dir}")
 
             # Profile path - dùng thư mục riêng cho automation
             user_data_dir = None
@@ -431,19 +443,75 @@ class GrokSeleniumAutomation:
                 else:
                     self.log_warn(f"HTTP {response.status_code}, thử cách khác...")
 
-            # 4. Fallback: Download bằng blob trong JS
+            # 4. Fallback: Click nút download trực tiếp
+            self.log("   Thử click nút download...")
+            js_click_download = '''
+            (function() {
+                // Tìm nút download bằng nhiều cách
+                var btn = null;
+
+                // 1. Tìm bằng aria-label
+                btn = document.querySelector('button[aria-label="Download"]') ||
+                      document.querySelector('button[aria-label="Tải xuống"]');
+
+                // 2. Tìm bằng SVG class lucide-download
+                if (!btn) {
+                    var svg = document.querySelector('svg.lucide-download');
+                    if (svg) btn = svg.closest('button');
+                }
+
+                // 3. Tìm button chứa text Download
+                if (!btn) {
+                    var buttons = document.querySelectorAll('button');
+                    for (var b of buttons) {
+                        if (b.textContent.includes('Download') || b.textContent.includes('Tải')) {
+                            btn = b;
+                            break;
+                        }
+                    }
+                }
+
+                if (btn) {
+                    console.log('Found download button:', btn);
+                    btn.click();
+                    return {success: true, method: 'button_click'};
+                }
+
+                return {success: false, error: 'Button not found'};
+            })();
+            '''
+            click_result = self.driver.execute_script(js_click_download)
+            self.log(f"   Click result: {click_result}")
+
+            if click_result and click_result.get('success'):
+                self.log_ok("Đã click download button - chờ file...")
+                time.sleep(5)  # Chờ download dialog hoặc file
+
+                # Kiểm tra xem file đã được tải chưa
+                if output_path.exists() and output_path.stat().st_size > 10000:
+                    return True
+
+                # Nếu chưa có file, thử download bằng blob
+                self.log("   File chưa có, thử blob download...")
+
+            # 5. Download bằng blob trong JS (backup)
             self.log("   Thử download bằng blob...")
             js_blob_download = '''
             (async function() {
                 try {
-                    var video = document.querySelector('video');
-                    if (!video || !video.src) return {success: false, error: 'No video'};
+                    // Ưu tiên #sd-video
+                    var video = document.querySelector('#sd-video') || document.querySelector('video');
+                    if (!video || !video.src) return {success: false, error: 'No video element'};
 
                     var src = video.src;
-                    console.log('Downloading:', src);
+                    if (!src.includes('.mp4')) return {success: false, error: 'No mp4 src'};
+
+                    console.log('Blob downloading:', src);
 
                     // Fetch video as blob
                     var res = await fetch(src);
+                    if (!res.ok) return {success: false, error: 'Fetch failed: ' + res.status};
+
                     var blob = await res.blob();
 
                     // Tạo download link
@@ -451,40 +519,28 @@ class GrokSeleniumAutomation:
                     var a = document.createElement('a');
                     a.href = url;
                     a.download = 'grok_video_' + Date.now() + '.mp4';
+                    a.style.display = 'none';
                     document.body.appendChild(a);
                     a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
 
-                    return {success: true, size: blob.size};
+                    // Cleanup
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 1000);
+
+                    return {success: true, size: blob.size, src: src};
                 } catch(e) {
                     return {success: false, error: e.message};
                 }
             })();
             '''
             result = self.driver.execute_script(js_blob_download)
+            self.log(f"   Blob result: {result}")
 
             if result and result.get('success'):
-                self.log_ok(f"Đã trigger download blob ({result.get('size', 0)} bytes)")
-                time.sleep(3)  # Chờ download
-                return True
-
-            # 5. Last resort: Click nút download
-            self.log("   Thử click nút download...")
-            js_click = '''
-            (function() {
-                var btn = document.querySelector('button[aria-label="Tải xuống"]') ||
-                          document.querySelector('button[aria-label="Download"]');
-                if (btn) {
-                    btn.click();
-                    return true;
-                }
-                return false;
-            })();
-            '''
-            if self.driver.execute_script(js_click):
-                self.log_ok("Đã click download button")
-                time.sleep(3)
+                self.log_ok(f"Đã trigger blob download ({result.get('size', 0)} bytes)")
+                time.sleep(5)  # Chờ download
                 return True
 
             self.log_warn("Không thể download video")
@@ -530,7 +586,9 @@ class GrokSeleniumAutomation:
 
             # Setup driver if not exists
             if not self.driver:
-                if not self.setup_driver():
+                # Cấu hình download directory = thư mục output
+                download_dir = str(Path(output_path).parent) if output_path else None
+                if not self.setup_driver(download_dir=download_dir):
                     return GrokVideoResult(False, error="Không thể khởi tạo browser")
 
             # Navigate to Grok (sẽ cài hook tự động)

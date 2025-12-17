@@ -167,20 +167,22 @@ class GrokSeleniumAutomation:
                         const cloned = res.clone();
                         const text = await cloned.text();
 
-                        // Tìm video URL trong response (mp4, blob, video)
-                        const videoPatterns = [
+                        // Tìm video URL pattern của Grok: assets.grok.com/.../generated_video.mp4
+                        const patterns = [
+                            /https:\/\/assets\.grok\.com\/[^"'\s]+generated_video\.mp4[^"'\s]*/gi,
+                            /https:\/\/assets\.grok\.com\/[^"'\s]+\.mp4[^"'\s]*/gi,
                             /"url":\s*"([^"]+\.mp4[^"]*)"/gi,
-                            /"videoUrl":\s*"([^"]+)"/gi,
-                            /"video":\s*\{[^}]*"url":\s*"([^"]+)"/gi,
-                            /https:\/\/[^"]+\.mp4[^"]*/gi
+                            /"videoUrl":\s*"([^"]+)"/gi
                         ];
 
-                        for (const pattern of videoPatterns) {
+                        for (const pattern of patterns) {
                             const matches = text.matchAll(pattern);
                             for (const match of matches) {
-                                const videoUrl = match[1] || match[0];
-                                if (videoUrl && videoUrl.includes('http')) {
-                                    console.log('🎬 Grok Hook: Phát hiện video URL!', videoUrl.substring(0, 100));
+                                let videoUrl = match[1] || match[0];
+                                // Clean up URL
+                                videoUrl = videoUrl.replace(/["\s]/g, '');
+                                if (videoUrl && videoUrl.includes('.mp4')) {
+                                    console.log('🎬 Grok Hook: Video URL!', videoUrl);
                                     window._capturedVideoUrl = videoUrl;
                                     window._videoReady = true;
                                 }
@@ -301,31 +303,35 @@ class GrokSeleniumAutomation:
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check bằng JavaScript - ưu tiên hook, sau đó DOM
+                # Check bằng JavaScript - ưu tiên DOM video có mp4, sau đó hook
                 js_check = '''
                 (function() {
-                    // 1. Ưu tiên: Check từ fetch hook
-                    if (window._videoReady && window._capturedVideoUrl) {
-                        return {status: 'hook_ready', url: window._capturedVideoUrl};
+                    // 1. Check video #sd-video có src mp4 (ưu tiên cao nhất)
+                    var sdVideo = document.querySelector('#sd-video');
+                    if (sdVideo && sdVideo.src && sdVideo.src.includes('.mp4')) {
+                        return {status: 'video_found', url: sdVideo.src};
                     }
 
-                    // 2. Check video element có src mp4
+                    // 2. Check tất cả video elements
                     var videos = document.querySelectorAll('video');
                     for (var v of videos) {
                         var src = v.src || '';
-                        var source = v.querySelector('source');
-                        if (source) src = source.src || src;
-                        if (src && (src.includes('.mp4') || src.includes('blob:'))) {
+                        if (src.includes('generated_video.mp4') || src.includes('assets.grok.com')) {
                             return {status: 'video_found', url: src};
                         }
                     }
 
-                    // 3. Check nút download
+                    // 3. Check từ fetch hook
+                    if (window._videoReady && window._capturedVideoUrl) {
+                        return {status: 'hook_ready', url: window._capturedVideoUrl};
+                    }
+
+                    // 4. Check nút download
                     var dlBtn = document.querySelector('button[aria-label="Tải xuống"]') ||
                                 document.querySelector('button[aria-label="Download"]');
                     if (dlBtn) return {status: 'download_ready', url: null};
 
-                    // 4. Check nút Làm lại (done)
+                    // 5. Check nút Làm lại (done)
                     var btns = document.querySelectorAll('button');
                     for (var b of btns) {
                         var text = b.textContent || '';
@@ -362,32 +368,46 @@ class GrokSeleniumAutomation:
             return False
 
     def download_video(self, output_path: str) -> bool:
-        """Download video - ưu tiên URL từ hook, sau đó blob download"""
+        """Download video - ưu tiên URL từ DOM #sd-video, sau đó blob download"""
         try:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 1. Ưu tiên URL đã bắt được từ hook
-            video_url = getattr(self, '_captured_video_url', None)
+            # 1. Lấy URL từ DOM trước (ưu tiên #sd-video)
+            js_get_url = '''
+            (function() {
+                // Ưu tiên #sd-video
+                var sdVideo = document.querySelector('#sd-video');
+                if (sdVideo && sdVideo.src && sdVideo.src.includes('.mp4')) {
+                    return sdVideo.src;
+                }
 
-            # 2. Nếu chưa có, lấy từ DOM
-            if not video_url:
-                js_get_url = '''
-                (function() {
-                    // Từ hook
-                    if (window._capturedVideoUrl) return window._capturedVideoUrl;
-
-                    // Từ video element
-                    var videos = document.querySelectorAll('video');
-                    for (var v of videos) {
-                        if (v.src && v.src.includes('http')) return v.src;
-                        var source = v.querySelector('source');
-                        if (source && source.src) return source.src;
+                // Tìm video có generated_video.mp4
+                var videos = document.querySelectorAll('video');
+                for (var v of videos) {
+                    if (v.src && v.src.includes('generated_video.mp4')) {
+                        return v.src;
                     }
-                    return null;
-                })();
-                '''
-                video_url = self.driver.execute_script(js_get_url)
+                }
+
+                // Fallback: video có assets.grok.com
+                for (var v of videos) {
+                    if (v.src && v.src.includes('assets.grok.com')) {
+                        return v.src;
+                    }
+                }
+
+                // Từ hook
+                if (window._capturedVideoUrl) return window._capturedVideoUrl;
+
+                return null;
+            })();
+            '''
+            video_url = self.driver.execute_script(js_get_url)
+
+            # 2. Nếu chưa có, dùng URL đã capture từ submit_and_wait
+            if not video_url:
+                video_url = getattr(self, '_captured_video_url', None)
 
             # 3. Download nếu có URL
             if video_url and video_url.startswith('http'):

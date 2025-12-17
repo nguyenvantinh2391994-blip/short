@@ -71,7 +71,7 @@ class GrokSeleniumAutomation:
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
-        """Setup Chrome driver sử dụng undetected-chromedriver - có retry"""
+        """Setup Chrome driver - dùng mini window thay vì headless để ổn định hơn"""
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
@@ -80,18 +80,25 @@ class GrokSeleniumAutomation:
 
                 self.log("Đang khởi tạo Chrome...")
 
-                # Options cho undetected-chromedriver
                 options = uc.ChromeOptions()
 
-                # Tối ưu tốc độ khởi động
-                options.add_argument("--window-size=1920,1080")
+                # Tối ưu tốc độ
                 options.add_argument("--no-first-run")
                 options.add_argument("--no-default-browser-check")
                 options.add_argument("--disable-extensions")
                 options.add_argument("--disable-popup-blocking")
                 options.add_argument("--disable-infobars")
-                options.add_argument("--disable-dev-shm-usage")  # Giảm memory issues
-                options.add_argument("--disable-gpu")  # Tắt GPU nếu headless
+                options.add_argument("--disable-dev-shm-usage")
+
+                # KHÔNG dùng headless - thay bằng mini window
+                if self.headless:
+                    # Mini window: cửa sổ nhỏ góc màn hình
+                    options.add_argument("--window-size=400,300")
+                    options.add_argument("--window-position=0,0")
+                    self.log("   Chế độ mini window (400x300)")
+                else:
+                    options.add_argument("--window-size=1920,1080")
+                    self.log("   Chế độ full window")
 
                 # Download preferences
                 if download_dir:
@@ -100,7 +107,7 @@ class GrokSeleniumAutomation:
                         "download.default_directory": download_dir,
                         "download.prompt_for_download": False,
                         "download.directory_upgrade": True,
-                        "safebrowsing.enabled": False  # Bỏ scan file
+                        "safebrowsing.enabled": False
                     }
                     options.add_experimental_option("prefs", prefs)
 
@@ -112,25 +119,28 @@ class GrokSeleniumAutomation:
                     user_data_dir = str(profile)
                     self.log(f"   Profile: {user_data_dir}")
 
-                # Headless mode
-                if self.headless:
-                    self.log("   Chế độ ẩn")
-
-                # Khởi tạo driver - version_main để không phải tải lại driver
+                # Khởi tạo driver - KHÔNG dùng headless
                 self.driver = uc.Chrome(
                     options=options,
-                    headless=self.headless,
+                    headless=False,  # Luôn False, dùng mini window thay thế
                     user_data_dir=user_data_dir,
                     use_subprocess=True,
-                    version_main=None  # Auto detect
+                    version_main=None
                 )
+
+                # Minimize window nếu chạy ẩn
+                if self.headless:
+                    try:
+                        self.driver.minimize_window()
+                        self.log("   Đã minimize window")
+                    except:
+                        pass
 
                 self.log_ok("Chrome đã sẵn sàng!")
                 return True
 
             except Exception as e:
                 self.log_err(f"Lỗi lần {attempt + 1}: {e}")
-                # Cleanup nếu có
                 if hasattr(self, 'driver') and self.driver:
                     try:
                         self.driver.quit()

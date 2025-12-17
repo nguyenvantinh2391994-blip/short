@@ -160,14 +160,21 @@ class GrokSeleniumAutomation:
                 f'"{chrome_exe}"',
                 f'--remote-debugging-port={self.debug_port}',
                 f'--profile-directory="{self.profile_name}"',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--disable-extensions',
+                '--disable-popup-blocking',
+                '--disable-dev-shm-usage',
             ]
 
-            # Thêm window size nếu cần
+            # Window size - luôn dùng size đủ lớn để page load đúng
             if self.headless:
-                cmd_parts.append('--window-size=400,300')
-                cmd_parts.append('--window-position=-1000,-1000')
+                cmd_parts.append('--window-size=1200,800')
+                cmd_parts.append('--start-minimized')  # Minimize thay vì giấu ra ngoài
+                self.log("   Chế độ ẩn (minimize)")
             else:
                 cmd_parts.append('--window-size=1200,800')
+                self.log("   Chế độ hiện")
 
             cmd = ' '.join(cmd_parts)
             self.log(f"   Lệnh: {cmd}")
@@ -176,7 +183,7 @@ class GrokSeleniumAutomation:
             self.chrome_process = subprocess.Popen(cmd, shell=True)
             self.log(f"   Chrome đã mở (PID: {self.chrome_process.pid})")
 
-            # Đợi Chrome khởi động (đơn giản)
+            # Đợi Chrome khởi động
             self.log("   Đợi 5s cho Chrome khởi động...")
             time.sleep(5)
             return True

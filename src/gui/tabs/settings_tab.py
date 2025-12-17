@@ -190,9 +190,10 @@ class SettingsTab:
         self.app.save_config()
 
     def open_browser_login(self, index: int):
-        """Mở browser với profile để user login tài khoản (dùng undetected-chromedriver)"""
+        """Mở browser với profile để user login tài khoản (dùng Chrome đã cài)"""
         profile = self.app.config.browser_profiles[index]
         profile_path = profile.get("profile_path", "")
+        chrome_path = profile.get("chrome_path", "")
         profile_name = profile.get("name", "Profile")
 
         if not profile_path:
@@ -202,27 +203,39 @@ class SettingsTab:
         # Tạo thư mục profile nếu chưa có
         Path(profile_path).mkdir(parents=True, exist_ok=True)
 
-        # Mở Chrome với undetected-chromedriver (không headless)
+        # Mở Chrome bằng Selenium
         def run_chrome():
             try:
-                import undetected_chromedriver as uc
+                from selenium import webdriver
+                from selenium.webdriver.chrome.options import Options
 
                 self.app.log(f"Mở browser để login: {profile_name}")
 
-                options = uc.ChromeOptions()
+                options = Options()
                 options.add_argument("--window-size=1200,800")
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                options.add_argument("--disable-blink-features=AutomationControlled")
 
-                driver = uc.Chrome(
-                    options=options,
-                    headless=False,
-                    user_data_dir=profile_path,
-                    use_subprocess=True
-                )
+                # Set Chrome path
+                if chrome_path and Path(chrome_path).exists():
+                    options.binary_location = chrome_path
 
+                # Profile path
+                if "User Data" in profile_path:
+                    parts = profile_path.split("User Data")
+                    user_data = parts[0] + "User Data"
+                    profile_dir = parts[1].strip("\\/") if len(parts) > 1 else "Default"
+                    options.add_argument(f"--user-data-dir={user_data}")
+                    options.add_argument(f"--profile-directory={profile_dir}")
+                else:
+                    options.add_argument(f"--user-data-dir={profile_path}")
+
+                options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+                driver = webdriver.Chrome(options=options)
                 driver.get("https://grok.com")
                 self.app.log("Browser đã mở. Hãy đăng nhập và đóng browser khi xong.")
-
-                # Không tự đóng - để user tự đóng sau khi login
 
             except Exception as e:
                 self.app.log(f"Lỗi mở browser: {e}", "ERROR")
@@ -580,8 +593,9 @@ Thư mục Profile Chrome thường ở:
         self.destroy()
 
     def open_login(self):
-        """Mở browser để login ngay (dùng undetected-chromedriver)"""
+        """Mở browser để login ngay (dùng Chrome đã cài)"""
         profile_path = self.profile_entry.get()
+        chrome_path = self.chrome_entry.get()
 
         if not profile_path:
             messagebox.showerror("Lỗi", "Vui lòng nhập thư mục Profile trước!")
@@ -592,18 +606,32 @@ Thư mục Profile Chrome thường ở:
 
         def run_chrome():
             try:
-                import undetected_chromedriver as uc
+                from selenium import webdriver
+                from selenium.webdriver.chrome.options import Options
 
-                options = uc.ChromeOptions()
+                options = Options()
                 options.add_argument("--window-size=1200,800")
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                options.add_argument("--disable-blink-features=AutomationControlled")
 
-                driver = uc.Chrome(
-                    options=options,
-                    headless=False,
-                    user_data_dir=profile_path,
-                    use_subprocess=True
-                )
+                # Set Chrome path
+                if chrome_path and Path(chrome_path).exists():
+                    options.binary_location = chrome_path
 
+                # Profile path
+                if "User Data" in profile_path:
+                    parts = profile_path.split("User Data")
+                    user_data = parts[0] + "User Data"
+                    profile_dir = parts[1].strip("\\/") if len(parts) > 1 else "Default"
+                    options.add_argument(f"--user-data-dir={user_data}")
+                    options.add_argument(f"--profile-directory={profile_dir}")
+                else:
+                    options.add_argument(f"--user-data-dir={profile_path}")
+
+                options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+                driver = webdriver.Chrome(options=options)
                 driver.get("https://grok.com")
 
             except Exception as e:

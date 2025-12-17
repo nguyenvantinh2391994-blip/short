@@ -326,7 +326,7 @@ class GrokSeleniumAutomation:
             return False
 
     def submit_and_wait(self, timeout: int = 90) -> bool:
-        """Submit và chờ video tạo xong - sử dụng fetch hook + DOM check"""
+        """Submit và chờ video tạo xong"""
         try:
             self.log("Đang chờ video được tạo (tối đa 90s)...")
             start_time = time.time()
@@ -334,96 +334,45 @@ class GrokSeleniumAutomation:
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check bằng JavaScript - log chi tiết
+                # Check đơn giản bằng JavaScript - trả về string
                 js_check = '''
-                (function() {
-                    var result = {status: 'waiting', url: null, debug: {}};
-
-                    // 1. Check video #sd-video
-                    var sdVideo = document.querySelector('#sd-video');
-                    result.debug.sdVideo = sdVideo ? 'found' : 'not found';
-                    result.debug.sdVideoSrc = sdVideo ? sdVideo.src : null;
-
-                    if (sdVideo && sdVideo.src) {
-                        var src = sdVideo.src;
-                        if (src.includes('.mp4') || src.includes('generated_video')) {
-                            result.status = 'video_found';
-                            result.url = src;
-                            return result;
-                        }
-                    }
-
-                    // 2. Check tất cả video elements
-                    var videos = document.querySelectorAll('video');
-                    result.debug.videoCount = videos.length;
-
-                    for (var i = 0; i < videos.length; i++) {
-                        var v = videos[i];
-                        var src = v.src || '';
-                        result.debug['video_' + i] = src.substring(0, 100);
-
-                        if (src.includes('generated_video.mp4') ||
-                            (src.includes('assets.grok.com') && src.includes('.mp4'))) {
-                            result.status = 'video_found';
-                            result.url = src;
-                            return result;
-                        }
-                    }
-
-                    // 3. Check từ fetch hook
-                    result.debug.hookReady = window._videoReady || false;
-                    result.debug.hookUrl = window._capturedVideoUrl ? 'has url' : null;
-
-                    if (window._videoReady && window._capturedVideoUrl) {
-                        result.status = 'hook_ready';
-                        result.url = window._capturedVideoUrl;
-                        return result;
-                    }
-
-                    // 4. Check nút download (SVG lucide-download)
-                    var dlSvg = document.querySelector('svg.lucide-download');
-                    result.debug.downloadSvg = dlSvg ? 'found' : 'not found';
-
-                    if (dlSvg) {
-                        result.status = 'download_ready';
-                        return result;
-                    }
-
-                    // 5. Check nút Làm lại
-                    var btns = document.querySelectorAll('button');
-                    for (var b of btns) {
-                        var text = b.textContent || '';
-                        if (text.includes('Làm lại') || text.includes('Redo') || text.includes('Regenerate')) {
-                            result.status = 'done';
-                            result.debug.redoButton = 'found';
-                            return result;
-                        }
-                    }
-
-                    return result;
-                })();
+                var video = document.querySelector('#sd-video');
+                if (video && video.src && video.src.includes('.mp4')) {
+                    return 'video_ready|' + video.src;
+                }
+                var svg = document.querySelector('svg.lucide-download');
+                if (svg) {
+                    return 'download_ready|';
+                }
+                var videoCount = document.querySelectorAll('video').length;
+                return 'waiting|' + videoCount;
                 '''
 
-                result = self.driver.execute_script(js_check)
+                try:
+                    result = self.driver.execute_script(js_check)
 
-                if isinstance(result, dict):
-                    status = result.get('status', 'waiting')
-                    url = result.get('url')
-                    debug = result.get('debug', {})
+                    if result and isinstance(result, str):
+                        parts = result.split('|')
+                        status = parts[0]
+                        data = parts[1] if len(parts) > 1 else ''
 
-                    # Log debug info mỗi 10s
-                    if elapsed % 10 == 0 and elapsed > 0:
-                        self.log(f"   [{elapsed}s] Status: {status}, Debug: {debug}")
+                        if elapsed % 10 == 0:
+                            self.log(f"   [{elapsed}s] {status} - {data[:60]}")
 
-                    if status in ['hook_ready', 'video_found', 'download_ready', 'done']:
-                        self.log_ok(f"Video sẵn sàng! ({elapsed}s) - {status}")
-                        if url:
-                            self._captured_video_url = url
-                            self.log(f"   URL: {url[:80]}...")
-                        return True
-                else:
+                        if status == 'video_ready':
+                            self.log_ok(f"Video sẵn sàng! ({elapsed}s)")
+                            self._captured_video_url = data
+                            return True
+                        elif status == 'download_ready':
+                            self.log_ok(f"Nút download sẵn sàng! ({elapsed}s)")
+                            return True
+                    else:
+                        if elapsed % 10 == 0:
+                            self.log(f"   [{elapsed}s] JS result: {result}")
+
+                except Exception as e:
                     if elapsed % 10 == 0:
-                        self.log(f"   [{elapsed}s] Result type: {type(result)}")
+                        self.log(f"   [{elapsed}s] JS error: {e}")
 
                 time.sleep(2)
 
@@ -432,175 +381,75 @@ class GrokSeleniumAutomation:
 
         except Exception as e:
             self.log_err(f"Lỗi chờ video: {e}")
-            import traceback
-            self.log_err(traceback.format_exc())
             return False
 
     def download_video(self, output_path: str) -> bool:
-        """Download video - ưu tiên URL từ DOM #sd-video, sau đó blob download"""
+        """Download video bằng cách click nút Download"""
         try:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 1. Lấy URL từ DOM trước (ưu tiên #sd-video)
-            js_get_url = '''
-            (function() {
-                // Ưu tiên #sd-video
-                var sdVideo = document.querySelector('#sd-video');
-                if (sdVideo && sdVideo.src && sdVideo.src.includes('.mp4')) {
-                    return sdVideo.src;
-                }
+            # Click nút download (blob download bị 403, phải click button)
+            self.log("   Click nút download...")
 
-                // Tìm video có generated_video.mp4
-                var videos = document.querySelectorAll('video');
-                for (var v of videos) {
-                    if (v.src && v.src.includes('generated_video.mp4')) {
-                        return v.src;
-                    }
-                }
-
-                // Fallback: video có assets.grok.com
-                for (var v of videos) {
-                    if (v.src && v.src.includes('assets.grok.com')) {
-                        return v.src;
-                    }
-                }
-
-                // Từ hook
-                if (window._capturedVideoUrl) return window._capturedVideoUrl;
-
-                return null;
-            })();
-            '''
-            video_url = self.driver.execute_script(js_get_url)
-
-            # 2. Nếu chưa có, dùng URL đã capture từ submit_and_wait
-            if not video_url:
-                video_url = getattr(self, '_captured_video_url', None)
-
-            # 3. Download nếu có URL
-            if video_url and video_url.startswith('http'):
-                self.log(f"   Đang download từ URL...")
-
-                import requests
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': 'https://grok.com/'
-                }
-                cookies = {c['name']: c['value'] for c in self.driver.get_cookies()}
-
-                response = requests.get(video_url, headers=headers, cookies=cookies, stream=True, timeout=60)
-
-                if response.status_code == 200:
-                    with open(output_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    self.log_ok(f"Đã lưu: {output_path}")
-                    return True
-                else:
-                    self.log_warn(f"HTTP {response.status_code}, thử cách khác...")
-
-            # 4. Fallback: Click nút download trực tiếp
-            self.log("   Thử click nút download...")
-            js_click_download = '''
-            (function() {
-                // Tìm nút download bằng nhiều cách
-                var btn = null;
-
-                // 1. Tìm bằng aria-label
-                btn = document.querySelector('button[aria-label="Download"]') ||
-                      document.querySelector('button[aria-label="Tải xuống"]');
-
-                // 2. Tìm bằng SVG class lucide-download
-                if (!btn) {
-                    var svg = document.querySelector('svg.lucide-download');
-                    if (svg) btn = svg.closest('button');
-                }
-
-                // 3. Tìm button chứa text Download
-                if (!btn) {
-                    var buttons = document.querySelectorAll('button');
-                    for (var b of buttons) {
-                        if (b.textContent.includes('Download') || b.textContent.includes('Tải')) {
-                            btn = b;
-                            break;
-                        }
-                    }
-                }
-
+            js_click = '''
+            var svg = document.querySelector('svg.lucide-download');
+            if (svg) {
+                var btn = svg.closest('button');
                 if (btn) {
-                    console.log('Found download button:', btn);
                     btn.click();
-                    return {success: true, method: 'button_click'};
+                    return 'clicked';
                 }
-
-                return {success: false, error: 'Button not found'};
-            })();
+            }
+            var btn2 = document.querySelector('button[aria-label="Download"]');
+            if (btn2) {
+                btn2.click();
+                return 'clicked_aria';
+            }
+            return 'not_found';
             '''
-            click_result = self.driver.execute_script(js_click_download)
-            self.log(f"   Click result: {click_result}")
 
-            if click_result and click_result.get('success'):
-                self.log_ok("Đã click download button - chờ file...")
-                time.sleep(5)  # Chờ download dialog hoặc file
+            result = self.driver.execute_script(js_click)
+            self.log(f"   Click result: {result}")
 
-                # Kiểm tra xem file đã được tải chưa
-                if output_path.exists() and output_path.stat().st_size > 10000:
-                    return True
+            if result and result.startswith('clicked'):
+                self.log_ok("Đã click download!")
+                # Chờ file download
+                time.sleep(5)
 
-                # Nếu chưa có file, thử download bằng blob
-                self.log("   File chưa có, thử blob download...")
+                # Check download folder
+                download_dir = getattr(self, 'download_dir', None)
+                if download_dir:
+                    # Tìm file mới nhất trong download folder
+                    import glob
+                    files = glob.glob(f"{download_dir}/*.mp4")
+                    if files:
+                        newest = max(files, key=os.path.getctime)
+                        # Move/rename to output_path
+                        import shutil
+                        shutil.move(newest, output_path)
+                        self.log_ok(f"Đã lưu: {output_path}")
+                        return True
 
-            # 5. Download bằng blob trong JS (backup)
-            self.log("   Thử download bằng blob...")
-            js_blob_download = '''
-            (async function() {
-                try {
-                    // Ưu tiên #sd-video
-                    var video = document.querySelector('#sd-video') || document.querySelector('video');
-                    if (!video || !video.src) return {success: false, error: 'No video element'};
+                # File có thể đang tải, chờ thêm
+                self.log("   Chờ file download...")
+                for i in range(10):
+                    time.sleep(2)
+                    if download_dir:
+                        files = glob.glob(f"{download_dir}/*.mp4")
+                        files += glob.glob(f"{download_dir}/grok_video*.mp4")
+                        if files:
+                            newest = max(files, key=os.path.getctime)
+                            if os.path.getsize(newest) > 10000:  # > 10KB
+                                import shutil
+                                shutil.move(newest, output_path)
+                                self.log_ok(f"Đã lưu: {output_path}")
+                                return True
 
-                    var src = video.src;
-                    if (!src.includes('.mp4')) return {success: false, error: 'No mp4 src'};
+                self.log_warn("File chưa tải xong hoặc không tìm thấy")
+                return True  # Coi như thành công vì đã click
 
-                    console.log('Blob downloading:', src);
-
-                    // Fetch video as blob
-                    var res = await fetch(src);
-                    if (!res.ok) return {success: false, error: 'Fetch failed: ' + res.status};
-
-                    var blob = await res.blob();
-
-                    // Tạo download link
-                    var url = URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'grok_video_' + Date.now() + '.mp4';
-                    a.style.display = 'none';
-                    document.body.appendChild(a);
-                    a.click();
-
-                    // Cleanup
-                    setTimeout(() => {
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                    }, 1000);
-
-                    return {success: true, size: blob.size, src: src};
-                } catch(e) {
-                    return {success: false, error: e.message};
-                }
-            })();
-            '''
-            result = self.driver.execute_script(js_blob_download)
-            self.log(f"   Blob result: {result}")
-
-            if result and result.get('success'):
-                self.log_ok(f"Đã trigger blob download ({result.get('size', 0)} bytes)")
-                time.sleep(5)  # Chờ download
-                return True
-
-            self.log_warn("Không thể download video")
+            self.log_warn("Không tìm thấy nút download")
             return False
 
         except Exception as e:

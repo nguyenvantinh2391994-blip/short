@@ -70,6 +70,59 @@ class GrokSeleniumAutomation:
             self.on_log(msg, "warning")
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
+    def _hide_chrome_window(self):
+        """Ẩn Chrome window khỏi taskbar (Windows only)"""
+        try:
+            import platform
+            if platform.system() != 'Windows':
+                return
+
+            import ctypes
+            from ctypes import wintypes
+
+            # Windows API constants
+            GWL_EXSTYLE = -20
+            WS_EX_TOOLWINDOW = 0x00000080  # Ẩn khỏi taskbar
+            WS_EX_APPWINDOW = 0x00040000
+            SW_HIDE = 0
+
+            user32 = ctypes.windll.user32
+
+            # Tìm Chrome window
+            def enum_windows_callback(hwnd, results):
+                if user32.IsWindowVisible(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        title = buff.value
+                        # Tìm Chrome window
+                        if 'Chrome' in title or 'Grok' in title:
+                            results.append(hwnd)
+                return True
+
+            # Callback type
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, ctypes.py_object)
+            callback = WNDENUMPROC(enum_windows_callback)
+
+            results = []
+            user32.EnumWindows(callback, ctypes.py_object(results))
+
+            for hwnd in results:
+                # Lấy style hiện tại
+                style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                # Thêm WS_EX_TOOLWINDOW để ẩn khỏi taskbar, bỏ WS_EX_APPWINDOW
+                new_style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+                user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+                # Di chuyển window ra ngoài màn hình
+                user32.SetWindowPos(hwnd, 0, -2000, -2000, 0, 0, 0x0001 | 0x0004)  # SWP_NOSIZE | SWP_NOZORDER
+
+            if results:
+                self.log(f"   Đã ẩn {len(results)} Chrome window khỏi taskbar")
+
+        except Exception as e:
+            self.log(f"   Không thể ẩn Chrome: {e}")
+
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
         """Setup Chrome driver sử dụng undetected-chromedriver - có retry"""
         for attempt in range(max_retries):
@@ -128,7 +181,9 @@ class GrokSeleniumAutomation:
                 )
 
                 if self.headless:
-                    self.log("   Chế độ ẩn (window ngoài màn hình)")
+                    self.log("   Chế độ ẩn")
+                    # Ẩn Chrome khỏi taskbar (Windows)
+                    self._hide_chrome_window()
 
                 self.log_ok("Chrome đã sẵn sàng!")
                 return True

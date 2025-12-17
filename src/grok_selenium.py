@@ -112,7 +112,7 @@ class GrokSeleniumAutomation:
                     user_data_dir = str(profile)
                     self.log(f"   Profile: {user_data_dir}")
 
-                # Khởi tạo driver - KHÔNG dùng headless, sẽ minimize sau
+                # Khởi tạo driver - KHÔNG dùng headless, sẽ giấu bằng cách đẩy ra ngoài màn hình
                 self.driver = uc.Chrome(
                     options=options,
                     headless=False,  # Không dùng headless vì hay lỗi
@@ -121,11 +121,12 @@ class GrokSeleniumAutomation:
                     version_main=None  # Auto detect
                 )
 
-                # Nếu chạy ẩn thì minimize window
+                # Nếu chạy ẩn thì đẩy window ra ngoài màn hình (không thấy)
                 if self.headless:
-                    self.log("   Chế độ ẩn (minimize)")
+                    self.log("   Chế độ ẩn (giấu window)")
                     try:
-                        self.driver.minimize_window()
+                        # Đẩy window ra ngoài màn hình để không nhìn thấy
+                        self.driver.set_window_position(-10000, -10000)
                     except:
                         pass
 

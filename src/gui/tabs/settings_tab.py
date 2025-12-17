@@ -221,25 +221,36 @@ class SettingsTab:
                         continue
 
                 # Mở Chrome đơn giản bằng subprocess
-                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port}'
+                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port} --no-first-run --no-default-browser-check'
                 self.app.log(f"   Lệnh: {cmd}")
 
                 process = subprocess.Popen(cmd, shell=True)
                 self.app.log(f"   Chrome đã mở (PID: {process.pid})")
 
-                # Đợi Chrome khởi động rồi connect Selenium
+                # Đợi Chrome khởi động và kiểm tra sẵn sàng
                 import time
-                time.sleep(3)
+                import urllib.request
+                self.app.log("   Đợi Chrome sẵn sàng...")
+                for i in range(10):
+                    time.sleep(1)
+                    try:
+                        url = f"http://127.0.0.1:{debug_port}/json/version"
+                        response = urllib.request.urlopen(url, timeout=2)
+                        if response.status == 200:
+                            self.app.log(f"   Chrome sẵn sàng sau {i+1}s")
+                            break
+                    except:
+                        pass
 
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
                 from selenium.webdriver.chrome.service import Service
-                from webdriver_manager.chrome import ChromeDriverManager
+                from src.grok_selenium import get_chromedriver_path
 
                 options = Options()
                 options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
 
-                service = Service(ChromeDriverManager().install())
+                service = Service(get_chromedriver_path())
                 driver = webdriver.Chrome(service=service, options=options)
                 driver.get("https://grok.com")
 
@@ -619,21 +630,30 @@ Tên Profile Chrome (ví dụ: "Profile 5", "Default"):
                         continue
 
                 # Mở Chrome đơn giản bằng subprocess
-                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port}'
+                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port} --no-first-run --no-default-browser-check'
                 process = subprocess.Popen(cmd, shell=True)
 
-                # Đợi Chrome khởi động rồi connect Selenium
-                time.sleep(3)
+                # Đợi Chrome khởi động và kiểm tra sẵn sàng
+                import urllib.request
+                for i in range(10):
+                    time.sleep(1)
+                    try:
+                        url = f"http://127.0.0.1:{debug_port}/json/version"
+                        response = urllib.request.urlopen(url, timeout=2)
+                        if response.status == 200:
+                            break
+                    except:
+                        pass
 
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
                 from selenium.webdriver.chrome.service import Service
-                from webdriver_manager.chrome import ChromeDriverManager
+                from src.grok_selenium import get_chromedriver_path
 
                 options = Options()
                 options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
 
-                service = Service(ChromeDriverManager().install())
+                service = Service(get_chromedriver_path())
                 driver = webdriver.Chrome(service=service, options=options)
                 driver.get("https://grok.com")
 

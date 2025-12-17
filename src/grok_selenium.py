@@ -25,6 +25,16 @@ from rich.console import Console
 
 console = Console()
 
+# Cache ChromeDriver path để không cần tải lại mỗi lần
+_CACHED_CHROMEDRIVER_PATH = None
+
+def get_chromedriver_path() -> str:
+    """Lấy path ChromeDriver (cache để không tải lại)"""
+    global _CACHED_CHROMEDRIVER_PATH
+    if _CACHED_CHROMEDRIVER_PATH is None:
+        _CACHED_CHROMEDRIVER_PATH = ChromeDriverManager().install()
+    return _CACHED_CHROMEDRIVER_PATH
+
 # Chrome paths mặc định
 DEFAULT_CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -150,6 +160,8 @@ class GrokSeleniumAutomation:
                 f'"{chrome_exe}"',
                 f'--remote-debugging-port={self.debug_port}',
                 f'--profile-directory="{self.profile_name}"',
+                '--no-first-run',
+                '--no-default-browser-check',
             ]
 
             # Thêm window size nếu cần
@@ -166,12 +178,29 @@ class GrokSeleniumAutomation:
             self.chrome_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.log(f"   Chrome đã mở (PID: {self.chrome_process.pid})")
 
-            # Đợi Chrome khởi động
-            time.sleep(3)
-            return True
+            # Đợi Chrome khởi động và kiểm tra port
+            self.log("   Đợi Chrome sẵn sàng...")
+            for i in range(10):  # Chờ tối đa 10s
+                time.sleep(1)
+                if self._check_chrome_ready():
+                    self.log_ok(f"Chrome sẵn sàng sau {i+1}s")
+                    return True
+
+            self.log_warn("Chrome chưa sẵn sàng sau 10s, thử tiếp...")
+            return True  # Vẫn thử connect
 
         except Exception as e:
             self.log_err(f"Lỗi mở Chrome subprocess: {e}")
+            return False
+
+    def _check_chrome_ready(self) -> bool:
+        """Kiểm tra Chrome đã sẵn sàng chưa bằng cách thử connect port"""
+        try:
+            import urllib.request
+            url = f"http://127.0.0.1:{self.debug_port}/json/version"
+            response = urllib.request.urlopen(url, timeout=2)
+            return response.status == 200
+        except:
             return False
 
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
@@ -201,9 +230,8 @@ class GrokSeleniumAutomation:
                 if download_dir:
                     self.download_dir = download_dir
 
-                # Tải ChromeDriver và connect
-                self.log("   Đang tải ChromeDriver...")
-                service = Service(ChromeDriverManager().install())
+                # Dùng ChromeDriver (đã cache)
+                service = Service(get_chromedriver_path())
                 self.driver = webdriver.Chrome(service=service, options=options)
 
                 self.log_ok("Chrome đã sẵn sàng!")

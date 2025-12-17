@@ -6,6 +6,8 @@ import customtkinter as ctk
 from pathlib import Path
 from tkinter import filedialog, messagebox
 import json
+import subprocess
+import threading
 
 
 class SettingsTab:
@@ -142,6 +144,15 @@ class SettingsTab:
             command=lambda: self.delete_profile(index)
         ).pack(side="right", padx=2)
 
+        # Login button - Mở browser để đăng nhập
+        ctk.CTkButton(
+            row,
+            text="🔑 Login",
+            width=70,
+            fg_color="#FF9800",
+            command=lambda: self.open_browser_login(index)
+        ).pack(side="right", padx=2)
+
     def add_profile(self):
         """Add new browser profile"""
         dialog = ProfileDialog(self.parent, self.app, None)
@@ -177,6 +188,42 @@ class SettingsTab:
         """Toggle profile enabled state"""
         self.app.config.browser_profiles[index]["enabled"] = enabled
         self.app.save_config()
+
+    def open_browser_login(self, index: int):
+        """Mở browser với profile để user login tài khoản"""
+        profile = self.app.config.browser_profiles[index]
+        chrome_path = profile.get("chrome_path", "")
+        profile_path = profile.get("profile_path", "")
+        profile_name = profile.get("name", "Profile")
+
+        if not chrome_path or not Path(chrome_path).exists():
+            messagebox.showerror("Lỗi", f"Không tìm thấy Chrome tại:\n{chrome_path}")
+            return
+
+        # Mở Chrome với profile (không phải headless)
+        def run_chrome():
+            try:
+                args = [chrome_path]
+                if profile_path:
+                    args.append(f"--user-data-dir={profile_path}")
+                args.append("https://grok.com")  # Mở thẳng trang Grok
+
+                self.app.log(f"Mở browser để login: {profile_name}")
+                subprocess.Popen(args)
+
+            except Exception as e:
+                self.app.log(f"Lỗi mở browser: {e}", "ERROR")
+
+        # Chạy trong thread để không block UI
+        threading.Thread(target=run_chrome, daemon=True).start()
+
+        messagebox.showinfo(
+            "Login",
+            f"Đã mở Chrome với profile '{profile_name}'.\n\n"
+            "Hãy đăng nhập tài khoản Grok của bạn.\n"
+            "Sau khi login xong, bạn có thể đóng browser.\n\n"
+            "Lần sau chạy ẩn sẽ tự dùng tài khoản này."
+        )
 
     def setup_sheets_config(self):
         """Google Sheets configuration"""
@@ -473,6 +520,14 @@ Thư mục Profile Chrome thường ở:
 
         ctk.CTkButton(
             btn_frame,
+            text="🔑 Login ngay",
+            command=self.open_login,
+            width=100,
+            fg_color="#FF9800"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            btn_frame,
             text="❌ Hủy",
             command=self.cancel,
             width=100
@@ -508,6 +563,34 @@ Thư mục Profile Chrome thường ở:
             "enabled": True
         }
         self.destroy()
+
+    def open_login(self):
+        """Mở browser để login ngay"""
+        chrome_path = self.chrome_entry.get()
+        profile_path = self.profile_entry.get()
+
+        if not chrome_path or not Path(chrome_path).exists():
+            messagebox.showerror("Lỗi", f"Không tìm thấy Chrome tại:\n{chrome_path}")
+            return
+
+        def run_chrome():
+            try:
+                args = [chrome_path]
+                if profile_path:
+                    args.append(f"--user-data-dir={profile_path}")
+                args.append("https://grok.com")
+                subprocess.Popen(args)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể mở browser: {e}")
+
+        threading.Thread(target=run_chrome, daemon=True).start()
+
+        messagebox.showinfo(
+            "Login",
+            "Đã mở Chrome.\n\n"
+            "Hãy đăng nhập tài khoản Grok của bạn.\n"
+            "Sau khi login xong, đóng browser và nhấn 'Lưu'."
+        )
 
     def cancel(self):
         """Cancel and close"""

@@ -135,7 +135,7 @@ class GrokWorker:
             # Create Selenium automation instance (hỗ trợ headless)
             automation = GrokSeleniumAutomation(
                 chrome_path=chrome_path,
-                profile_name=profile_path,  # profile_path giờ chứa tên profile (ví dụ "Profile 5")
+                profile_path=profile_path,
                 headless=self.headless,
                 on_log=self.log
             )

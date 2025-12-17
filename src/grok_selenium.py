@@ -1,82 +1,25 @@
 """
-Grok Selenium Automation
-Sử dụng Chrome đã cài trên máy với cách mở đơn giản (subprocess + remote debugging)
+Grok Selenium Automation - Hỗ trợ chạy ẩn (headless)
+Sử dụng undetected-chromedriver để tránh bị phát hiện bot
 """
 
 import time
 import os
-import subprocess
-import socket
 from pathlib import Path
 from typing import Optional, List, Callable
 from dataclasses import dataclass
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+# Sử dụng undetected-chromedriver thay vì selenium thường
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
 
 from rich.console import Console
 
 console = Console()
-
-# Cache ChromeDriver path để không cần tải lại mỗi lần
-_CACHED_CHROMEDRIVER_PATH = None
-
-def get_chromedriver_path() -> str:
-    """Lấy path ChromeDriver (cache để không tải lại)"""
-    global _CACHED_CHROMEDRIVER_PATH
-    if _CACHED_CHROMEDRIVER_PATH is None:
-        _CACHED_CHROMEDRIVER_PATH = ChromeDriverManager().install()
-    return _CACHED_CHROMEDRIVER_PATH
-
-# Chrome paths mặc định
-DEFAULT_CHROME_PATHS = [
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium-browser",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-]
-
-# Default Chrome User Data dir
-DEFAULT_USER_DATA_DIRS = [
-    r"C:\Users\{user}\AppData\Local\Google\Chrome\User Data",
-    "~/.config/google-chrome",
-    "~/Library/Application Support/Google/Chrome"
-]
-
-
-def find_free_port(start_port: int = 9222) -> int:
-    """Tìm port trống để dùng cho remote debugging"""
-    for port in range(start_port, start_port + 100):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('127.0.0.1', port))
-                return port
-        except OSError:
-            continue
-    return start_port
-
-
-def get_default_user_data_dir() -> str:
-    """Lấy thư mục User Data mặc định của Chrome"""
-    import getpass
-    user = getpass.getuser()
-
-    for path_template in DEFAULT_USER_DATA_DIRS:
-        path = path_template.format(user=user)
-        path = os.path.expanduser(path)
-        if os.path.exists(path):
-            return path
-
-    # Fallback
-    return os.path.expanduser(DEFAULT_USER_DATA_DIRS[0].format(user=user))
 
 
 @dataclass
@@ -88,27 +31,23 @@ class GrokVideoResult:
 
 
 class GrokSeleniumAutomation:
-    """Grok Automation sử dụng Selenium với cách mở Chrome đơn giản (subprocess + remote debugging)"""
+    """Grok Automation sử dụng Selenium - hỗ trợ chạy ẩn"""
 
     GROK_IMAGINE_URL = "https://grok.com/imagine"
 
     def __init__(
         self,
         chrome_path: str = None,
-        profile_name: str = None,  # Tên profile Chrome, ví dụ "Profile 5"
-        user_data_dir: str = None,  # Thư mục User Data của Chrome
+        profile_path: str = None,
         headless: bool = True,
         on_log: Optional[Callable[[str, str], None]] = None
     ):
         self.chrome_path = chrome_path
-        self.profile_name = profile_name or "Default"
-        self.user_data_dir = user_data_dir or get_default_user_data_dir()
+        self.profile_path = profile_path
         self.headless = headless
         self.on_log = on_log
-        self.driver = None
-        self.chrome_process = None  # Process Chrome được mở bằng subprocess
-        self.debug_port = None  # Port remote debugging
-        self._captured_video_url = None
+        self.driver: Optional[uc.Chrome] = None
+        self._captured_video_url = None  # URL video bắt được từ hook
 
     def log(self, msg: str, level: str = "info"):
         """Log message"""
@@ -131,69 +70,8 @@ class GrokSeleniumAutomation:
             self.on_log(msg, "warning")
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
-    def _find_chrome_path(self) -> Optional[str]:
-        """Tìm Chrome executable trên máy"""
-        # Ưu tiên chrome_path được set
-        if self.chrome_path and os.path.exists(self.chrome_path):
-            return self.chrome_path
-
-        # Tìm trong các path mặc định
-        for path in DEFAULT_CHROME_PATHS:
-            if os.path.exists(path):
-                return path
-
-        return None
-
-    def _launch_chrome_subprocess(self) -> bool:
-        """Mở Chrome bằng subprocess (như Windows Run) với remote debugging"""
-        try:
-            chrome_exe = self._find_chrome_path()
-            if not chrome_exe:
-                self.log_err("Không tìm thấy Chrome!")
-                return False
-
-            # Dùng port cố định 9222
-            self.debug_port = 9222
-
-            # Build command - đơn giản như Windows Run
-            cmd_parts = [
-                f'"{chrome_exe}"',
-                f'--remote-debugging-port={self.debug_port}',
-                f'--profile-directory="{self.profile_name}"',
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--disable-extensions',
-                '--disable-popup-blocking',
-                '--disable-dev-shm-usage',
-            ]
-
-            # Window size
-            cmd_parts.append('--window-size=1920,1080')
-
-            if self.headless:
-                cmd_parts.append('--headless=new')  # Dùng headless mode thực sự của Chrome
-                self.log("   Chế độ ẩn (headless)")
-            else:
-                self.log("   Chế độ hiện")
-
-            cmd = ' '.join(cmd_parts)
-            self.log(f"   Lệnh: {cmd}")
-
-            # Mở Chrome bằng subprocess
-            self.chrome_process = subprocess.Popen(cmd, shell=True)
-            self.log(f"   Chrome đã mở (PID: {self.chrome_process.pid})")
-
-            # Đợi Chrome khởi động
-            self.log("   Đợi 5s cho Chrome khởi động...")
-            time.sleep(5)
-            return True
-
-        except Exception as e:
-            self.log_err(f"Lỗi mở Chrome subprocess: {e}")
-            return False
-
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:
-        """Setup Chrome driver - Dùng subprocess mở Chrome + Selenium connect vào"""
+        """Setup Chrome driver sử dụng undetected-chromedriver - có retry"""
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
@@ -201,34 +79,64 @@ class GrokSeleniumAutomation:
                     time.sleep(2)
 
                 self.log("Đang khởi tạo Chrome...")
-                self.log(f"   Chrome: {self._find_chrome_path()}")
-                self.log(f"   Profile: {self.profile_name}")
 
-                # Bước 1: Mở Chrome bằng subprocess
-                if not self._launch_chrome_subprocess():
-                    raise Exception("Không thể mở Chrome")
+                # Options cho undetected-chromedriver
+                options = uc.ChromeOptions()
 
-                # Bước 2: Selenium connect vào Chrome đang chạy
-                self.log(f"   Connect vào Chrome (port {self.debug_port})...")
+                # Tối ưu tốc độ khởi động
+                options.add_argument("--window-size=1920,1080")
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                options.add_argument("--disable-extensions")
+                options.add_argument("--disable-popup-blocking")
+                options.add_argument("--disable-infobars")
+                options.add_argument("--disable-dev-shm-usage")  # Giảm memory issues
+                options.add_argument("--disable-gpu")  # Tắt GPU nếu headless
 
-                options = Options()
-                # CHỈ CẦN 1 DÒNG NÀY - connect vào Chrome đang chạy
-                options.add_experimental_option("debuggerAddress", f"127.0.0.1:{self.debug_port}")
-
-                # Download preferences (nếu cần)
+                # Download preferences
                 if download_dir:
                     self.download_dir = download_dir
+                    prefs = {
+                        "download.default_directory": download_dir,
+                        "download.prompt_for_download": False,
+                        "download.directory_upgrade": True,
+                        "safebrowsing.enabled": False  # Bỏ scan file
+                    }
+                    options.add_experimental_option("prefs", prefs)
 
-                # Dùng ChromeDriver (đã cache)
-                service = Service(get_chromedriver_path())
-                self.driver = webdriver.Chrome(service=service, options=options)
+                # Profile path
+                user_data_dir = None
+                if self.profile_path:
+                    profile = Path(self.profile_path)
+                    profile.mkdir(parents=True, exist_ok=True)
+                    user_data_dir = str(profile)
+                    self.log(f"   Profile: {user_data_dir}")
+
+                # Headless mode
+                if self.headless:
+                    self.log("   Chế độ ẩn")
+
+                # Khởi tạo driver - version_main để không phải tải lại driver
+                self.driver = uc.Chrome(
+                    options=options,
+                    headless=self.headless,
+                    user_data_dir=user_data_dir,
+                    use_subprocess=True,
+                    version_main=None  # Auto detect
+                )
 
                 self.log_ok("Chrome đã sẵn sàng!")
                 return True
 
             except Exception as e:
                 self.log_err(f"Lỗi lần {attempt + 1}: {e}")
-                self._cleanup_chrome()
+                # Cleanup nếu có
+                if hasattr(self, 'driver') and self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self.driver = None
 
                 if attempt == max_retries - 1:
                     import traceback
@@ -237,25 +145,14 @@ class GrokSeleniumAutomation:
 
         return False
 
-    def _cleanup_chrome(self):
-        """Dọn dẹp Chrome process và driver"""
+    def close_driver(self):
+        """Close driver"""
         if self.driver:
             try:
                 self.driver.quit()
             except:
                 pass
             self.driver = None
-
-        if self.chrome_process:
-            try:
-                self.chrome_process.terminate()
-            except:
-                pass
-            self.chrome_process = None
-
-    def close_driver(self):
-        """Close driver và Chrome process"""
-        self._cleanup_chrome()
 
     def navigate_to_grok(self) -> bool:
         """Navigate to Grok Imagine"""
@@ -373,104 +270,73 @@ class GrokSeleniumAutomation:
             return False
 
     def upload_image(self, image_path: str) -> bool:
-        """Upload ảnh - có retry cho headless mode"""
+        """Upload ảnh bằng JavaScript + file input"""
         try:
             image_path = Path(image_path).absolute()
             if not image_path.exists():
                 self.log_err(f"Không tìm thấy ảnh: {image_path}")
                 return False
 
+            # Lưu URL hiện tại để check redirect
             current_url = self.driver.current_url
             self.log(f"   URL trước upload: {current_url}")
 
-            # Thử upload tối đa 3 lần (headless có thể cần retry)
-            for attempt in range(3):
-                if attempt > 0:
-                    self.log(f"   Thử lại upload lần {attempt + 1}...")
-                    time.sleep(2)
-                    # Refresh nếu cần
-                    if attempt == 2:
-                        self.driver.refresh()
-                        time.sleep(3)
+            # Click nút đính kèm bằng JS
+            js_attach = '''
+            (function() {
+                var btns = document.querySelectorAll('button');
+                for (var b of btns) {
+                    var label = b.getAttribute('aria-label') || '';
+                    if (label.includes('Đính kèm') || label.includes('Attach')) {
+                        b.click();
+                        return true;
+                    }
+                }
+                return false;
+            })();
+            '''
+            self.driver.execute_script(js_attach)
+            time.sleep(1)
 
-                try:
-                    # Click nút đính kèm
-                    js_attach = '''
-                    (function() {
-                        var btns = document.querySelectorAll('button');
-                        for (var b of btns) {
-                            var label = b.getAttribute('aria-label') || '';
-                            if (label.includes('Đính kèm') || label.includes('Attach')) {
-                                b.click();
-                                return 'clicked';
-                            }
-                        }
-                        return 'not_found';
-                    })();
-                    '''
-                    attach_result = self.driver.execute_script(js_attach)
-                    self.log(f"   Attach button: {attach_result}")
-                    time.sleep(1.5)  # Chờ menu mở
+            # Click menu Tải lên bằng JS
+            js_upload = '''
+            (function() {
+                var items = document.querySelectorAll('div[role="menuitem"]');
+                for (var item of items) {
+                    var text = item.textContent || '';
+                    if (text.includes('Tải lên') || text.includes('Upload')) {
+                        item.click();
+                        return true;
+                    }
+                }
+                return false;
+            })();
+            '''
+            self.driver.execute_script(js_upload)
+            time.sleep(1)
 
-                    # Click menu Tải lên
-                    js_upload = '''
-                    (function() {
-                        var items = document.querySelectorAll('div[role="menuitem"]');
-                        for (var item of items) {
-                            var text = item.textContent || '';
-                            if (text.includes('Tải lên') || text.includes('Upload')) {
-                                item.click();
-                                return 'clicked';
-                            }
-                        }
-                        return 'not_found';
-                    })();
-                    '''
-                    upload_result = self.driver.execute_script(js_upload)
-                    self.log(f"   Upload menu: {upload_result}")
-                    time.sleep(1.5)  # Chờ file input xuất hiện
+            # Tìm file input và gửi file
+            file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
+            file_input.send_keys(str(image_path))
 
-                    # Chờ file input với timeout
-                    file_input = None
-                    for wait in range(10):  # Chờ tối đa 10s
-                        try:
-                            file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
-                            if file_input:
-                                break
-                        except:
-                            pass
-                        time.sleep(1)
+            self.log_ok(f"Đã upload: {image_path.name}")
 
-                    if not file_input:
-                        self.log_warn("Không tìm thấy file input, thử lại...")
-                        continue
-
-                    # Gửi file
-                    file_input.send_keys(str(image_path))
-                    self.log_ok(f"Đã upload: {image_path.name}")
-
-                    # Chờ redirect sang /imagine/post/
-                    self.log("   Chờ redirect sang trang video...")
-                    for i in range(30):
-                        time.sleep(1)
-                        new_url = self.driver.current_url
-                        if '/imagine/post/' in new_url:
-                            self.log_ok(f"   Đã redirect: {new_url}")
-                            self.install_video_hook()
-                            time.sleep(2)
-                            return True
-                        if i % 5 == 0 and i > 0:
-                            self.log(f"   Chờ redirect... {i}s")
-
-                    self.log_warn("Không thấy redirect, tiếp tục...")
+            # Chờ redirect sang /imagine/post/
+            self.log("   Chờ redirect sang trang video...")
+            for i in range(30):  # Chờ tối đa 30s
+                time.sleep(1)
+                new_url = self.driver.current_url
+                if '/imagine/post/' in new_url:
+                    self.log_ok(f"   Đã redirect: {new_url}")
+                    # Cài lại hook sau khi redirect
+                    self.install_video_hook()
+                    time.sleep(2)  # Chờ page load
                     return True
+                if i % 5 == 0 and i > 0:
+                    self.log(f"   Chờ redirect... {i}s (URL: {new_url[:50]})")
 
-                except Exception as e:
-                    self.log_warn(f"Lỗi lần {attempt + 1}: {e}")
-                    if attempt == 2:
-                        raise
-
-            return False
+            self.log_warn("Không thấy redirect, tiếp tục...")
+            return True
 
         except Exception as e:
             self.log_err(f"Lỗi upload ảnh: {e}")

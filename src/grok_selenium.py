@@ -326,25 +326,44 @@ class GrokSeleniumAutomation:
             return False
 
     def submit_and_wait(self, timeout: int = 90) -> bool:
-        """Submit và chờ video tạo xong - dấu hiệu: svg.lucide-film xuất hiện"""
+        """Submit và chờ video tạo xong
+        Logic:
+        1. Nếu thấy % (0%-100%) = đang tạo video
+        2. Nếu không thấy % và thấy icon film = video xong
+        3. Chờ thêm 10s sau khi xong để đảm bảo
+        """
         try:
             self.log("Đang chờ video được tạo (tối đa 90s)...")
-            self.log("   Dấu hiệu xong: icon film (svg.lucide-film) xuất hiện")
+            self.log("   - Đang tạo: có % tiến độ (0%-100%)")
+            self.log("   - Đã xong: không có %, có icon film")
             start_time = time.time()
 
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check icon film (lucide-film) - dấu hiệu video đã xong
+                # Check tiến độ và icon film
                 js_check = '''
+                // 1. Check xem có đang hiện % không (đang tạo video)
+                var progressDiv = document.querySelector('div.tabular-nums');
+                if (progressDiv) {
+                    var text = progressDiv.textContent || '';
+                    if (text.includes('%')) {
+                        return 'progress|' + text.trim();
+                    }
+                }
+
+                // 2. Không có % -> check icon film (class: lucide lucide-film size-4)
                 var filmIcon = document.querySelector('svg.lucide-film');
                 if (filmIcon) {
                     return 'film_ready|';
                 }
+
+                // 3. Check video src (backup)
                 var video = document.querySelector('#sd-video');
                 if (video && video.src && video.src.includes('.mp4')) {
                     return 'video_src|' + video.src;
                 }
+
                 return 'waiting|';
                 '''
 
@@ -356,8 +375,12 @@ class GrokSeleniumAutomation:
                         status = parts[0]
                         data = parts[1] if len(parts) > 1 else ''
 
-                        if elapsed % 10 == 0:
-                            self.log(f"   [{elapsed}s] {status}")
+                        # Log mỗi 5s hoặc khi có thay đổi
+                        if elapsed % 5 == 0:
+                            if status == 'progress':
+                                self.log(f"   [{elapsed}s] Đang tạo: {data}")
+                            else:
+                                self.log(f"   [{elapsed}s] {status}")
 
                         if status == 'film_ready':
                             self.log_ok(f"Thấy icon film - Video đã xong! ({elapsed}s)")
@@ -369,6 +392,7 @@ class GrokSeleniumAutomation:
                             self._captured_video_url = data
                             time.sleep(5)
                             return True
+                        # progress hoặc waiting -> tiếp tục chờ
                     else:
                         if elapsed % 10 == 0:
                             self.log(f"   [{elapsed}s] JS result: {result}")
@@ -389,9 +413,31 @@ class GrokSeleniumAutomation:
     def download_video(self, output_path: str) -> bool:
         """Download video bằng cách click nút Download, thử lại nếu không có file"""
         try:
+            import glob
+            import shutil
+
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            download_dir = getattr(self, 'download_dir', None)
+
+            # Các thư mục có thể chứa file download
+            possible_dirs = []
+
+            # 1. Download dir được set khi khởi tạo driver
+            if hasattr(self, 'download_dir') and self.download_dir:
+                possible_dirs.append(self.download_dir)
+
+            # 2. Thư mục Downloads mặc định của hệ thống
+            home = Path.home()
+            possible_dirs.append(str(home / "Downloads"))
+            possible_dirs.append(str(home / "downloads"))
+
+            # 3. Thư mục output (nếu khác)
+            possible_dirs.append(str(output_path.parent))
+
+            self.log(f"   Sẽ tìm file mp4 trong: {possible_dirs}")
+
+            # Ghi nhận thời gian trước khi click để lọc file mới
+            before_click = time.time()
 
             js_click = '''
             var svg = document.querySelector('svg.lucide-download');
@@ -426,28 +472,40 @@ class GrokSeleniumAutomation:
 
                 self.log_ok("Đã click download!")
 
-                # Chờ file download (tối đa 15s mỗi lần click)
-                import glob
-                import shutil
-
-                for i in range(15):
+                # Chờ file download (tối đa 20s mỗi lần click)
+                for i in range(20):
                     time.sleep(1)
-                    if download_dir:
-                        # Tìm file mp4 mới nhất
-                        files = glob.glob(f"{download_dir}/*.mp4")
-                        if files:
-                            newest = max(files, key=os.path.getctime)
-                            file_size = os.path.getsize(newest)
-                            if file_size > 10000:  # > 10KB = file hợp lệ
-                                shutil.move(newest, output_path)
-                                self.log_ok(f"Đã lưu: {output_path} ({file_size} bytes)")
-                                return True
-                            elif i > 5:  # Sau 5s mà file vẫn nhỏ
-                                self.log(f"   File nhỏ ({file_size} bytes), chờ...")
 
-                # Không thấy file sau 15s, thử click lại
+                    # Tìm trong tất cả các thư mục có thể
+                    for dir_path in possible_dirs:
+                        if not os.path.exists(dir_path):
+                            continue
+
+                        # Tìm file mp4 mới (sau thời điểm click)
+                        files = glob.glob(f"{dir_path}/*.mp4")
+                        for f in files:
+                            try:
+                                # Chỉ lấy file được tạo sau khi click
+                                if os.path.getctime(f) > before_click - 5:  # -5s buffer
+                                    file_size = os.path.getsize(f)
+                                    if file_size > 10000:  # > 10KB
+                                        self.log(f"   Tìm thấy: {f} ({file_size} bytes)")
+                                        # Move về output_path
+                                        shutil.move(f, output_path)
+                                        self.log_ok(f"Đã lưu: {output_path}")
+                                        return True
+                                    elif i > 5:
+                                        self.log(f"   File còn nhỏ ({file_size} bytes), chờ...")
+                            except:
+                                pass
+
+                    if i % 5 == 0 and i > 0:
+                        self.log(f"   Chờ file... {i}s")
+
+                # Không thấy file sau 20s, thử click lại
                 if attempt < 2:
-                    self.log_warn(f"Không thấy file mp4 sau 15s, thử click lại...")
+                    self.log_warn(f"Không thấy file mp4 sau 20s, thử click lại...")
+                    before_click = time.time()  # Reset thời gian
                     time.sleep(2)
 
             self.log_warn("Không tải được file sau 3 lần thử")

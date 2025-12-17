@@ -152,22 +152,20 @@ class GrokSeleniumAutomation:
                 self.log_err("Không tìm thấy Chrome!")
                 return False
 
-            # Tìm port trống
-            self.debug_port = find_free_port()
+            # Dùng port cố định 9222
+            self.debug_port = 9222
 
             # Build command - đơn giản như Windows Run
             cmd_parts = [
                 f'"{chrome_exe}"',
                 f'--remote-debugging-port={self.debug_port}',
                 f'--profile-directory="{self.profile_name}"',
-                '--no-first-run',
-                '--no-default-browser-check',
             ]
 
             # Thêm window size nếu cần
             if self.headless:
                 cmd_parts.append('--window-size=400,300')
-                cmd_parts.append('--window-position=-1000,-1000')  # Ẩn ra ngoài màn hình
+                cmd_parts.append('--window-position=-1000,-1000')
             else:
                 cmd_parts.append('--window-size=1200,800')
 
@@ -175,32 +173,16 @@ class GrokSeleniumAutomation:
             self.log(f"   Lệnh: {cmd}")
 
             # Mở Chrome bằng subprocess
-            self.chrome_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.chrome_process = subprocess.Popen(cmd, shell=True)
             self.log(f"   Chrome đã mở (PID: {self.chrome_process.pid})")
 
-            # Đợi Chrome khởi động và kiểm tra port
-            self.log("   Đợi Chrome sẵn sàng...")
-            for i in range(10):  # Chờ tối đa 10s
-                time.sleep(1)
-                if self._check_chrome_ready():
-                    self.log_ok(f"Chrome sẵn sàng sau {i+1}s")
-                    return True
-
-            self.log_warn("Chrome chưa sẵn sàng sau 10s, thử tiếp...")
-            return True  # Vẫn thử connect
+            # Đợi Chrome khởi động (đơn giản)
+            self.log("   Đợi 5s cho Chrome khởi động...")
+            time.sleep(5)
+            return True
 
         except Exception as e:
             self.log_err(f"Lỗi mở Chrome subprocess: {e}")
-            return False
-
-    def _check_chrome_ready(self) -> bool:
-        """Kiểm tra Chrome đã sẵn sàng chưa bằng cách thử connect port"""
-        try:
-            import urllib.request
-            url = f"http://127.0.0.1:{self.debug_port}/json/version"
-            response = urllib.request.urlopen(url, timeout=2)
-            return response.status == 200
-        except:
             return False
 
     def setup_driver(self, download_dir: str = None, max_retries: int = 3) -> bool:

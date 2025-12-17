@@ -221,26 +221,16 @@ class SettingsTab:
                         continue
 
                 # Mở Chrome đơn giản bằng subprocess
-                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port} --no-first-run --no-default-browser-check'
+                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port}'
                 self.app.log(f"   Lệnh: {cmd}")
 
                 process = subprocess.Popen(cmd, shell=True)
                 self.app.log(f"   Chrome đã mở (PID: {process.pid})")
 
-                # Đợi Chrome khởi động và kiểm tra sẵn sàng
+                # Đợi Chrome khởi động (đơn giản)
                 import time
-                import urllib.request
-                self.app.log("   Đợi Chrome sẵn sàng...")
-                for i in range(10):
-                    time.sleep(1)
-                    try:
-                        url = f"http://127.0.0.1:{debug_port}/json/version"
-                        response = urllib.request.urlopen(url, timeout=2)
-                        if response.status == 200:
-                            self.app.log(f"   Chrome sẵn sàng sau {i+1}s")
-                            break
-                    except:
-                        pass
+                self.app.log("   Đợi 5s cho Chrome khởi động...")
+                time.sleep(5)
 
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
@@ -630,20 +620,11 @@ Tên Profile Chrome (ví dụ: "Profile 5", "Default"):
                         continue
 
                 # Mở Chrome đơn giản bằng subprocess
-                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port} --no-first-run --no-default-browser-check'
+                cmd = f'"{chrome_exe}" --profile-directory="{profile_name}" --remote-debugging-port={debug_port}'
                 process = subprocess.Popen(cmd, shell=True)
 
-                # Đợi Chrome khởi động và kiểm tra sẵn sàng
-                import urllib.request
-                for i in range(10):
-                    time.sleep(1)
-                    try:
-                        url = f"http://127.0.0.1:{debug_port}/json/version"
-                        response = urllib.request.urlopen(url, timeout=2)
-                        if response.status == 200:
-                            break
-                    except:
-                        pass
+                # Đợi Chrome khởi động (đơn giản)
+                time.sleep(5)
 
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options

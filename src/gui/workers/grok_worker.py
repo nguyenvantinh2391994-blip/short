@@ -21,7 +21,8 @@ class GrokWorker:
         stop_flag: threading.Event,
         on_progress: Callable[[int, int, str], None],
         on_log: Callable[[str, str], None],
-        headless: bool = True  # Mặc định chạy ẩn
+        headless: bool = True,  # Mặc định chạy ẩn
+        on_automation_created: Optional[Callable] = None  # Callback khi automation được tạo
     ):
         self.input_folder = Path(input_folder)
         self.output_folder = Path(output_folder)
@@ -31,6 +32,7 @@ class GrokWorker:
         self.on_progress = on_progress
         self.on_log = on_log
         self.headless = headless
+        self.on_automation_created = on_automation_created
 
     def log(self, message: str, status: str = "info"):
         """Log message"""
@@ -139,6 +141,10 @@ class GrokWorker:
                 headless=self.headless,
                 on_log=self.log
             )
+
+            # Gọi callback để truyền automation object (cho nút ẩn/hiện)
+            if self.on_automation_created:
+                self.on_automation_created(automation)
 
             total = len(still_pending)
 

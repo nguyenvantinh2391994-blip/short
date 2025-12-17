@@ -187,6 +187,23 @@ class GrokTab:
         )
         self.stop_btn.pack(side="left", padx=5)
 
+        # Nút ẩn/hiện browser
+        self.show_btn = ctk.CTkButton(
+            btn_frame,
+            text="👁️ Hiện Browser",
+            command=self.toggle_browser_visibility,
+            width=130,
+            height=45,
+            fg_color="#FF9800",
+            state="disabled",
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        self.show_btn.pack(side="left", padx=5)
+
+        # Biến lưu automation object để có thể ẩn/hiện
+        self.current_automation = None
+        self._browser_visible = False
+
     def setup_progress(self):
         """Setup progress panel"""
         progress_frame = ctk.CTkFrame(self.main_frame, width=400)
@@ -355,7 +372,8 @@ class GrokTab:
                 stop_flag=self.stop_flag,
                 on_progress=self.on_worker_progress,
                 on_log=self.on_worker_log,
-                headless=headless  # Truyền setting chạy ẩn
+                headless=headless,  # Truyền setting chạy ẩn
+                on_automation_created=self.set_automation  # Callback để lưu automation object
             )
 
             # Run
@@ -381,9 +399,41 @@ class GrokTab:
         self.is_running = False
         self.start_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+        self.show_btn.configure(state="disabled")
         self.current_task_label.configure(text="Hoàn thành")
         self.app.set_status("Hoàn thành tạo video")
         self.add_task_log("Hoàn thành!", "success")
+        self.current_automation = None
+
+    def toggle_browser_visibility(self):
+        """Toggle ẩn/hiện browser"""
+        if self.current_automation:
+            try:
+                if self._browser_visible:
+                    self.current_automation._hide_chrome_window()
+                    self.show_btn.configure(text="👁️ Hiện Browser")
+                    self._browser_visible = False
+                    self.add_task_log("Đã ẩn browser", "info")
+                else:
+                    self.current_automation.show_chrome_window()
+                    self.show_btn.configure(text="🙈 Ẩn Browser")
+                    self._browser_visible = True
+                    self.add_task_log("Đã hiện browser", "info")
+            except Exception as e:
+                self.add_task_log(f"Lỗi toggle browser: {e}", "error")
+
+    def set_automation(self, automation):
+        """Lưu reference đến automation object để có thể ẩn/hiện"""
+        self.current_automation = automation
+        # Kích hoạt nút ẩn/hiện
+        self.after_safe(lambda: self.show_btn.configure(state="normal"))
+        # Cập nhật trạng thái nút
+        if hasattr(automation, '_is_hidden') and automation._is_hidden:
+            self._browser_visible = False
+            self.after_safe(lambda: self.show_btn.configure(text="👁️ Hiện Browser"))
+        else:
+            self._browser_visible = True
+            self.after_safe(lambda: self.show_btn.configure(text="🙈 Ẩn Browser"))
 
     def after_safe(self, func):
         """Safely call function on main thread"""

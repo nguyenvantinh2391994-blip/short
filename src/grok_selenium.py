@@ -112,18 +112,22 @@ class GrokSeleniumAutomation:
                     user_data_dir = str(profile)
                     self.log(f"   Profile: {user_data_dir}")
 
-                # Headless mode
-                if self.headless:
-                    self.log("   Chế độ ẩn")
-
-                # Khởi tạo driver - version_main để không phải tải lại driver
+                # Khởi tạo driver - KHÔNG dùng headless, sẽ minimize sau
                 self.driver = uc.Chrome(
                     options=options,
-                    headless=self.headless,
+                    headless=False,  # Không dùng headless vì hay lỗi
                     user_data_dir=user_data_dir,
                     use_subprocess=True,
                     version_main=None  # Auto detect
                 )
+
+                # Nếu chạy ẩn thì minimize window
+                if self.headless:
+                    self.log("   Chế độ ẩn (minimize)")
+                    try:
+                        self.driver.minimize_window()
+                    except:
+                        pass
 
                 self.log_ok("Chrome đã sẵn sàng!")
                 return True
@@ -660,11 +664,23 @@ class GrokSeleniumAutomation:
                 )
                 results.append(result)
 
-                # Open new tab for next video
+                # Đóng tab cũ và mở tab mới cho video tiếp theo
                 if i < total - 1:
-                    self.log("   Mở tab mới...")
+                    self.log("   Đóng tab cũ, mở tab mới...")
+                    # Mở tab mới trước
                     self.driver.execute_script("window.open('');")
-                    self.driver.switch_to.window(self.driver.window_handles[-1])
+                    # Lấy handle tab cũ và tab mới
+                    old_tab = self.driver.window_handles[0]
+                    new_tab = self.driver.window_handles[-1]
+                    # Chuyển sang tab mới
+                    self.driver.switch_to.window(new_tab)
+                    # Đóng tab cũ
+                    self.driver.execute_script(f"window.close();", old_tab)
+                    # Đóng tất cả tab cũ, chỉ giữ tab mới
+                    for handle in self.driver.window_handles[:-1]:
+                        self.driver.switch_to.window(handle)
+                        self.driver.close()
+                    self.driver.switch_to.window(self.driver.window_handles[0])
                     time.sleep(2)
 
             if on_progress:

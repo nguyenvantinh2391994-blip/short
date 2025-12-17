@@ -657,6 +657,25 @@ class GrokSeleniumAutomation:
             self.log_err(f"Lỗi download: {e}")
             return False
 
+    def close_extra_tabs(self):
+        """Đóng tất cả tab thừa, chỉ giữ lại 1 tab"""
+        try:
+            if not self.driver:
+                return
+
+            handles = self.driver.window_handles
+            if len(handles) > 1:
+                self.log(f"   Đóng {len(handles) - 1} tab thừa...")
+                # Giữ tab đầu tiên, đóng các tab còn lại
+                main_tab = handles[0]
+                for handle in handles[1:]:
+                    self.driver.switch_to.window(handle)
+                    self.driver.close()
+                # Quay lại tab chính
+                self.driver.switch_to.window(main_tab)
+        except Exception as e:
+            self.log_warn(f"Lỗi đóng tab: {e}")
+
     def verify_video_file(self, file_path: str, min_size_kb: int = 100) -> bool:
         """Kiểm tra file video hợp lệ"""
         file_path = Path(file_path)
@@ -787,6 +806,8 @@ class GrokSeleniumAutomation:
 
                 # Quay lại trang Grok Imagine cho video tiếp theo
                 if i < total - 1:
+                    # Đóng tab thừa (nếu có) trước khi navigate
+                    self.close_extra_tabs()
                     self.log("   Quay lại trang Grok Imagine...")
                     self.driver.get(self.GROK_IMAGINE_URL)
                     time.sleep(3)

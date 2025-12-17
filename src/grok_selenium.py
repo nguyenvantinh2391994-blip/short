@@ -167,13 +167,13 @@ class GrokSeleniumAutomation:
                 '--disable-dev-shm-usage',
             ]
 
-            # Window size - luôn dùng size đủ lớn để page load đúng
+            # Window size
+            cmd_parts.append('--window-size=1920,1080')
+
             if self.headless:
-                cmd_parts.append('--window-size=1200,800')
-                cmd_parts.append('--start-minimized')  # Minimize thay vì giấu ra ngoài
-                self.log("   Chế độ ẩn (minimize)")
+                cmd_parts.append('--headless=new')  # Dùng headless mode thực sự của Chrome
+                self.log("   Chế độ ẩn (headless)")
             else:
-                cmd_parts.append('--window-size=1200,800')
                 self.log("   Chế độ hiện")
 
             cmd = ' '.join(cmd_parts)

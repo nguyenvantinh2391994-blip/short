@@ -146,8 +146,19 @@ class GrokTab:
             variable=self.hidden_var,
             font=ctk.CTkFont(size=13)
         )
-        self.hidden_check.pack(anchor="w", padx=15, pady=(0, 10))
+        self.hidden_check.pack(anchor="w", padx=15, pady=(0, 5))
         self.hidden_check.select()  # Mặc định chọn
+
+        # Auto-update checkbox - MẶC ĐỊNH BẬT
+        self.auto_update_var = ctk.BooleanVar(value=True)
+        self.auto_update_check = ctk.CTkCheckBox(
+            options_frame,
+            text="🔄 Tự động cập nhật trước khi chạy",
+            variable=self.auto_update_var,
+            font=ctk.CTkFont(size=13)
+        )
+        self.auto_update_check.pack(anchor="w", padx=15, pady=(0, 10))
+        self.auto_update_check.select()  # Mặc định chọn
 
         # Action buttons
         btn_frame = ctk.CTkFrame(controls_frame, fg_color="transparent")
@@ -310,6 +321,18 @@ class GrokTab:
     def run_grok_process(self, input_folder: str, output_folder: str, profile_name: str):
         """Run Grok video creation (in background thread)"""
         try:
+            # Auto-update nếu được bật
+            if self.auto_update_var.get():
+                self.after_safe(lambda: self.add_task_log("Kiểm tra cập nhật...", "progress"))
+                try:
+                    from ..utils.updater import AutoUpdater
+                    updater = AutoUpdater(on_log=self.on_worker_log)
+                    updated, msg = updater.update_if_available()
+                    if updated:
+                        self.after_safe(lambda: self.add_task_log("Đã cập nhật code mới!", "success"))
+                except Exception as e:
+                    self.after_safe(lambda: self.add_task_log(f"Bỏ qua cập nhật: {e}", "warning"))
+
             # Import here to avoid circular imports
             from ..workers.grok_worker import GrokWorker
 

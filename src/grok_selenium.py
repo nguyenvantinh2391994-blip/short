@@ -260,6 +260,10 @@ class GrokSeleniumAutomation:
                 self.log_err(f"Không tìm thấy ảnh: {image_path}")
                 return False
 
+            # Lưu URL hiện tại để check redirect
+            current_url = self.driver.current_url
+            self.log(f"   URL trước upload: {current_url}")
+
             # Click nút đính kèm bằng JS
             js_attach = '''
             (function() {
@@ -297,9 +301,24 @@ class GrokSeleniumAutomation:
             # Tìm file input và gửi file
             file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
             file_input.send_keys(str(image_path))
-            time.sleep(2)
 
             self.log_ok(f"Đã upload: {image_path.name}")
+
+            # Chờ redirect sang /imagine/post/
+            self.log("   Chờ redirect sang trang video...")
+            for i in range(30):  # Chờ tối đa 30s
+                time.sleep(1)
+                new_url = self.driver.current_url
+                if '/imagine/post/' in new_url:
+                    self.log_ok(f"   Đã redirect: {new_url}")
+                    # Cài lại hook sau khi redirect
+                    self.install_video_hook()
+                    time.sleep(2)  # Chờ page load
+                    return True
+                if i % 5 == 0 and i > 0:
+                    self.log(f"   Chờ redirect... {i}s (URL: {new_url[:50]})")
+
+            self.log_warn("Không thấy redirect, tiếp tục...")
             return True
 
         except Exception as e:

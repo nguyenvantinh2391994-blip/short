@@ -702,7 +702,8 @@ class GrokSeleniumAutomation:
         image_path: str,
         prompt: str = "",
         output_path: str = "",
-        product_code: str = ""
+        product_code: str = "",
+        skip_navigate: bool = False
     ) -> GrokVideoResult:
         """Tạo video từ ảnh"""
 
@@ -717,10 +718,11 @@ class GrokSeleniumAutomation:
                 if not self.setup_driver(download_dir=download_dir):
                     return GrokVideoResult(False, error="Không thể khởi tạo browser")
 
-            # Navigate to Grok (sẽ cài hook tự động)
-            self.log("1. Mở trang Grok Imagine...")
-            if not self.navigate_to_grok():
-                return GrokVideoResult(False, error="Không thể truy cập Grok")
+            # Navigate to Grok (sẽ cài hook tự động) - skip nếu đã ở trang rồi
+            if not skip_navigate:
+                self.log("1. Mở trang Grok Imagine...")
+                if not self.navigate_to_grok():
+                    return GrokVideoResult(False, error="Không thể truy cập Grok")
 
             # Input prompt
             if prompt:
@@ -796,18 +798,19 @@ class GrokSeleniumAutomation:
                 # Reset hook trước mỗi video
                 self.reset_video_hook()
 
+                # Video đầu tiên: navigate bình thường
+                # Video tiếp theo: skip navigate vì đã navigate ở cuối vòng trước
                 result = self.create_video(
                     image_path=task.get("image", ""),
                     prompt=task.get("prompt", ""),
                     output_path=task.get("output", ""),
-                    product_code=task.get("code", "")
+                    product_code=task.get("code", ""),
+                    skip_navigate=(i > 0)  # Skip nếu không phải video đầu
                 )
                 results.append(result)
 
-                # Quay lại trang Grok Imagine cho video tiếp theo
+                # Quay lại trang Grok Imagine cho video tiếp theo (cùng tab)
                 if i < total - 1:
-                    # Đóng tab thừa (nếu có) trước khi navigate
-                    self.close_extra_tabs()
                     self.log("   Quay lại trang Grok Imagine...")
                     self.driver.get(self.GROK_IMAGINE_URL)
                     time.sleep(3)

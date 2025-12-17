@@ -17,6 +17,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
 
 from rich.console import Console
 
@@ -163,8 +164,10 @@ class GrokSeleniumAutomation:
                 # Tắt logging selenium
                 options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
-                # Khởi tạo driver
-                self.driver = webdriver.Chrome(options=options)
+                # Khởi tạo driver với webdriver-manager (tự tải ChromeDriver)
+                self.log("   Đang tải ChromeDriver...")
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=options)
 
                 # Minimize window nếu chạy ẩn
                 if self.headless:

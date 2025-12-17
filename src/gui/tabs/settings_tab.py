@@ -208,8 +208,11 @@ class SettingsTab:
             try:
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
+                from selenium.webdriver.chrome.service import Service
+                from webdriver_manager.chrome import ChromeDriverManager
 
                 self.app.log(f"Mở browser để login: {profile_name}")
+                self.app.log("   Đang tải ChromeDriver...")
 
                 options = Options()
                 options.add_argument("--window-size=1200,800")
@@ -233,7 +236,9 @@ class SettingsTab:
 
                 options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
-                driver = webdriver.Chrome(options=options)
+                # Dùng webdriver-manager để tự động tải ChromeDriver
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
                 driver.get("https://grok.com")
                 self.app.log("Browser đã mở. Hãy đăng nhập và đóng browser khi xong.")
 
@@ -608,6 +613,8 @@ Thư mục Profile Chrome thường ở:
             try:
                 from selenium import webdriver
                 from selenium.webdriver.chrome.options import Options
+                from selenium.webdriver.chrome.service import Service
+                from webdriver_manager.chrome import ChromeDriverManager
 
                 options = Options()
                 options.add_argument("--window-size=1200,800")
@@ -631,7 +638,9 @@ Thư mục Profile Chrome thường ở:
 
                 options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
-                driver = webdriver.Chrome(options=options)
+                # Dùng webdriver-manager để tự động tải ChromeDriver
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
                 driver.get("https://grok.com")
 
             except Exception as e:

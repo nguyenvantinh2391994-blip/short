@@ -538,23 +538,21 @@ class ShopeeDownloader:
             # Chờ thêm để ảnh load hoàn toàn
             time.sleep(3)
 
-            # LẤY ẢNH TỪ THUMBNAILS TRƯỚC (mỗi thumbnail = 1 ảnh duy nhất)
-            # Carousel có nhiều DOM elements trùng nhau nên không đáng tin cậy
+            # LẤY ẢNH TỪ SELECTOR picture.UkIsx8 img (đã test hoạt động)
             js_script = """
             var hashes = new Set();
             var urls = [];
 
-            // 1. LẤY TỪ THUMBNAILS TRƯỚC (đây là nguồn chính xác nhất)
-            // Mỗi thumbnail đại diện 1 ảnh sản phẩm duy nhất
-            document.querySelectorAll('div.ZDN4HL picture.OqFxyp img').forEach(img => {
+            // Dùng selector picture.UkIsx8 img - đã được xác nhận hoạt động
+            document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
                 let src = img.src;
                 if (!src) return;
 
-                // Bỏ resize param
+                // Bỏ resize param (@...)
                 src = src.split('@')[0];
 
                 if (src.includes('susercontent.com/file/')) {
-                    // Extract hash từ URL
+                    // Extract hash từ URL để loại bỏ trùng lặp
                     let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
                     if (match && match[1] && !hashes.has(match[1])) {
                         hashes.add(match[1]);
@@ -563,28 +561,11 @@ class ShopeeDownloader:
                 }
             });
 
-            // 2. NẾU KHÔNG CÓ THUMBNAILS, thử lấy từ carousel chính
-            if (urls.length === 0) {
-                document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
-                    let src = img.src;
-                    if (!src) return;
-                    src = src.split('@')[0];
-
-                    if (src.includes('susercontent.com/file/')) {
-                        let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
-                        if (match && match[1] && !hashes.has(match[1])) {
-                            hashes.add(match[1]);
-                            urls.push(src);
-                        }
-                    }
-                });
-            }
-
             return urls;
             """
 
             image_urls = driver.execute_script(js_script)
-            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh từ thumbnails[/]")
+            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh (unique)[/]")
 
             # Nếu không tìm thấy, thử selector backup
             if not image_urls:

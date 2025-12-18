@@ -678,11 +678,16 @@ class MainTab:
 
             # Tạo worker
             worker = GrokWorker(
+                input_folder=str(input_folder),
+                output_folder=str(output_folder),
+                music_folder=self.app.config.music_folder or "",
+                voice_folder=self.app.config.voice_folder or "",
                 config=self.app.config,
                 browser_profiles=self.app.config.browser_profiles,
+                stop_flag=self.stop_flag,
                 on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(msg)),
                 on_progress=lambda cur, tot, msg: None,
-                on_video_created=self._on_video_created,
+                headless=True,
             )
 
             self.current_worker = worker

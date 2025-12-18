@@ -135,16 +135,32 @@ class VideoMerger:
                 self.log(f"  Thời lượng voice: {voice_duration:.1f}s")
                 self.log(f"  Thời lượng video gốc: {final_clip.duration:.1f}s")
 
-                # ƯU TIÊN: Cắt video theo thời lượng voice
+                # Nếu voice ngắn hơn video → cắt video
                 if voice_duration < final_clip.duration:
                     self.log(f"  → Cắt video theo voice: {voice_duration:.1f}s")
                     final_clip = final_clip.subclip(0, voice_duration)
                     target_duration = voice_duration
+                # Nếu voice dài hơn video → LOOP video
                 elif voice_duration > final_clip.duration:
-                    # Voice dài hơn video - cắt voice
-                    self.log(f"  → Voice dài hơn video, cắt voice")
-                    voice_audio = voice_audio.subclip(0, final_clip.duration)
-                    target_duration = final_clip.duration
+                    self.log(f"  → Voice dài hơn video, loop video clips...")
+
+                    # Tính số lần cần loop
+                    loops_needed = int(voice_duration / final_clip.duration) + 1
+                    self.log(f"  → Loop video {loops_needed} lần")
+
+                    # Tạo list video clips để loop
+                    looped_clips = []
+                    for i in range(loops_needed):
+                        looped_clip = final_clip.copy()
+                        looped_clips.append(looped_clip)
+
+                    # Ghép lại
+                    final_clip = concatenate_videoclips(looped_clips, method="compose")
+
+                    # Cắt đúng độ dài voice
+                    final_clip = final_clip.subclip(0, voice_duration)
+                    target_duration = voice_duration
+                    self.log(f"  → Video sau loop: {final_clip.duration:.1f}s")
                 else:
                     target_duration = voice_duration
 
@@ -359,11 +375,31 @@ class VideoMerger:
                 self.log(f"Thêm voice: {Path(voice_path).name}")
                 voice_audio = AudioFileClip(voice_path)
                 voice_duration = voice_audio.duration
+                self.log(f"  Thời lượng voice: {voice_duration:.1f}s")
+                self.log(f"  Thời lượng video: {final_clip.duration:.1f}s")
 
-                # Nếu voice ngắn hơn video, giữ nguyên video
-                # Nếu voice dài hơn, cắt voice
+                # Nếu voice dài hơn video, LOOP video để khớp với voice
                 if voice_duration > final_clip.duration:
-                    voice_audio = voice_audio.subclip(0, final_clip.duration)
+                    self.log(f"  → Voice dài hơn video, loop video clips...")
+
+                    # Tính số lần cần loop
+                    loops_needed = int(voice_duration / final_clip.duration) + 1
+                    self.log(f"  → Loop video {loops_needed} lần")
+
+                    # Tạo list video clips để loop
+                    looped_clips = []
+                    for i in range(loops_needed):
+                        # Clone clip cho mỗi lần loop
+                        looped_clip = final_clip.copy()
+                        looped_clips.append(looped_clip)
+
+                    # Ghép lại
+                    final_clip = concatenate_videoclips(looped_clips, method="compose")
+
+                    # Cắt đúng độ dài voice
+                    final_clip = final_clip.subclip(0, voice_duration)
+                    target_duration = voice_duration
+                    self.log(f"  → Video sau loop: {final_clip.duration:.1f}s")
 
                 voice_audio = voice_audio.volumex(voice_volume)
                 audio_clips.append(voice_audio)

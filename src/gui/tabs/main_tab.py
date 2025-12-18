@@ -870,7 +870,8 @@ class MainTab:
                             self.after_safe(lambda c=code: self.add_log(f"✅ {c}: Hoàn thành!"))
                     else:
                         self.set_task_video_status(code, TaskItem.STATUS_ERROR)
-                        self.after_safe(lambda c=code: self.add_log(f"❌ {c}: Lỗi tạo video"))
+                        error_msg = getattr(result, 'error', 'Lỗi không xác định') if result else 'Không có kết quả'
+                        self.after_safe(lambda c=code, err=error_msg: self.add_log(f"❌ {c}: {err}"))
 
                 except Exception as e:
                     self.set_task_video_status(code, TaskItem.STATUS_ERROR)

@@ -26,7 +26,8 @@ class ShopeeProduct:
     name: str = ""
     price: float = 0
     images: List[str] = None  # List of image hashes
-    description: str = ""
+    description: str = ""  # Mô tả sản phẩm
+    image_urls_json: str = ""  # JSON của direct image URLs (để download)
 
     def __post_init__(self):
         if self.images is None:
@@ -550,16 +551,34 @@ class ShopeeDownloader:
                 image_urls = driver.execute_script(backup_js)
                 console.print(f"[dim]Backup: Tìm thấy {len(image_urls)} ảnh[/]")
 
-            # Lấy tên sản phẩm
+            # Lấy tên sản phẩm - thử nhiều selector
             name = ""
             try:
-                title_elem = driver.find_element(By.CSS_SELECTOR, "div.HLQqkk span")
-                name = title_elem.text
+                # Selector mới: h1.vR6K3w trong div.WBVL_7
+                title_elem = driver.find_element(By.CSS_SELECTOR, "div.WBVL_7 h1.vR6K3w")
+                name = title_elem.text.strip()
+                console.print(f"[dim]Tên SP (h1.vR6K3w): {name[:50]}...[/]" if len(name) > 50 else f"[dim]Tên SP: {name}[/]")
             except Exception:
                 try:
-                    name = driver.title.replace(" | Shopee Việt Nam", "")
+                    # Selector cũ
+                    title_elem = driver.find_element(By.CSS_SELECTOR, "div.HLQqkk span")
+                    name = title_elem.text.strip()
                 except Exception:
-                    pass
+                    try:
+                        name = driver.title.replace(" | Shopee Việt Nam", "").strip()
+                    except Exception:
+                        pass
+
+            # Lấy mô tả sản phẩm - từ các thẻ p.QN2lPu
+            description = ""
+            try:
+                desc_elements = driver.find_elements(By.CSS_SELECTOR, "p.QN2lPu")
+                if desc_elements:
+                    desc_parts = [elem.text.strip() for elem in desc_elements if elem.text.strip()]
+                    description = "\n".join(desc_parts)
+                    console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
+            except Exception as e:
+                console.print(f"[dim]Không lấy được mô tả: {e}[/]")
 
             driver.quit()
             driver = None
@@ -577,10 +596,10 @@ class ShopeeDownloader:
                     shop_id=shop_id,
                     item_id=item_id,
                     name=name,
+                    description=description,
                     images=images,
+                    image_urls_json=json.dumps(image_urls),  # Lưu direct URLs để download
                 )
-                # Lưu direct URLs để download (đã bỏ resize param)
-                product.description = json.dumps(image_urls)
 
                 return product
 
@@ -618,9 +637,9 @@ class ShopeeDownloader:
         """
         # Kiểm tra xem có direct URLs không (từ Selenium method)
         direct_urls = []
-        if product.description:
+        if product.image_urls_json:
             try:
-                direct_urls = json.loads(product.description)
+                direct_urls = json.loads(product.image_urls_json)
                 if not isinstance(direct_urls, list):
                     direct_urls = []
             except json.JSONDecodeError:
@@ -779,6 +798,46 @@ class ShopeeDownloader:
         # Download ảnh
         return self.download_images(product, folder_name, skip_existing)
 
+    def get_product_and_download(
+        self,
+        url: str,
+        folder_name: str,
+        skip_existing: bool = True
+    ) -> Tuple[Optional[ShopeeProduct], List[str]]:
+        """
+        Lấy thông tin sản phẩm và download ảnh từ link Shopee
+
+        Args:
+            url: Link sản phẩm Shopee
+            folder_name: Tên thư mục lưu
+            skip_existing: Bỏ qua nếu đã có ảnh
+
+        Returns:
+            Tuple (ShopeeProduct, List đường dẫn ảnh)
+        """
+        # Parse URL
+        shop_id, item_id = self.parse_shopee_url(url)
+
+        if not shop_id or not item_id:
+            console.print(f"[red]❌ Không thể parse link: {url}[/]")
+            return None, []
+
+        console.print(f"[dim]Shop ID: {shop_id}, Item ID: {item_id}[/]")
+
+        # Lấy thông tin sản phẩm - truyền link gốc để dùng khi fallback
+        product = self.get_product_info(shop_id, item_id, original_url=url)
+
+        if not product:
+            console.print(f"[red]❌ Không lấy được thông tin sản phẩm[/]")
+            return None, []
+
+        if product.name:
+            console.print(f"[cyan]📦 {product.name}[/]")
+
+        # Download ảnh
+        images = self.download_images(product, folder_name, skip_existing)
+        return product, images
+
 
 class ShopeeSheetProcessor:
     """Xử lý Google Sheet để tải ảnh Shopee"""
@@ -788,22 +847,29 @@ class ShopeeSheetProcessor:
         downloader: ShopeeDownloader,
         code_column: str = "A",
         link_column: str = "B",
+        name_column: str = "C",
+        description_column: str = "D",
     ):
         """
         Args:
             downloader: ShopeeDownloader instance
             code_column: Cột chứa mã sản phẩm (default: A)
             link_column: Cột chứa link Shopee (default: B)
+            name_column: Cột để ghi tên sản phẩm (default: C)
+            description_column: Cột để ghi mô tả (default: D)
         """
         self.downloader = downloader
         self.code_column = code_column
         self.link_column = link_column
+        self.name_column = name_column
+        self.description_column = description_column
 
     def process_sheet(
         self,
         sheet,  # gspread.Worksheet
         skip_existing: bool = True,
         delay_between: float = 1.0,
+        update_sheet: bool = True,  # Có cập nhật tên/mô tả vào sheet không
     ) -> Dict[str, List[str]]:
         """
         Xử lý toàn bộ sheet, tải ảnh cho từng dòng
@@ -812,6 +878,7 @@ class ShopeeSheetProcessor:
             sheet: gspread Worksheet object
             skip_existing: Bỏ qua thư mục đã có ảnh
             delay_between: Delay giữa các request (giây)
+            update_sheet: Cập nhật tên và mô tả vào cột C, D
 
         Returns:
             Dict mapping mã -> list ảnh đã tải
@@ -829,6 +896,8 @@ class ShopeeSheetProcessor:
             # Tìm index cột
             code_col_idx = ord(self.code_column.upper()) - ord('A')
             link_col_idx = ord(self.link_column.upper()) - ord('A')
+            name_col_idx = ord(self.name_column.upper()) - ord('A')
+            desc_col_idx = ord(self.description_column.upper()) - ord('A')
 
             # Bỏ qua header row
             data_rows = all_values[1:] if len(all_values) > 1 else []
@@ -851,15 +920,38 @@ class ShopeeSheetProcessor:
                     console.print(f"[dim]⏭️ Bỏ qua {code} (không phải link Shopee)[/]")
                     continue
 
+                # Kiểm tra xem đã có tên chưa (skip nếu đã có)
+                existing_name = row[name_col_idx] if len(row) > name_col_idx else ""
+                if skip_existing and existing_name.strip():
+                    console.print(f"[dim]⏭️ Bỏ qua {code} (đã có tên: {existing_name[:30]}...)[/]")
+                    continue
+
                 console.print(f"\n[bold]📦 [{row_idx}] {code}[/]")
                 console.print(f"[dim]{link}[/]")
 
-                # Download ảnh
-                images = self.downloader.download_from_url(
+                # Lấy thông tin sản phẩm và download ảnh
+                product, images = self.downloader.get_product_and_download(
                     url=link,
                     folder_name=code,
                     skip_existing=skip_existing
                 )
+
+                # Cập nhật tên và mô tả vào sheet
+                if update_sheet and product:
+                    try:
+                        # Ghi tên vào cột C
+                        if product.name:
+                            cell_name = f"{self.name_column}{row_idx}"
+                            sheet.update_acell(cell_name, product.name)
+                            console.print(f"[green]✓ Đã ghi tên vào {cell_name}[/]")
+
+                        # Ghi mô tả vào cột D
+                        if product.description:
+                            cell_desc = f"{self.description_column}{row_idx}"
+                            sheet.update_acell(cell_desc, product.description)
+                            console.print(f"[green]✓ Đã ghi mô tả vào {cell_desc}[/]")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️ Lỗi ghi sheet: {e}[/]")
 
                 results[code] = images
 
@@ -878,6 +970,7 @@ class ShopeeSheetProcessor:
         sheets_reader,  # SheetsReader instance
         skip_existing: bool = True,
         delay_between: float = 1.0,
+        update_sheet: bool = True,
     ) -> Dict[str, List[str]]:
         """
         Xử lý từ SheetsReader đã kết nối
@@ -886,6 +979,7 @@ class ShopeeSheetProcessor:
             sheets_reader: SheetsReader instance đã connect
             skip_existing: Bỏ qua thư mục đã có ảnh
             delay_between: Delay giữa các request
+            update_sheet: Cập nhật tên/mô tả vào sheet
 
         Returns:
             Dict mapping mã -> list ảnh
@@ -898,7 +992,8 @@ class ShopeeSheetProcessor:
         return self.process_sheet(
             sheet=sheets_reader.sheet,
             skip_existing=skip_existing,
-            delay_between=delay_between
+            delay_between=delay_between,
+            update_sheet=update_sheet,
         )
 
 
@@ -931,8 +1026,11 @@ def batch_download_from_sheet(
     output_dir: str = "INPUT",
     code_column: str = "A",
     link_column: str = "B",
+    name_column: str = "C",
+    description_column: str = "D",
     skip_existing: bool = True,
     delay_between: float = 1.0,
+    update_sheet: bool = True,
 ) -> Dict[str, List[str]]:
     """
     Utility function để tải ảnh từ Google Sheet
@@ -944,8 +1042,11 @@ def batch_download_from_sheet(
         output_dir: Thư mục output
         code_column: Cột mã (A, B, C...)
         link_column: Cột link
+        name_column: Cột ghi tên sản phẩm (default: C)
+        description_column: Cột ghi mô tả (default: D)
         skip_existing: Bỏ qua thư mục đã có ảnh
         delay_between: Delay giữa các request
+        update_sheet: Cập nhật tên/mô tả vào sheet
 
     Returns:
         Dict mapping mã -> list ảnh
@@ -966,10 +1067,13 @@ def batch_download_from_sheet(
         downloader=downloader,
         code_column=code_column,
         link_column=link_column,
+        name_column=name_column,
+        description_column=description_column,
     )
 
     return processor.process_from_reader(
         sheets_reader=reader,
         skip_existing=skip_existing,
         delay_between=delay_between,
+        update_sheet=update_sheet,
     )

@@ -62,12 +62,21 @@ class ShopeeDownloader:
         "af-ac-enc-dat": "null",
     }
 
-    def __init__(self, output_dir: str = "INPUT"):
+    def __init__(
+        self,
+        output_dir: str = "INPUT",
+        chrome_path: str = None,
+        profile_path: str = None,
+    ):
         """
         Args:
             output_dir: Thư mục gốc để lưu ảnh
+            chrome_path: Đường dẫn Chrome executable (để dùng browser có sẵn)
+            profile_path: Đường dẫn Chrome profile (để dùng profile đã đăng nhập)
         """
         self.output_dir = Path(output_dir)
+        self.chrome_path = chrome_path
+        self.profile_path = profile_path
         self.session = requests.Session()
         self.session.headers.update(self.DEFAULT_HEADERS)
 
@@ -197,7 +206,11 @@ class ShopeeDownloader:
 
             if response.status_code != 200:
                 # Thử dùng Selenium nếu HTML cũng bị block
-                return self._get_product_selenium(shop_id, item_id)
+                return self._get_product_selenium(
+                    shop_id, item_id,
+                    chrome_path=self.chrome_path,
+                    profile_path=self.profile_path
+                )
 
             html = response.text
 
@@ -238,11 +251,19 @@ class ShopeeDownloader:
                     pass
 
             # Nếu không parse được, thử Selenium
-            return self._get_product_selenium(shop_id, item_id)
+            return self._get_product_selenium(
+                shop_id, item_id,
+                chrome_path=self.chrome_path,
+                profile_path=self.profile_path
+            )
 
         except Exception as e:
             console.print(f"[red]❌ Fallback failed: {e}[/]")
-            return self._get_product_selenium(shop_id, item_id)
+            return self._get_product_selenium(
+                shop_id, item_id,
+                chrome_path=self.chrome_path,
+                profile_path=self.profile_path
+            )
 
     def _load_cookies_from_file(self, driver, cookie_file: str = "config/shopee_cookies.txt"):
         """Load cookies từ file Netscape format vào browser"""
@@ -291,7 +312,14 @@ class ShopeeDownloader:
             console.print(f"[yellow]⚠️ Không load được cookies: {e}[/]")
             return False
 
-    def _get_product_selenium(self, shop_id: int, item_id: int, headless: bool = False) -> Optional[ShopeeProduct]:
+    def _get_product_selenium(
+        self,
+        shop_id: int,
+        item_id: int,
+        headless: bool = False,
+        chrome_path: str = None,
+        profile_path: str = None,
+    ) -> Optional[ShopeeProduct]:
         """
         Fallback cuối: Sử dụng Selenium để crawl trang sản phẩm
         Sử dụng selector 'picture.UkIsx8 img' và bỏ resize param để tránh 403
@@ -300,6 +328,8 @@ class ShopeeDownloader:
             shop_id: Shopee shop ID
             item_id: Shopee item ID
             headless: Chạy ở chế độ ẩn browser (mặc định False để đảm bảo load được)
+            chrome_path: Đường dẫn đến Chrome executable (tùy chọn)
+            profile_path: Đường dẫn đến Chrome profile (tùy chọn, dùng profile có sẵn)
         """
         try:
             from selenium import webdriver
@@ -318,47 +348,53 @@ class ShopeeDownloader:
         try:
             console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
 
-            # Thử dùng undetected-chromedriver trước (tốt hơn cho Shopee)
-            use_uc = False
-            try:
-                import undetected_chromedriver as uc
-                use_uc = True
-            except ImportError:
-                pass
+            # Setup Chrome options
+            options = Options()
 
-            if use_uc:
-                # undetected_chromedriver tự xử lý anti-detection, không cần thêm options
-                console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
-                driver = uc.Chrome(headless=headless)
+            # Sử dụng browser profile có sẵn (đã đăng nhập Shopee)
+            if profile_path:
+                profile = Path(profile_path)
+                if profile.exists():
+                    console.print(f"[dim]Sử dụng profile: {profile.name}[/]")
+                    options.add_argument(f"--user-data-dir={profile.parent}")
+                    options.add_argument(f"--profile-directory={profile.name}")
+
+            # Đường dẫn Chrome
+            if chrome_path and Path(chrome_path).exists():
+                options.binary_location = chrome_path
+
+            if headless:
+                options.add_argument("--headless=new")
+
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+
+            # Thử dùng undetected-chromedriver nếu KHÔNG có profile
+            # (undetected_chromedriver không hoạt động tốt với existing profile)
+            if not profile_path:
+                try:
+                    import undetected_chromedriver as uc
+                    console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
+                    driver = uc.Chrome(headless=headless)
+                except ImportError:
+                    driver = webdriver.Chrome(options=options)
             else:
-                # Dùng selenium thường với các options anti-detection
-                console.print(f"[dim]Sử dụng Selenium thường...[/]")
-                options = Options()
-
-                if headless:
-                    options.add_argument("--headless=new")
-
-                options.add_argument("--no-sandbox")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
-                options.add_argument("--window-size=1920,1080")
-                options.add_argument("--disable-blink-features=AutomationControlled")
-                options.add_experimental_option("excludeSwitches", ["enable-automation"])
-                options.add_experimental_option('useAutomationExtension', False)
-                options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-
+                # Dùng selenium thường với profile có sẵn
+                console.print(f"[dim]Sử dụng Selenium với profile đã đăng nhập...[/]")
                 driver = webdriver.Chrome(options=options)
 
-            # Đầu tiên vào trang chủ Shopee để set cookies
-            driver.get("https://shopee.vn")
-            time.sleep(2)
-
-            # Load cookies từ file
-            self._load_cookies_from_file(driver)
-
-            # Refresh để apply cookies
-            driver.refresh()
-            time.sleep(2)
+            # Nếu không có profile, load cookies từ file
+            if not profile_path:
+                driver.get("https://shopee.vn")
+                time.sleep(2)
+                self._load_cookies_from_file(driver)
+                driver.refresh()
+                time.sleep(2)
 
             # Giờ vào trang sản phẩm
             console.print(f"[dim]Đang mở: {url}[/]")

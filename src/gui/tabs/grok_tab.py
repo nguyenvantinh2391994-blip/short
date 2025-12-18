@@ -424,9 +424,24 @@ class GrokTab:
             all_values = reader.sheet.get_all_values()
             link_col_idx = ord(shopee_link_column.upper()) - ord('A')
 
-            # Init downloader
+            # Init downloader với browser profile (nếu có)
             from pathlib import Path
-            downloader = ShopeeDownloader(output_dir=input_folder)
+            chrome_path = None
+            profile_path = None
+
+            # Lấy browser profile đầu tiên để dùng
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+                profile_name = first_profile.get("name", "Default")
+                self.after_safe(lambda n=profile_name: self.add_task_log(f"📱 Dùng profile: {n}", "info"))
+
+            downloader = ShopeeDownloader(
+                output_dir=input_folder,
+                chrome_path=chrome_path,
+                profile_path=profile_path
+            )
 
             downloaded_count = 0
             skipped_count = 0

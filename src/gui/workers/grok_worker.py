@@ -313,7 +313,20 @@ class GrokWorker:
                     all_values = reader.sheet.get_all_values()
                     link_col_idx = ord(shopee_link_column.upper()) - ord('A')
 
-                    downloader = ShopeeDownloader(output_dir=str(self.input_folder))
+                    # Lấy browser profile để dùng (profile đầu tiên nếu có)
+                    chrome_path = None
+                    profile_path = None
+                    if self.browser_profiles:
+                        first_profile = self.browser_profiles[0]
+                        chrome_path = first_profile.get("chrome_path")
+                        profile_path = first_profile.get("profile_path")
+                        self.log(f"  📱 Dùng profile: {first_profile.get('name', 'Default')}", "info")
+
+                    downloader = ShopeeDownloader(
+                        output_dir=str(self.input_folder),
+                        chrome_path=chrome_path,
+                        profile_path=profile_path
+                    )
 
                     for item in pending:
                         code = item["code"]

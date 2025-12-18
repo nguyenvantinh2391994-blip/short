@@ -414,8 +414,8 @@ class ShopeeDownloader:
                 console.print(f"[dim]DEBUG: profile.exists()={profile.exists()}[/]")
                 if profile.exists():
                     console.print(f"[cyan]Sử dụng profile: {profile}[/]")
-                    options.add_argument(f"--user-data-dir={profile.parent}")
-                    options.add_argument(f"--profile-directory={profile.name}")
+                    # profile_path là thư mục user-data-dir (chứa Default, Profile 1, ...)
+                    options.add_argument(f"--user-data-dir={profile}")
                 else:
                     console.print(f"[yellow]⚠️ Profile không tồn tại: {profile}[/]")
 

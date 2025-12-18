@@ -260,16 +260,18 @@ class GrokSeleniumAutomation:
                 else:
                     options.add_argument("--window-size=1920,1080")
 
-                # Download preferences
+                # Download preferences - luôn set để không hỏi lại mỗi lần
+                prefs = {
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": False,  # Bỏ scan file
+                    "profile.default_content_setting_values.automatic_downloads": 1,  # Cho phép tải nhiều file
+                    "profile.default_content_setting_values.notifications": 2,  # Tắt thông báo
+                }
                 if download_dir:
                     self.download_dir = download_dir
-                    prefs = {
-                        "download.default_directory": download_dir,
-                        "download.prompt_for_download": False,
-                        "download.directory_upgrade": True,
-                        "safebrowsing.enabled": False  # Bỏ scan file
-                    }
-                    options.add_experimental_option("prefs", prefs)
+                    prefs["download.default_directory"] = download_dir
+                options.add_experimental_option("prefs", prefs)
 
                 # Profile path
                 user_data_dir = None

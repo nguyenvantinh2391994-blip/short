@@ -379,6 +379,16 @@ class ShopeeDownloader:
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
             options.add_argument("--disable-blink-features=AutomationControlled")
+
+            # Chrome preferences - tự động cho phép download, không hỏi lại
+            prefs = {
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "safebrowsing.enabled": True,
+                "profile.default_content_setting_values.automatic_downloads": 1,  # Allow multiple downloads
+                "profile.default_content_setting_values.notifications": 2,  # Block notifications
+            }
+            options.add_experimental_option("prefs", prefs)
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option('useAutomationExtension', False)
 

@@ -818,6 +818,7 @@ class MainTab:
                 if code_folder.exists():
                     images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png")) + list(code_folder.glob("*.webp"))
                     if images:
+                        item["images"] = images  # Thêm danh sách ảnh vào item
                         valid_items.append(item)
                         self.set_task_input_status(code, TaskItem.STATUS_DONE)
                     else:

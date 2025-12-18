@@ -477,7 +477,31 @@ class ShopeeDownloader:
                 time.sleep(8)
 
             # Chờ thêm để ảnh load hoàn toàn
-            time.sleep(3)
+            time.sleep(2)
+
+            # Click vào từng thumbnail để load ảnh (Shopee dùng lazy loading)
+            console.print(f"[dim]Đang click qua các thumbnail để load ảnh...[/]")
+            try:
+                # Tìm tất cả thumbnail images
+                thumbnails = driver.find_elements(By.CSS_SELECTOR, "picture.UkIsx8")
+                console.print(f"[dim]Tìm thấy {len(thumbnails)} thumbnail[/]")
+
+                # Click từng thumbnail
+                for i, thumb in enumerate(thumbnails):
+                    try:
+                        driver.execute_script("arguments[0].click();", thumb)
+                        time.sleep(0.3)  # Chờ ảnh load
+                    except Exception:
+                        pass
+
+                # Chờ thêm sau khi click hết
+                time.sleep(2)
+            except Exception as e:
+                console.print(f"[dim]Lỗi click thumbnail: {e}[/]")
+
+            # Debug: In số lượng img tìm thấy
+            total_imgs = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
+            console.print(f"[dim]Debug: Tổng img trong picture.UkIsx8: {total_imgs}[/]")
 
             # LẤY ẢNH TỪ SELECTOR picture.UkIsx8 img (đã test hoạt động)
             js_script = """

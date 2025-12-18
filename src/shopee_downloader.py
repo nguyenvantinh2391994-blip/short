@@ -121,13 +121,14 @@ class ShopeeDownloader:
 
         return None, None
 
-    def get_product_info(self, shop_id: int, item_id: int) -> Optional[ShopeeProduct]:
+    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None) -> Optional[ShopeeProduct]:
         """
         Lấy thông tin sản phẩm từ Shopee API
 
         Args:
             shop_id: Shop ID
             item_id: Item ID
+            original_url: Link Shopee gốc (để dùng khi fallback sang Selenium)
 
         Returns:
             ShopeeProduct hoặc None nếu lỗi
@@ -147,7 +148,7 @@ class ShopeeDownloader:
 
             if response.status_code != 200:
                 console.print(f"[yellow]⚠️ API trả về status {response.status_code}[/]")
-                return self._get_product_fallback(shop_id, item_id)
+                return self._get_product_fallback(shop_id, item_id, original_url)
 
             data = response.json()
 
@@ -155,12 +156,12 @@ class ShopeeDownloader:
             if data.get("error"):
                 error_msg = data.get("error_msg", "Unknown error")
                 console.print(f"[yellow]⚠️ API error: {error_msg}[/]")
-                return self._get_product_fallback(shop_id, item_id)
+                return self._get_product_fallback(shop_id, item_id, original_url)
 
             item_data = data.get("data", {})
             if not item_data:
                 console.print("[yellow]⚠️ Không có dữ liệu sản phẩm[/]")
-                return self._get_product_fallback(shop_id, item_id)
+                return self._get_product_fallback(shop_id, item_id, original_url)
 
             # Parse images
             images = item_data.get("images", [])
@@ -184,16 +185,17 @@ class ShopeeDownloader:
 
         except requests.RequestException as e:
             console.print(f"[red]❌ Lỗi kết nối: {e}[/]")
-            return self._get_product_fallback(shop_id, item_id)
+            return self._get_product_fallback(shop_id, item_id, original_url)
         except json.JSONDecodeError as e:
             console.print(f"[red]❌ Lỗi parse JSON: {e}[/]")
-            return self._get_product_fallback(shop_id, item_id)
+            return self._get_product_fallback(shop_id, item_id, original_url)
 
-    def _get_product_fallback(self, shop_id: int, item_id: int) -> Optional[ShopeeProduct]:
+    def _get_product_fallback(self, shop_id: int, item_id: int, original_url: str = None) -> Optional[ShopeeProduct]:
         """
         Fallback: Lấy thông tin bằng cách parse HTML trang sản phẩm
         """
-        url = f"https://shopee.vn/-i.{shop_id}.{item_id}"
+        # Dùng link gốc nếu có, nếu không thì build từ shop_id/item_id
+        url = original_url if original_url else f"https://shopee.vn/-i.{shop_id}.{item_id}"
 
         try:
             console.print(f"[dim]Thử fallback method (HTML parsing)...[/]")
@@ -208,6 +210,7 @@ class ShopeeDownloader:
                 # Thử dùng Selenium nếu HTML cũng bị block
                 return self._get_product_selenium(
                     shop_id, item_id,
+                    original_url=url,
                     chrome_path=self.chrome_path,
                     profile_path=self.profile_path
                 )
@@ -253,6 +256,7 @@ class ShopeeDownloader:
             # Nếu không parse được, thử Selenium
             return self._get_product_selenium(
                 shop_id, item_id,
+                original_url=url,
                 chrome_path=self.chrome_path,
                 profile_path=self.profile_path
             )
@@ -261,6 +265,7 @@ class ShopeeDownloader:
             console.print(f"[red]❌ Fallback failed: {e}[/]")
             return self._get_product_selenium(
                 shop_id, item_id,
+                original_url=url,
                 chrome_path=self.chrome_path,
                 profile_path=self.profile_path
             )
@@ -319,6 +324,7 @@ class ShopeeDownloader:
         headless: bool = False,
         chrome_path: str = None,
         profile_path: str = None,
+        original_url: str = None,
     ) -> Optional[ShopeeProduct]:
         """
         Fallback cuối: Sử dụng Selenium để crawl trang sản phẩm
@@ -330,6 +336,7 @@ class ShopeeDownloader:
             headless: Chạy ở chế độ ẩn browser (mặc định False để đảm bảo load được)
             chrome_path: Đường dẫn đến Chrome executable (tùy chọn)
             profile_path: Đường dẫn đến Chrome profile (tùy chọn, dùng profile có sẵn)
+            original_url: Link Shopee gốc (ưu tiên dùng thay vì build từ shop_id/item_id)
         """
         try:
             from selenium import webdriver
@@ -342,7 +349,8 @@ class ShopeeDownloader:
             console.print("[yellow]⚠️ Selenium không được cài đặt. Chạy: pip install selenium[/]")
             return None
 
-        url = f"https://shopee.vn/-i.{shop_id}.{item_id}"
+        # Ưu tiên dùng link gốc, nếu không có thì build từ shop_id/item_id
+        url = original_url if original_url else f"https://shopee.vn/-i.{shop_id}.{item_id}"
         driver = None
 
         try:
@@ -667,8 +675,8 @@ class ShopeeDownloader:
 
         console.print(f"[dim]Shop ID: {shop_id}, Item ID: {item_id}[/]")
 
-        # Lấy thông tin sản phẩm
-        product = self.get_product_info(shop_id, item_id)
+        # Lấy thông tin sản phẩm - truyền link gốc để dùng khi fallback
+        product = self.get_product_info(shop_id, item_id, original_url=url)
 
         if not product:
             console.print(f"[red]❌ Không lấy được thông tin sản phẩm[/]")

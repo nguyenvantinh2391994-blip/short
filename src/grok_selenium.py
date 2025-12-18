@@ -282,7 +282,8 @@ class GrokSeleniumAutomation:
     def navigate_to_grok(self) -> bool:
         """Navigate to Grok Imagine"""
         try:
-            self.driver.get(self.GROK_IMAGINE_URL)
+            # Dùng JavaScript để đảm bảo navigate trong cùng tab
+            self.driver.execute_script(f"window.location.href = '{self.GROK_IMAGINE_URL}';")
             time.sleep(3)
 
             # Cài đặt fetch hook để bắt video URL
@@ -813,10 +814,10 @@ class GrokSeleniumAutomation:
                 )
                 results.append(result)
 
-                # Quay lại trang Grok Imagine cho video tiếp theo (cùng tab)
+                # Quay lại trang Grok Imagine cho video tiếp theo (cùng tab, dùng JS)
                 if i < total - 1:
                     self.log("   Quay lại trang Grok Imagine...")
-                    self.driver.get(self.GROK_IMAGINE_URL)
+                    self.driver.execute_script(f"window.location.href = '{self.GROK_IMAGINE_URL}';")
                     time.sleep(3)
                     # Cài lại video hook
                     self.install_video_hook()

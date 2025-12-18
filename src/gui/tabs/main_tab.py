@@ -153,6 +153,21 @@ class MainTab:
         )
         self.shopee_btn.pack(side="left", padx=(0, 10))
 
+        # Nút Làm kịch bản - Purple
+        self.script_btn = ctk.CTkButton(
+            btn_frame,
+            text="Làm kịch bản",
+            command=self.create_scripts,
+            width=120,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#8B5CF6",  # Purple
+            hover_color="#7C3AED",
+            text_color="white"
+        )
+        self.script_btn.pack(side="left", padx=(0, 10))
+
         # Nút Tạo Video - Green/Success
         self.start_btn = ctk.CTkButton(
             btn_frame,
@@ -1027,3 +1042,201 @@ class MainTab:
 
         if not toggled:
             self.add_log("Không có browser nào đang chạy")
+
+    def create_scripts(self):
+        """Tạo kịch bản và voice cho các sản phẩm"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        # Kiểm tra API key
+        if not self.app.config.gemini_api_key:
+            self.add_log("❌ Chưa có Gemini API key! Vào Settings để cấu hình.")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("📝 Bắt đầu tạo kịch bản và voice...")
+
+        thread = threading.Thread(target=self._run_script_creation, daemon=True)
+        thread.start()
+
+    def _run_script_creation(self):
+        """Background thread tạo kịch bản và voice"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...gemini_service import GeminiService
+
+            self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối!"))
+                return
+
+            self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
+
+            # Khởi tạo Gemini service
+            gemini = GeminiService(self.app.config.gemini_api_key)
+
+            # Lấy tất cả dữ liệu từ sheet
+            all_values = reader.sheet.get_all_values()
+            if not all_values:
+                self.after_safe(lambda: self.add_log("Sheet trống!"))
+                return
+
+            # Tạo thư mục voice
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
+            voice_folder.mkdir(parents=True, exist_ok=True)
+
+            # Column indexes
+            code_col = 0  # A
+            name_col = 2  # C
+            desc_col = 3  # D
+            script_col = 6  # G
+
+            # Đếm sản phẩm cần xử lý
+            data_rows = all_values[1:] if len(all_values) > 1 else []
+            pending = []
+
+            for row_idx, row in enumerate(data_rows, start=2):
+                code = row[code_col].strip() if len(row) > code_col else ""
+                name = row[name_col].strip() if len(row) > name_col else ""
+                existing_script = row[script_col].strip() if len(row) > script_col else ""
+
+                if not code or not name:
+                    continue
+
+                # Kiểm tra đã có voice chưa
+                voice_path = voice_folder / f"{code}.wav"
+                if voice_path.exists() and existing_script:
+                    continue  # Bỏ qua nếu đã có cả voice và script
+
+                pending.append({
+                    "code": code,
+                    "name": name,
+                    "description": row[desc_col].strip() if len(row) > desc_col else "",
+                    "row": row_idx,
+                    "has_script": bool(existing_script),
+                    "has_voice": voice_path.exists(),
+                    "script": existing_script,
+                })
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần xử lý"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"📋 Tìm thấy {n} sản phẩm cần xử lý"))
+
+            # Tạo tasks cho bảng tiến độ
+            for item in pending:
+                task = TaskItem(item["code"], item["row"])
+                self.tasks[item["code"]] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            success_count = 0
+            error_count = 0
+
+            # Xử lý từng sản phẩm
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                self.set_task_input_status(code, TaskItem.STATUS_RUNNING)
+                self.after_safe(lambda c=code: self.add_log(f"📝 Đang xử lý: {c}"))
+
+                try:
+                    script = item["script"]
+
+                    # Bước 1: Tạo kịch bản (nếu chưa có)
+                    if not item["has_script"]:
+                        self.after_safe(lambda c=code: self.add_log(f"  Tạo kịch bản..."))
+                        script_result = gemini.generate_script(
+                            product_name=item["name"],
+                            product_description=item["description"]
+                        )
+
+                        if script_result.success:
+                            script = script_result.script
+                            # Ghi vào sheet
+                            try:
+                                reader.sheet.update_acell(f"G{item['row']}", script)
+                                self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi kịch bản vào G{item['row']}"))
+                            except Exception as e:
+                                self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi sheet: {e}"))
+                        else:
+                            self.after_safe(lambda c=code, e=script_result.error: self.add_log(f"  ❌ Lỗi kịch bản: {e}"))
+                            self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                            error_count += 1
+                            continue
+
+                    self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
+
+                    # Bước 2: Tạo voice (nếu chưa có)
+                    if not item["has_voice"] and script:
+                        self.after_safe(lambda c=code: self.add_log(f"  Tạo voice..."))
+                        voice_path = voice_folder / f"{code}.wav"
+                        voice_result = gemini.generate_voice(
+                            text=script,
+                            output_path=str(voice_path),
+                            voice_name="Aoede"  # Giọng nữ tự nhiên
+                        )
+
+                        if voice_result.success:
+                            self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã tạo voice: {code}.wav"))
+                            self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                            self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                            success_count += 1
+                        else:
+                            self.after_safe(lambda c=code, e=voice_result.error: self.add_log(f"  ❌ Lỗi voice: {e}"))
+                            self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                            error_count += 1
+                    else:
+                        # Đã có voice hoặc không có script
+                        if item["has_voice"]:
+                            self.after_safe(lambda c=code: self.add_log(f"  ⏭️ Đã có voice"))
+                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                        success_count += 1
+
+                    self.set_task_input_status(code, TaskItem.STATUS_DONE)
+
+                    # Delay để tránh rate limit
+                    import time
+                    time.sleep(1)
+
+                except Exception as e:
+                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+                    self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                    error_count += 1
+
+            # Tổng kết
+            self.after_safe(lambda s=success_count, e=error_count: self.add_log(
+                f"✅ Hoàn thành! Thành công: {s}, Lỗi: {e}"
+            ))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_script_complete)
+
+    def _on_script_complete(self):
+        """Callback khi hoàn thành tạo kịch bản"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")

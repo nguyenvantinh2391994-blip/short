@@ -48,6 +48,9 @@ class AppConfig:
     auto_shopee: bool = True
     shopee_link_column: str = "B"
 
+    # Gemini API
+    gemini_api_key: str = ""
+
     # Browser profiles
     browser_profiles: List[Dict] = field(default_factory=list)
 

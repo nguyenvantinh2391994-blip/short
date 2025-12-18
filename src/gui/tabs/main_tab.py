@@ -198,22 +198,7 @@ class MainTab:
         )
         self.start_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Chạy Full - Cyan/Teal
-        self.full_btn = ctk.CTkButton(
-            btn_frame,
-            text="Chạy Full",
-            command=self.run_full_workflow,
-            width=100,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#0891B2",  # Cyan
-            hover_color="#0E7490",
-            text_color="white"
-        )
-        self.full_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Edit - Dark Cyan
+        # Nút Edit - Dark Cyan (trước Chạy Full)
         self.edit_btn = ctk.CTkButton(
             btn_frame,
             text="Edit",
@@ -227,6 +212,21 @@ class MainTab:
             text_color="white"
         )
         self.edit_btn.pack(side="left", padx=(0, 10))
+
+        # Nút Chạy Full - Cyan
+        self.full_btn = ctk.CTkButton(
+            btn_frame,
+            text="Chạy Full",
+            command=self.run_full_workflow,
+            width=100,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#0891B2",  # Cyan
+            hover_color="#0E7490",
+            text_color="white"
+        )
+        self.full_btn.pack(side="left", padx=(0, 10))
 
         # Nút Dừng - Red/Danger
         self.stop_btn = ctk.CTkButton(

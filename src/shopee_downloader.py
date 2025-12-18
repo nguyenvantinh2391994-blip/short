@@ -380,6 +380,105 @@ class ShopeeDownloader:
             console.print(f"[yellow]⚠️ Không load được cookies: {e}[/]")
             return False
 
+    def _save_cookies_to_file(self, driver, cookie_file: str = "config/shopee_cookies.txt"):
+        """Lưu cookies từ browser ra file Netscape format"""
+        try:
+            cookie_path = Path(cookie_file)
+            cookie_path.parent.mkdir(parents=True, exist_ok=True)
+
+            cookies = driver.get_cookies()
+            with open(cookie_path, 'w') as f:
+                f.write("# Netscape HTTP Cookie File\n")
+                f.write("# Saved by ShopeeDownloader\n\n")
+                for cookie in cookies:
+                    domain = cookie.get('domain', '')
+                    # Chỉ lưu cookies của Shopee
+                    if 'shopee' not in domain:
+                        continue
+                    flag = "TRUE" if domain.startswith('.') else "FALSE"
+                    path = cookie.get('path', '/')
+                    secure = "TRUE" if cookie.get('secure', False) else "FALSE"
+                    expiry = str(int(cookie.get('expiry', 0)))
+                    name = cookie.get('name', '')
+                    value = cookie.get('value', '')
+                    f.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+
+            console.print(f"[green]✓ Đã lưu cookies vào {cookie_file}[/]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Không lưu được cookies: {e}[/]")
+            return False
+
+    def _check_and_handle_captcha(self, driver, timeout: int = 60):
+        """
+        Kiểm tra và xử lý captcha của Shopee
+        Nếu gặp captcha, hiện browser để user giải quyết
+
+        Returns:
+            True nếu không có captcha hoặc đã giải quyết xong
+        """
+        import time
+        from selenium.webdriver.common.by import By
+
+        # Các dấu hiệu của captcha
+        captcha_indicators = [
+            "verify",
+            "captcha",
+            "robot",
+            "security",
+            "xác minh",
+            "bảo mật"
+        ]
+
+        try:
+            page_source = driver.page_source.lower()
+            current_url = driver.current_url.lower()
+
+            # Kiểm tra có captcha không
+            has_captcha = any(indicator in page_source or indicator in current_url
+                            for indicator in captcha_indicators)
+
+            if has_captcha:
+                console.print("[yellow]⚠️ Phát hiện CAPTCHA! Đang hiện browser để bạn giải quyết...[/]")
+
+                # Hiện browser
+                self.show_chrome_window()
+
+                # Đợi user giải quyết captcha
+                console.print(f"[cyan]⏳ Vui lòng giải captcha trong browser. Đợi tối đa {timeout}s...[/]")
+
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    time.sleep(2)
+
+                    # Kiểm tra lại xem còn captcha không
+                    try:
+                        page_source = driver.page_source.lower()
+                        current_url = driver.current_url.lower()
+
+                        still_has_captcha = any(indicator in page_source or indicator in current_url
+                                               for indicator in captcha_indicators)
+
+                        if not still_has_captcha:
+                            console.print("[green]✓ Captcha đã được giải quyết![/]")
+                            # Lưu cookies sau khi vượt captcha thành công
+                            self._save_cookies_to_file(driver)
+                            # Ẩn browser lại
+                            if self.headless:
+                                self._hide_chrome_window()
+                            return True
+                    except:
+                        pass
+
+                console.print("[red]❌ Hết thời gian chờ captcha[/]")
+                return False
+
+            return True  # Không có captcha
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Lỗi kiểm tra captcha: {e}[/]")
+            return True  # Tiếp tục nếu không kiểm tra được
+
     def _get_product_selenium(
         self,
         shop_id: int,
@@ -500,9 +599,17 @@ class ShopeeDownloader:
             console.print(f"[dim]Đang mở: {url}[/]")
             driver.get(url)
 
-            # Chờ trang load - đơn giản chỉ chờ vài giây là đủ
+            # Chờ trang load
             console.print(f"[dim]Chờ trang load...[/]")
-            time.sleep(8)
+            time.sleep(5)
+
+            # Kiểm tra và xử lý captcha
+            if not self._check_and_handle_captcha(driver, timeout=120):
+                console.print("[red]❌ Không vượt được captcha[/]")
+                return None
+
+            # Đợi thêm sau khi vượt captcha
+            time.sleep(3)
 
             # Debug: Đếm số img
             debug_count = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
@@ -586,6 +693,10 @@ class ShopeeDownloader:
                     console.print(f"[dim]Không tìm thấy mô tả[/]")
             except Exception as e:
                 console.print(f"[dim]Không lấy được mô tả: {e}[/]")
+
+            # Lưu cookies sau khi load thành công (để lần sau không bị captcha)
+            if image_urls:
+                self._save_cookies_to_file(driver)
 
             driver.quit()
             driver = None

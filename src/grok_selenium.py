@@ -71,27 +71,115 @@ class GrokSeleniumAutomation:
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
     def _hide_chrome_window(self):
-        """Ẩn Chrome window bằng cách đẩy ra ngoài màn hình"""
+        """Ẩn Chrome window khỏi taskbar (Windows) hoặc đẩy ra ngoài màn hình"""
         if not self.driver:
             return
         try:
-            # Di chuyển window ra ngoài màn hình (cross-platform, hoạt động ổn định)
-            self.driver.set_window_position(-2000, -2000)
-            self._is_hidden = True
-            self.log("   Đã ẩn Chrome window")
+            import platform
+            if platform.system() == 'Windows':
+                import ctypes
+                from ctypes import wintypes
+
+                # Windows API constants
+                GWL_EXSTYLE = -20
+                WS_EX_TOOLWINDOW = 0x00000080  # Ẩn khỏi taskbar
+                WS_EX_APPWINDOW = 0x00040000
+                SWP_NOSIZE = 0x0001
+
+                user32 = ctypes.windll.user32
+                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+                # Tìm tất cả Chrome windows
+                chrome_windows = []
+
+                def enum_callback(hwnd, lparam):
+                    if user32.IsWindowVisible(hwnd):
+                        length = user32.GetWindowTextLengthW(hwnd)
+                        if length > 0:
+                            buff = ctypes.create_unicode_buffer(length + 1)
+                            user32.GetWindowTextW(hwnd, buff, length + 1)
+                            title = buff.value.lower()
+                            # Tìm window Chrome/Grok
+                            if 'grok' in title or 'chrome' in title or 'imagine' in title:
+                                chrome_windows.append(hwnd)
+                    return True
+
+                user32.EnumWindows(WNDENUMPROC(enum_callback), 0)
+
+                for hwnd in chrome_windows:
+                    # Ẩn khỏi taskbar
+                    style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                    new_style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+                    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+                    # Di chuyển ra ngoài màn hình
+                    user32.SetWindowPos(hwnd, 0, -2000, -2000, 0, 0, SWP_NOSIZE)
+
+                if chrome_windows:
+                    self._chrome_hwnds = chrome_windows
+                    self._is_hidden = True
+                    self.log("   Đã ẩn Chrome window")
+            else:
+                # Linux/Mac: chỉ đẩy ra ngoài màn hình
+                self.driver.set_window_position(-2000, -2000)
+                self._is_hidden = True
+
         except Exception as e:
             self.log(f"   Lỗi ẩn window: {e}")
 
     def show_chrome_window(self):
-        """Hiện Chrome window bằng cách đưa vào màn hình"""
+        """Hiện Chrome window trên taskbar và đưa vào màn hình"""
         if not self.driver:
             return
         try:
-            # Di chuyển window vào giữa màn hình (cross-platform, hoạt động ổn định)
-            self.driver.set_window_position(100, 100)
-            self.driver.set_window_size(1200, 800)
-            self._is_hidden = False
-            self.log("   Đã hiện Chrome window")
+            import platform
+            if platform.system() == 'Windows':
+                import ctypes
+                from ctypes import wintypes
+
+                GWL_EXSTYLE = -20
+                WS_EX_APPWINDOW = 0x00040000
+                WS_EX_TOOLWINDOW = 0x00000080
+                SW_RESTORE = 9
+                HWND_TOP = 0
+                SWP_SHOWWINDOW = 0x0040
+
+                user32 = ctypes.windll.user32
+
+                # Lấy kích thước màn hình
+                screen_w = user32.GetSystemMetrics(0)
+                screen_h = user32.GetSystemMetrics(1)
+                win_w, win_h = 1200, 800
+                x = (screen_w - win_w) // 2
+                y = (screen_h - win_h) // 2
+
+                # Nếu có hwnds đã lưu, dùng lại
+                if hasattr(self, '_chrome_hwnds') and self._chrome_hwnds:
+                    for hwnd in self._chrome_hwnds:
+                        # Đưa về style bình thường (hiện trên taskbar)
+                        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                        new_style = (style | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
+                        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+                        # Restore window
+                        user32.ShowWindow(hwnd, SW_RESTORE)
+                        # Di chuyển vào giữa màn hình
+                        user32.SetWindowPos(hwnd, HWND_TOP, x, y, win_w, win_h, SWP_SHOWWINDOW)
+                        user32.SetForegroundWindow(hwnd)
+
+                    self._is_hidden = False
+                    self.log("   Đã hiện Chrome window")
+                else:
+                    # Fallback: dùng Selenium
+                    self.driver.set_window_position(x, y)
+                    self.driver.set_window_size(win_w, win_h)
+                    self._is_hidden = False
+                    self.log("   Đã hiện Chrome window")
+            else:
+                # Linux/Mac
+                self.driver.set_window_position(100, 100)
+                self.driver.set_window_size(1200, 800)
+                self._is_hidden = False
+                self.log("   Đã hiện Chrome window")
+
         except Exception as e:
             self.log(f"   Lỗi hiện window: {e}")
 

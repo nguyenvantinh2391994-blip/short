@@ -259,12 +259,14 @@ class GrokWorker:
             final_video = self.output_folder / f"{code}.mp4"
 
             # Ghép video (mute_original=True để tắt âm gốc)
+            # Nếu có voice -> nhạc nhỏ (0.1), không có voice -> nhạc to (0.5)
+            music_vol = 0.1 if voice_path else 0.5
             success = merger.merge_videos(
                 video_paths=created_videos,
                 output_path=str(final_video),
                 music_path=music_path,
                 voice_path=voice_path,
-                music_volume=0.3,
+                music_volume=music_vol,
                 voice_volume=1.0,
                 mute_original=True  # Tắt âm thanh gốc của video
             )

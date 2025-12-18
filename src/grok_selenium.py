@@ -155,23 +155,66 @@ class GrokSeleniumAutomation:
                 return
 
             import ctypes
+            from ctypes import wintypes
 
             GWL_EXSTYLE = -20
             WS_EX_APPWINDOW = 0x00040000
             WS_EX_TOOLWINDOW = 0x00000080
+            SW_RESTORE = 9
             SW_SHOW = 5
+            SW_SHOWNORMAL = 1
+            HWND_TOP = 0
+            SWP_SHOWWINDOW = 0x0040
 
             user32 = ctypes.windll.user32
 
+            # Nếu không có hwnd lưu sẵn, tìm lại
+            if not hasattr(self, '_chrome_hwnd') or not self._chrome_hwnd:
+                # Tìm window của Chrome/Grok
+                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, ctypes.py_object)
+                found_hwnds = []
+
+                def callback(hwnd, results):
+                    if user32.IsWindowVisible(hwnd) or True:  # Tìm cả window ẩn
+                        length = user32.GetWindowTextLengthW(hwnd)
+                        if length > 0:
+                            buff = ctypes.create_unicode_buffer(length + 1)
+                            user32.GetWindowTextW(hwnd, buff, length + 1)
+                            title = buff.value
+                            if 'grok' in title.lower() or 'imagine' in title.lower():
+                                results.append(hwnd)
+                    return True
+
+                user32.EnumWindows(WNDENUMPROC(callback), ctypes.py_object(found_hwnds))
+                if found_hwnds:
+                    self._chrome_hwnd = found_hwnds[0]
+
             if hasattr(self, '_chrome_hwnd') and self._chrome_hwnd:
-                # Hiện window
-                user32.ShowWindow(self._chrome_hwnd, SW_SHOW)
-                # Đưa về taskbar
+                # Đưa về style bình thường (hiện trên taskbar)
                 style = user32.GetWindowLongW(self._chrome_hwnd, GWL_EXSTYLE)
                 new_style = (style | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
                 user32.SetWindowLongW(self._chrome_hwnd, GWL_EXSTYLE, new_style)
-                # Đưa về vị trí thấy được
-                user32.SetWindowPos(self._chrome_hwnd, 0, 100, 100, 0, 0, 0x0001 | 0x0004)
+
+                # Restore window nếu bị minimize
+                user32.ShowWindow(self._chrome_hwnd, SW_RESTORE)
+
+                # Đưa về vị trí giữa màn hình với kích thước hợp lý
+                screen_width = user32.GetSystemMetrics(0)
+                screen_height = user32.GetSystemMetrics(1)
+                win_width = 1200
+                win_height = 800
+                x = (screen_width - win_width) // 2
+                y = (screen_height - win_height) // 2
+
+                # Di chuyển và resize window
+                user32.SetWindowPos(
+                    self._chrome_hwnd,
+                    HWND_TOP,
+                    x, y,
+                    win_width, win_height,
+                    SWP_SHOWWINDOW
+                )
+
                 # Đưa lên foreground
                 user32.SetForegroundWindow(self._chrome_hwnd)
 

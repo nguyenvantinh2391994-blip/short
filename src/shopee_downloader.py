@@ -155,7 +155,7 @@ class ShopeeDownloader:
 
         return None, None
 
-    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None) -> Optional[ShopeeProduct]:
+    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None, force_selenium: bool = True) -> Optional[ShopeeProduct]:
         """
         Lấy thông tin sản phẩm từ Shopee API
 
@@ -163,10 +163,21 @@ class ShopeeDownloader:
             shop_id: Shop ID
             item_id: Item ID
             original_url: Link Shopee gốc (để dùng khi fallback sang Selenium)
+            force_selenium: Luôn dùng Selenium để lấy đầy đủ ảnh (default: True)
 
         Returns:
             ShopeeProduct hoặc None nếu lỗi
         """
+        # Nếu force_selenium=True, bỏ qua API và dùng Selenium luôn
+        if force_selenium:
+            console.print(f"[dim]Dùng Selenium để lấy đầy đủ ảnh...[/]")
+            return self._get_product_selenium(
+                shop_id, item_id,
+                original_url=original_url,
+                chrome_path=self.chrome_path,
+                profile_path=self.profile_path
+            )
+
         params = {
             "itemid": item_id,
             "shopid": shop_id,

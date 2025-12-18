@@ -247,6 +247,7 @@ class ShopeeDownloader:
     def _get_product_selenium(self, shop_id: int, item_id: int) -> Optional[ShopeeProduct]:
         """
         Fallback cuối: Sử dụng Selenium để crawl trang sản phẩm
+        Sử dụng selector 'picture.UkIsx8 img' và bỏ resize param để tránh 403
         """
         try:
             from selenium import webdriver
@@ -281,61 +282,81 @@ class ShopeeDownloader:
 
             driver.get(url)
 
-            # Chờ trang load
-            time.sleep(3)
+            # Chờ trang load và ảnh render
+            time.sleep(5)
 
             # Lấy page source và parse
             html = driver.page_source
-
-            # Tìm ảnh từ các img tags
             images = []
+            image_urls = []  # Lưu full URLs để download trực tiếp
 
-            # Tìm trong HTML source
-            # Pattern 1: itemImageList hoặc images array
+            # Phương pháp 1: Tìm ảnh qua selector chính xác của Shopee
+            # Selector: picture.UkIsx8 img (ảnh sản phẩm chính)
+            selectors = [
+                "picture.UkIsx8 img",  # Ảnh sản phẩm chính
+                "div[class*='product-image'] img",
+                "div[class*='image-carousel'] img",
+                "img[src*='img.susercontent.com/file/']",
+            ]
+
+            for selector in selectors:
+                try:
+                    img_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                    for img in img_elements:
+                        src = img.get_attribute("src")
+                        if src and 'img.susercontent.com/file/' in src:
+                            # Bỏ phần resize (@...) để lấy ảnh gốc và tránh 403
+                            clean_url = src.split("@")[0]
+                            if clean_url not in image_urls:
+                                image_urls.append(clean_url)
+                                # Extract hash để backup
+                                hash_match = re.search(r'/file/([a-f0-9_]+)', clean_url)
+                                if hash_match:
+                                    images.append(hash_match.group(1))
+                except Exception:
+                    continue
+
+            # Phương pháp 2: Tìm trong JSON data của page
             patterns = [
                 r'"images"\s*:\s*\[([^\]]+)\]',
                 r'"image"\s*:\s*"([^"]+)"',
-                r'data-image="([^"]+)"',
             ]
 
             for pattern in patterns:
                 matches = re.findall(pattern, html)
                 for match in matches:
                     if isinstance(match, str):
-                        # Single image
-                        if match and len(match) > 10 and not match.startswith('http'):
-                            images.append(match)
-                        elif match.startswith('http') and 'susercontent' in match:
-                            # Extract hash from URL
-                            hash_match = re.search(r'/file/([a-f0-9]+)', match)
-                            if hash_match:
-                                images.append(hash_match.group(1))
-
-            # Tìm thêm từ các img src
-            img_elements = driver.find_elements(By.CSS_SELECTOR, "img[src*='susercontent']")
-            for img in img_elements:
-                src = img.get_attribute("src")
-                if src:
-                    hash_match = re.search(r'/file/([a-f0-9]+)', src)
-                    if hash_match and hash_match.group(1) not in images:
-                        images.append(hash_match.group(1))
+                        # Có thể là list string hoặc single string
+                        if '","' in match:
+                            # List of images
+                            for img_hash in re.findall(r'"([a-f0-9_]+)"', match):
+                                if img_hash not in images and len(img_hash) > 20:
+                                    images.append(img_hash)
+                        elif len(match) > 20 and not match.startswith('http'):
+                            if match not in images:
+                                images.append(match)
 
             driver.quit()
 
             # Lọc unique images
             images = list(dict.fromkeys(images))
 
-            if images:
+            if images or image_urls:
                 # Lấy tên sản phẩm từ title
                 title_match = re.search(r'<title>([^<]+)</title>', html)
                 name = title_match.group(1).replace(" | Shopee Việt Nam", "") if title_match else ""
 
-                return ShopeeProduct(
+                product = ShopeeProduct(
                     shop_id=shop_id,
                     item_id=item_id,
                     name=name,
-                    images=images,
+                    images=images if images else [],
                 )
+                # Lưu URLs vào extra field để download trực tiếp
+                if image_urls:
+                    product.description = json.dumps(image_urls)  # Tạm lưu URLs
+
+                return product
 
             return None
 
@@ -360,7 +381,17 @@ class ShopeeDownloader:
         Returns:
             List các đường dẫn ảnh đã download
         """
-        if not product.images:
+        # Kiểm tra xem có direct URLs không (từ Selenium method)
+        direct_urls = []
+        if product.description:
+            try:
+                direct_urls = json.loads(product.description)
+                if not isinstance(direct_urls, list):
+                    direct_urls = []
+            except json.JSONDecodeError:
+                direct_urls = []
+
+        if not product.images and not direct_urls:
             console.print(f"[yellow]⚠️ Sản phẩm không có ảnh[/]")
             return []
 
@@ -377,64 +408,100 @@ class ShopeeDownloader:
 
         downloaded = []
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Đang tải {folder_name}...",
-                total=len(product.images)
-            )
+        # Ưu tiên direct URLs (đã bỏ resize, tránh 403)
+        if direct_urls:
+            total = len(direct_urls)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    f"[cyan]Đang tải {folder_name} (direct URLs)...",
+                    total=total
+                )
 
-            for idx, image_hash in enumerate(product.images, 1):
-                # Build image URL
-                # Shopee dùng nhiều CDN khác nhau
-                image_url = f"{self.IMAGE_CDN}{image_hash}"
+                for idx, image_url in enumerate(direct_urls, 1):
+                    filename = f"{idx:02d}.jpg"
+                    filepath = folder / filename
 
-                # Filename
-                filename = f"{idx:02d}.jpg"
-                filepath = folder / filename
+                    try:
+                        for attempt in range(3):
+                            try:
+                                response = self.session.get(image_url, timeout=30)
+                                if response.status_code == 200:
+                                    with open(filepath, 'wb') as f:
+                                        f.write(response.content)
+                                    downloaded.append(str(filepath))
+                                    break
+                            except requests.RequestException:
+                                if attempt < 2:
+                                    time.sleep(1)
+                                continue
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️ Lỗi tải ảnh {idx}: {e}[/]")
 
-                try:
-                    # Download với retry
-                    for attempt in range(3):
-                        try:
-                            response = self.session.get(image_url, timeout=30)
-                            if response.status_code == 200:
-                                with open(filepath, 'wb') as f:
-                                    f.write(response.content)
-                                downloaded.append(str(filepath))
+                    progress.update(task, advance=1)
+
+        # Nếu không có direct URLs hoặc download thất bại, dùng image hashes
+        if not downloaded and product.images:
+            total = len(product.images)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    f"[cyan]Đang tải {folder_name}...",
+                    total=total
+                )
+
+                for idx, image_hash in enumerate(product.images, 1):
+                    # Build image URL - bỏ resize param
+                    image_url = f"{self.IMAGE_CDN}{image_hash}"
+
+                    filename = f"{idx:02d}.jpg"
+                    filepath = folder / filename
+
+                    try:
+                        # Download với retry và thử nhiều CDN
+                        success = False
+                        cdns = [
+                            self.IMAGE_CDN,
+                            "https://cf.shopee.vn/file/",
+                            "https://down-vn.img.susercontent.com/file/vn-11134207-7r98o-",
+                        ]
+
+                        for cdn in cdns:
+                            if success:
                                 break
-                            else:
-                                # Thử CDN khác
-                                alt_cdns = [
-                                    "https://cf.shopee.vn/file/",
-                                    "https://down-vn.img.susercontent.com/file/vn-11134207-7r98o-",
-                                ]
-                                for cdn in alt_cdns:
-                                    alt_url = f"{cdn}{image_hash}"
-                                    response = self.session.get(alt_url, timeout=30)
+                            url = f"{cdn}{image_hash}"
+
+                            for attempt in range(3):
+                                try:
+                                    response = self.session.get(url, timeout=30)
                                     if response.status_code == 200:
                                         with open(filepath, 'wb') as f:
                                             f.write(response.content)
                                         downloaded.append(str(filepath))
+                                        success = True
                                         break
-                                break
-                        except requests.RequestException:
-                            if attempt < 2:
-                                time.sleep(1)
-                            continue
+                                except requests.RequestException:
+                                    if attempt < 2:
+                                        time.sleep(1)
+                                    continue
 
-                except Exception as e:
-                    console.print(f"[yellow]⚠️ Lỗi tải ảnh {idx}: {e}[/]")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️ Lỗi tải ảnh {idx}: {e}[/]")
 
-                progress.update(task, advance=1)
+                    progress.update(task, advance=1)
 
         if downloaded:
-            console.print(f"[green]✅ Đã tải {len(downloaded)}/{len(product.images)} ảnh vào {folder}[/]")
+            console.print(f"[green]✅ Đã tải {len(downloaded)} ảnh vào {folder}[/]")
 
         return downloaded
 

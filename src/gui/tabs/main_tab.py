@@ -141,9 +141,9 @@ class MainTab:
         # Nút Tải ảnh - Orange/Amber
         self.shopee_btn = ctk.CTkButton(
             btn_frame,
-            text="Tải ảnh Shopee",
+            text="Tải ảnh",
             command=self.download_shopee_images,
-            width=130,
+            width=90,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
@@ -152,6 +152,21 @@ class MainTab:
             text_color="white"
         )
         self.shopee_btn.pack(side="left", padx=(0, 10))
+
+        # Nút Lọc ảnh - Pink (sau Tải ảnh)
+        self.filter_btn = ctk.CTkButton(
+            btn_frame,
+            text="Lọc ảnh",
+            command=self.filter_images,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#EC4899",  # Pink
+            hover_color="#DB2777",
+            text_color="white"
+        )
+        self.filter_btn.pack(side="left", padx=(0, 10))
 
         # Nút Làm kịch bản - Purple
         self.script_btn = ctk.CTkButton(
@@ -198,20 +213,20 @@ class MainTab:
         )
         self.full_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Lọc ảnh - Pink
-        self.filter_btn = ctk.CTkButton(
+        # Nút Edit - Dark Cyan
+        self.edit_btn = ctk.CTkButton(
             btn_frame,
-            text="Lọc ảnh",
-            command=self.filter_images,
+            text="Edit",
+            command=self.edit_videos,
             width=80,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#EC4899",  # Pink
-            hover_color="#DB2777",
+            fg_color="#0D9488",  # Teal
+            hover_color="#0F766E",
             text_color="white"
         )
-        self.filter_btn.pack(side="left", padx=(0, 10))
+        self.edit_btn.pack(side="left", padx=(0, 10))
 
         # Nút Dừng - Red/Danger
         self.stop_btn = ctk.CTkButton(
@@ -1032,6 +1047,7 @@ class MainTab:
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     def stop_process(self):
@@ -1274,6 +1290,7 @@ class MainTab:
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     # ===== FULL WORKFLOW =====
@@ -1602,6 +1619,7 @@ class MainTab:
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     # ===== IMAGE FILTER =====
@@ -1623,6 +1641,7 @@ class MainTab:
         self.start_btn.configure(state="disabled")
         self.full_btn.configure(state="disabled")
         self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
         self.add_log("🔍 Bắt đầu lọc ảnh...")
@@ -1717,4 +1736,184 @@ class MainTab:
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
+    # ===== EDIT VIDEOS =====
+
+    def edit_videos(self):
+        """Edit/merge video với music và voice"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("🎬 Bắt đầu edit video...")
+
+        thread = threading.Thread(target=self._run_edit_videos, daemon=True)
+        thread.start()
+
+    def _run_edit_videos(self):
+        """Background thread edit video"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ..workers.grok_worker import GrokWorker
+            from ...video_merger import VideoMerger
+            import random
+
+            self.after_safe(lambda: self.add_log("📊 Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối Google Sheets!"))
+                return
+
+            self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
+
+            # Lấy danh sách sản phẩm pending
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần xử lý"))
+                return
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+            output_folder.mkdir(parents=True, exist_ok=True)
+
+            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
+
+            # Lọc các mã có video từ Grok
+            valid_items = []
+            for item in pending:
+                code = item["code"]
+                code_folder = input_folder / code
+
+                # Tìm video từ Grok (file .mp4)
+                if code_folder.exists():
+                    videos = list(code_folder.glob("*.mp4"))
+                    if videos:
+                        item["videos"] = videos
+                        valid_items.append(item)
+
+            if not valid_items:
+                self.after_safe(lambda: self.add_log("Không có video nào để edit"))
+                return
+
+            self.after_safe(lambda n=len(valid_items): self.add_log(f"📋 Tìm thấy {n} sản phẩm có video"))
+
+            # Tạo tasks
+            for item in valid_items:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # Khởi tạo VideoMerger
+            merger = VideoMerger()
+
+            for item in valid_items:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                videos = item["videos"]
+
+                self.set_task_input_status(code, TaskItem.STATUS_DONE)
+                self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
+                self.after_safe(lambda c=code: self.add_log(f"🎬 Edit video: {c}"))
+
+                try:
+                    # Tìm voice
+                    voice_path = None
+                    if voice_folder:
+                        for ext in ['.mp3', '.wav']:
+                            vp = voice_folder / f"{code}{ext}"
+                            if vp.exists():
+                                voice_path = str(vp)
+                                break
+
+                    # Tìm music ngẫu nhiên
+                    music_path = None
+                    if music_folder and music_folder.exists():
+                        music_files = list(music_folder.glob("*.mp3"))
+                        if music_files:
+                            music_path = str(random.choice(music_files))
+
+                    # Output path
+                    final_video = output_folder / f"{code}_final.mp4"
+
+                    # Merge videos với music/voice
+                    # Nếu có voice -> nhạc nhỏ (0.1), không có voice -> nhạc to (0.5)
+                    music_vol = 0.1 if voice_path else 0.5
+
+                    success = merger.merge_videos(
+                        video_paths=[str(v) for v in videos],
+                        output_path=str(final_video),
+                        music_path=music_path,
+                        voice_path=voice_path,
+                        music_volume=music_vol,
+                        voice_volume=1.0,
+                        mute_original=True,
+                        target_width=1080,
+                        target_height=1920
+                    )
+
+                    if success:
+                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                        self.tasks[code].output_path = final_video
+                        self.after_safe(lambda: self.update_task_row(code))
+                        self.after_safe(lambda c=code: self.add_log(f"✅ {c}: Hoàn thành!"))
+
+                        # Update status trong sheet
+                        try:
+                            status_col = self.app.config.status_column or "F"
+                            reader.sheet.update_acell(f"{status_col}{item['row']}", "DONE")
+                        except Exception:
+                            pass
+                    else:
+                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                        self.after_safe(lambda c=code: self.add_log(f"❌ {c}: Lỗi merge video"))
+
+                except Exception as e:
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"❌ {c}: {e}"))
+
+            self.after_safe(lambda: self.add_log("✅ Hoàn thành edit video!"))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_edit_complete)
+
+    def _on_edit_complete(self):
+        """Callback khi hoàn thành edit video"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")

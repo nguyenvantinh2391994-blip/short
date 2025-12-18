@@ -70,9 +70,10 @@ class GrokTab:
         folder_frame = ctk.CTkFrame(controls_frame)
         folder_frame.pack(fill="x", padx=20, pady=10)
 
+        # Thư mục ảnh (chứa thư mục con theo mã)
         ctk.CTkLabel(
             folder_frame,
-            text="Thư mục Input:",
+            text="📁 Thư mục ảnh (chứa thư mục con theo mã):",
             font=ctk.CTkFont(size=13)
         ).pack(anchor="w", padx=15, pady=(10, 5))
 
@@ -90,9 +91,52 @@ class GrokTab:
             command=lambda: self.browse_folder("input")
         ).pack(side="left", padx=5)
 
+        # Thư mục nhạc
         ctk.CTkLabel(
             folder_frame,
-            text="Thư mục Output:",
+            text="🎵 Thư mục nhạc (lấy lần lượt):",
+            font=ctk.CTkFont(size=13)
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+
+        music_row = ctk.CTkFrame(folder_frame, fg_color="transparent")
+        music_row.pack(fill="x", padx=15)
+
+        self.music_entry = ctk.CTkEntry(music_row, width=250)
+        self.music_entry.pack(side="left")
+        self.music_entry.insert(0, getattr(self.app.config, 'music_folder', ''))
+
+        ctk.CTkButton(
+            music_row,
+            text="📁",
+            width=40,
+            command=lambda: self.browse_folder("music")
+        ).pack(side="left", padx=5)
+
+        # Thư mục voice
+        ctk.CTkLabel(
+            folder_frame,
+            text="🎤 Thư mục voice (theo mã sản phẩm):",
+            font=ctk.CTkFont(size=13)
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+
+        voice_row = ctk.CTkFrame(folder_frame, fg_color="transparent")
+        voice_row.pack(fill="x", padx=15)
+
+        self.voice_entry = ctk.CTkEntry(voice_row, width=250)
+        self.voice_entry.pack(side="left")
+        self.voice_entry.insert(0, getattr(self.app.config, 'voice_folder', ''))
+
+        ctk.CTkButton(
+            voice_row,
+            text="📁",
+            width=40,
+            command=lambda: self.browse_folder("voice")
+        ).pack(side="left", padx=5)
+
+        # Thư mục done (output video hoàn chỉnh)
+        ctk.CTkLabel(
+            folder_frame,
+            text="✅ Thư mục Done (video hoàn chỉnh):",
             font=ctk.CTkFont(size=13)
         ).pack(anchor="w", padx=15, pady=(10, 5))
 
@@ -119,6 +163,20 @@ class GrokTab:
             text="Tùy chọn:",
             font=ctk.CTkFont(size=13, weight="bold")
         ).pack(anchor="w", padx=15, pady=(10, 5))
+
+        # Transition type (chuyển cảnh)
+        transition_row = ctk.CTkFrame(options_frame, fg_color="transparent")
+        transition_row.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(transition_row, text="Chuyển cảnh:").pack(side="left")
+        self.transition_var = ctk.StringVar(value="fade_black")
+        self.transition_dropdown = ctk.CTkOptionMenu(
+            transition_row,
+            variable=self.transition_var,
+            values=["fade_black", "crossfade"],
+            width=120
+        )
+        self.transition_dropdown.pack(side="left", padx=10)
 
         # Max retries
         retry_row = ctk.CTkFrame(options_frame, fg_color="transparent")
@@ -269,7 +327,13 @@ class GrokTab:
             if folder_type == "input":
                 self.input_entry.delete(0, "end")
                 self.input_entry.insert(0, folder)
-            else:
+            elif folder_type == "music":
+                self.music_entry.delete(0, "end")
+                self.music_entry.insert(0, folder)
+            elif folder_type == "voice":
+                self.voice_entry.delete(0, "end")
+                self.voice_entry.insert(0, folder)
+            else:  # output
                 self.output_entry.delete(0, "end")
                 self.output_entry.insert(0, folder)
 
@@ -311,17 +375,22 @@ class GrokTab:
         # Get settings
         input_folder = self.input_entry.get()
         output_folder = self.output_entry.get()
+        music_folder = self.music_entry.get()
+        voice_folder = self.voice_entry.get()
         profile_name = self.profile_var.get()
+        transition_type = self.transition_var.get()
 
         # Save to config
         self.app.config.input_folder = input_folder
         self.app.config.output_folder = output_folder
+        self.app.config.music_folder = music_folder
+        self.app.config.voice_folder = voice_folder
         self.app.save_config()
 
         # Start thread
         self.current_thread = threading.Thread(
             target=self.run_grok_process,
-            args=(input_folder, output_folder, profile_name),
+            args=(input_folder, output_folder, music_folder, voice_folder, profile_name, transition_type),
             daemon=True
         )
         self.current_thread.start()
@@ -335,7 +404,15 @@ class GrokTab:
         self.add_task_log("Đang dừng...", "warning")
         self.app.log("Yêu cầu dừng tạo video")
 
-    def run_grok_process(self, input_folder: str, output_folder: str, profile_name: str):
+    def run_grok_process(
+        self,
+        input_folder: str,
+        output_folder: str,
+        music_folder: str,
+        voice_folder: str,
+        profile_name: str,
+        transition_type: str
+    ):
         """Run Grok video creation (in background thread)"""
         try:
             # Auto-update nếu được bật
@@ -367,13 +444,16 @@ class GrokTab:
             worker = GrokWorker(
                 input_folder=input_folder,
                 output_folder=output_folder,
+                music_folder=music_folder,
+                voice_folder=voice_folder,
+                transition_type=transition_type,
                 browser_profile=profile,
                 config=self.app.config,
                 stop_flag=self.stop_flag,
                 on_progress=self.on_worker_progress,
                 on_log=self.on_worker_log,
-                headless=headless,  # Truyền setting chạy ẩn
-                on_automation_created=self.set_automation  # Callback để lưu automation object
+                headless=headless,
+                on_automation_created=self.set_automation
             )
 
             # Run

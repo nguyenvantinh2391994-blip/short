@@ -11,6 +11,11 @@ sys.path.insert(0, "/home/user/short")
 
 from src.shopee_downloader import ShopeeDownloader
 
+# ========== CẤU HÌNH CHROME ==========
+CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+PROFILE_PATH = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Default"
+# =====================================
+
 # Lấy URL từ argument hoặc dùng URL mặc định
 if len(sys.argv) > 1:
     url = sys.argv[1]
@@ -21,9 +26,16 @@ print(f"\n{'='*60}")
 print(f"TEST SHOPEE DOWNLOADER")
 print(f"{'='*60}")
 print(f"URL: {url}")
+print(f"Chrome: {CHROME_PATH}")
+print(f"Profile: {PROFILE_PATH}")
 
-# Khởi tạo downloader
-downloader = ShopeeDownloader(output_dir="input", headless=False)
+# Khởi tạo downloader với Chrome profile
+downloader = ShopeeDownloader(
+    output_dir="input",
+    chrome_path=CHROME_PATH,
+    profile_path=PROFILE_PATH,
+    headless=False
+)
 
 # Parse URL
 shop_id, item_id = downloader.parse_shopee_url(url)

@@ -1861,8 +1861,8 @@ class MainTab:
                     final_video = output_folder / f"{code}_final.mp4"
 
                     # Merge videos với music/voice + ảnh cuối
-                    # Nếu có voice -> nhạc nhỏ (0.1), không có voice -> nhạc to (0.5)
-                    music_vol = 0.1 if voice_path else 0.5
+                    # Nếu có voice -> nhạc vừa (0.3), không có voice -> nhạc to (0.8)
+                    music_vol = 0.3 if voice_path else 0.8
 
                     success = merger.merge_videos_with_images(
                         video_paths=[str(v) for v in videos],

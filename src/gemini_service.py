@@ -65,13 +65,13 @@ VÍ DỤ MẪU:
 
 BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
         """
         Khởi tạo GeminiService
 
         Args:
             api_key: Google AI API key
-            model: Model để dùng (default: gemini-2.0-flash)
+            model: Model để dùng (default: gemini-1.5-flash - có free tier tốt hơn)
         """
         self.api_key = api_key
         self.model = model
@@ -113,7 +113,7 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
             )
 
         try:
-            # Gọi Gemini API
+            # Gọi Gemini API với retry
             url = f"{self.GEMINI_API_URL}/{self.model}:generateContent?key={self.api_key}"
 
             payload = {
@@ -128,12 +128,29 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
                 }
             }
 
-            response = requests.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
+            # Retry logic cho rate limit
+            max_retries = 3
+            for attempt in range(max_retries):
+                response = requests.post(
+                    url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30
+                )
+
+                if response.status_code == 200:
+                    break
+                elif response.status_code == 429:  # Rate limit
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 10  # 10s, 20s, 30s
+                        console.print(f"[yellow]Rate limit, chờ {wait_time}s...[/]")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        error_msg = "Đã hết quota API. Vui lòng chờ hoặc kiểm tra billing."
+                        return ScriptResult(False, error=error_msg)
+                else:
+                    break
 
             if response.status_code != 200:
                 error_msg = response.json().get("error", {}).get("message", response.text)

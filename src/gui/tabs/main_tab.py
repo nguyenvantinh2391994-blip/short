@@ -1918,3 +1918,18 @@ class MainTab:
         self.filter_btn.configure(state="normal")
         self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+
+    def cleanup_browsers(self):
+        """Đóng tất cả browser khi thoát ứng dụng"""
+        try:
+            # Đóng Shopee downloader browser
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
+                if hasattr(self.shopee_downloader, 'driver') and self.shopee_downloader.driver:
+                    try:
+                        self.shopee_downloader.driver.quit()
+                        self.shopee_downloader.driver = None
+                        print("✓ Đã đóng browser Shopee")
+                    except Exception as e:
+                        print(f"⚠️ Lỗi đóng browser Shopee: {e}")
+        except Exception as e:
+            print(f"⚠️ Lỗi cleanup browsers: {e}")

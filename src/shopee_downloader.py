@@ -477,7 +477,29 @@ class ShopeeDownloader:
                 time.sleep(8)
 
             # Chờ thêm để ảnh load hoàn toàn
-            time.sleep(2)
+            time.sleep(3)
+
+            # Scroll page để trigger lazy loading
+            driver.execute_script("window.scrollTo(0, 300);")
+            time.sleep(1)
+            driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(1)
+
+            # Tìm và scroll trong thumbnail container (nếu có)
+            console.print(f"[dim]Đang scroll thumbnail container...[/]")
+            try:
+                driver.execute_script("""
+                    // Tìm thumbnail container và scroll
+                    var containers = document.querySelectorAll('[class*="flex"][class*="overflow"]');
+                    containers.forEach(c => {
+                        if (c.querySelector('picture.UkIsx8')) {
+                            c.scrollLeft = c.scrollWidth;
+                        }
+                    });
+                """)
+                time.sleep(1)
+            except Exception:
+                pass
 
             # Click vào từng thumbnail để load ảnh (Shopee dùng lazy loading)
             console.print(f"[dim]Đang click qua các thumbnail để load ảnh...[/]")
@@ -489,8 +511,10 @@ class ShopeeDownloader:
                 # Click từng thumbnail
                 for i, thumb in enumerate(thumbnails):
                     try:
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", thumb)
+                        time.sleep(0.2)
                         driver.execute_script("arguments[0].click();", thumb)
-                        time.sleep(0.3)  # Chờ ảnh load
+                        time.sleep(0.5)  # Chờ ảnh load
                     except Exception:
                         pass
 
@@ -503,28 +527,30 @@ class ShopeeDownloader:
             total_imgs = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
             console.print(f"[dim]Debug: Tổng img trong picture.UkIsx8: {total_imgs}[/]")
 
-            # LẤY ẢNH TỪ SELECTOR picture.UkIsx8 img (đã test hoạt động)
+            # LẤY ẢNH - Dùng CÙNG script như user test thủ công
             js_script = """
             var hashes = new Set();
             var urls = [];
 
-            // Dùng selector picture.UkIsx8 img - đã được xác nhận hoạt động
-            document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
-                let src = img.src;
+            // Dùng selector picture.UkIsx8 img - giống hệt script test thủ công
+            document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
+                var src = img.src;
                 if (!src) return;
 
                 // Bỏ resize param (@...)
                 src = src.split('@')[0];
 
                 if (src.includes('susercontent.com/file/')) {
-                    // Extract hash từ URL để loại bỏ trùng lặp
-                    let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                    var match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
                     if (match && match[1] && !hashes.has(match[1])) {
                         hashes.add(match[1]);
                         urls.push(src);
                     }
                 }
             });
+
+            console.log("Tổng img:", document.querySelectorAll('picture.UkIsx8 img').length);
+            console.log("Unique URLs:", urls.length);
 
             return urls;
             """

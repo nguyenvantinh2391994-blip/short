@@ -65,13 +65,13 @@ VÍ DỤ MẪU:
 
 BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
 
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash-latest"):
+    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """
         Khởi tạo GeminiService
 
         Args:
             api_key: Google AI API key
-            model: Model để dùng (default: gemini-1.5-flash-latest)
+            model: Model để dùng (default: gemini-2.0-flash)
         """
         self.api_key = api_key
         self.model = model

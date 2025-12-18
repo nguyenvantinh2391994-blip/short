@@ -402,6 +402,8 @@ class ShopeeDownloader:
 
         try:
             console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
+            console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
+            console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
 
             # Setup Chrome options
             options = Options()
@@ -409,10 +411,13 @@ class ShopeeDownloader:
             # Sử dụng browser profile có sẵn (đã đăng nhập Shopee)
             if profile_path:
                 profile = Path(profile_path)
+                console.print(f"[dim]DEBUG: profile.exists()={profile.exists()}[/]")
                 if profile.exists():
-                    console.print(f"[dim]Sử dụng profile: {profile.name}[/]")
+                    console.print(f"[cyan]Sử dụng profile: {profile}[/]")
                     options.add_argument(f"--user-data-dir={profile.parent}")
                     options.add_argument(f"--profile-directory={profile.name}")
+                else:
+                    console.print(f"[yellow]⚠️ Profile không tồn tại: {profile}[/]")
 
             # Đường dẫn Chrome
             if chrome_path and Path(chrome_path).exists():

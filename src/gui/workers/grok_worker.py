@@ -102,6 +102,10 @@ class GrokWorker:
             images.extend(folder.glob(f"*{ext.upper()}"))
         return sorted(images)
 
+    def process_single_item(self, item: Dict, profile: Dict, reader: Any, merger: Any) -> bool:
+        """Alias cho process_single_product (backwards compatibility)"""
+        return self.process_single_product(item, profile, reader, merger)
+
     def process_single_product(
         self,
         item: Dict,

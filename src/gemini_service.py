@@ -8,6 +8,9 @@ import base64
 import time
 import tempfile
 import subprocess
+import struct
+import wave
+import shutil
 from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -32,6 +35,32 @@ class VoiceResult:
     success: bool
     audio_path: str = ""
     error: str = ""
+
+
+def create_wav_from_pcm(pcm_data: bytes, output_path: str, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bool:
+    """
+    Tạo file WAV từ raw PCM data
+
+    Args:
+        pcm_data: Raw PCM audio data
+        output_path: Đường dẫn file output
+        sample_rate: Sample rate (Hz), Gemini TTS dùng 24000
+        channels: Số kênh (1 = mono, 2 = stereo)
+        sample_width: Bytes per sample (2 = 16-bit)
+
+    Returns:
+        True nếu thành công
+    """
+    try:
+        with wave.open(output_path, 'wb') as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(sample_width)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm_data)
+        return True
+    except Exception as e:
+        console.print(f"[red]Lỗi tạo WAV: {e}[/]")
+        return False
 
 
 class GeminiService:
@@ -281,13 +310,13 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
                 output_file = output_file.with_suffix(".mp3")
             output_file.parent.mkdir(parents=True, exist_ok=True)
 
+            # Tạo file WAV từ raw PCM data (Gemini TTS trả về raw PCM 24kHz 16-bit mono)
+            tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+            if not create_wav_from_pcm(audio_bytes, tmp_wav, sample_rate=24000, channels=1, sample_width=2):
+                return VoiceResult(False, error="Không thể tạo file WAV từ dữ liệu audio")
+
             # Nếu cần MP3, convert từ WAV
             if output_format == "mp3":
-                # Lưu tạm file WAV
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp.write(audio_bytes)
-                    tmp_wav = tmp.name
-
                 try:
                     # Convert sang MP3 bằng ffmpeg
                     result = subprocess.run(
@@ -296,19 +325,17 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
                         text=True
                     )
                     if result.returncode != 0:
-                        # Nếu ffmpeg fail, lưu WAV thay thế
+                        # Nếu ffmpeg fail, giữ lại file WAV
                         console.print(f"[yellow]⚠️ ffmpeg không khả dụng, lưu WAV[/]")
                         output_file = output_file.with_suffix(".wav")
-                        with open(output_file, "wb") as f:
-                            f.write(audio_bytes)
+                        shutil.copy(tmp_wav, str(output_file))
                 finally:
                     # Xóa file tạm
                     if os.path.exists(tmp_wav):
                         os.unlink(tmp_wav)
             else:
-                # Lưu trực tiếp WAV
-                with open(output_file, "wb") as f:
-                    f.write(audio_bytes)
+                # Nếu không cần MP3, vẫn convert sang WAV chuẩn
+                shutil.move(tmp_wav, str(output_file))
 
             console.print(f"[green]✓ Đã tạo voice: {output_file.name}[/]")
             return VoiceResult(True, audio_path=str(output_file))

@@ -36,8 +36,13 @@ class GrokTab:
 
     def setup_controls(self):
         """Setup control panel"""
-        controls_frame = ctk.CTkFrame(self.main_frame)
-        controls_frame.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=0)
+        # Outer frame
+        outer_frame = ctk.CTkFrame(self.main_frame)
+        outer_frame.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=0)
+
+        # Scrollable frame cho controls
+        controls_frame = ctk.CTkScrollableFrame(outer_frame, label_text="")
+        controls_frame.pack(fill="both", expand=True)
 
         # Title
         title = ctk.CTkLabel(

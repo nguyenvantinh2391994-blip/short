@@ -270,6 +270,18 @@ class GrokTab:
         )
         self.stop_btn.pack(side="left", padx=5)
 
+        # Nút tải ảnh Shopee riêng
+        self.shopee_btn = ctk.CTkButton(
+            btn_frame,
+            text="🛒 Tải ảnh Shopee",
+            command=self.download_shopee_images,
+            width=150,
+            height=45,
+            fg_color="#FF5722",
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        self.shopee_btn.pack(side="left", padx=5)
+
         # Nút ẩn/hiện browser
         self.show_btn = ctk.CTkButton(
             btn_frame,
@@ -538,6 +550,126 @@ class GrokTab:
         # Mặc định là ẩn (headless)
         self._browser_visible = False
         self.after_safe(lambda: self.show_btn.configure(text="👁️ Hiện Browser"))
+
+    def download_shopee_images(self):
+        """Tải ảnh từ Shopee - chạy riêng"""
+        if self.is_running:
+            self.add_task_log("Đang chạy task khác, vui lòng đợi...", "warning")
+            return
+
+        # Disable button
+        self.shopee_btn.configure(state="disabled")
+        self.task_list.delete("1.0", "end")
+        self.add_task_log("🛒 Bắt đầu tải ảnh từ Shopee...", "progress")
+
+        # Get settings
+        input_folder = self.input_entry.get()
+        shopee_link_column = self.shopee_col_entry.get() or "B"
+
+        # Start thread
+        thread = threading.Thread(
+            target=self._run_shopee_download,
+            args=(input_folder, shopee_link_column),
+            daemon=True
+        )
+        thread.start()
+
+    def _run_shopee_download(self, input_folder: str, shopee_link_column: str):
+        """Background thread để tải ảnh Shopee"""
+        try:
+            from ...shopee_downloader import ShopeeDownloader
+            from ...sheets_reader import SheetsReader
+
+            # Connect to Google Sheets
+            self.after_safe(lambda: self.add_task_log("Kết nối Google Sheets...", "progress"))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect():
+                self.after_safe(lambda: self.add_task_log("Không thể kết nối Google Sheets!", "error"))
+                return
+
+            if not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_task_log("Không thể mở spreadsheet!", "error"))
+                return
+
+            self.after_safe(lambda: self.add_task_log("Đã kết nối Google Sheets", "success"))
+
+            # Get pending products
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_task_log("Không có sản phẩm nào cần xử lý", "warning"))
+                return
+
+            self.after_safe(lambda: self.add_task_log(f"Tìm thấy {len(pending)} mã cần xử lý", "info"))
+
+            # Get all values for Shopee links
+            all_values = reader.sheet.get_all_values()
+            link_col_idx = ord(shopee_link_column.upper()) - ord('A')
+
+            # Init downloader
+            from pathlib import Path
+            downloader = ShopeeDownloader(output_dir=input_folder)
+
+            downloaded_count = 0
+            skipped_count = 0
+
+            for item in pending:
+                code = item["code"]
+                row_idx = item["row"] - 1
+                code_folder = Path(input_folder) / code
+
+                # Check if already has images
+                if code_folder.exists():
+                    existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                    if existing:
+                        self.after_safe(lambda c=code, n=len(existing): self.add_task_log(f"⏭️ {c}: đã có {n} ảnh", "info"))
+                        skipped_count += 1
+                        continue
+
+                # Get Shopee link
+                if row_idx < len(all_values):
+                    row_data = all_values[row_idx]
+                    shopee_link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
+
+                    if shopee_link and "shopee" in shopee_link.lower():
+                        self.after_safe(lambda c=code: self.add_task_log(f"🛒 Đang tải: {c}...", "progress"))
+
+                        images = downloader.download_from_url(
+                            url=shopee_link.strip(),
+                            folder_name=code,
+                            skip_existing=True
+                        )
+
+                        if images:
+                            self.after_safe(lambda c=code, n=len(images): self.add_task_log(f"✅ {c}: tải được {n} ảnh", "success"))
+                            downloaded_count += 1
+                        else:
+                            self.after_safe(lambda c=code: self.add_task_log(f"⚠️ {c}: không tải được ảnh", "warning"))
+                    else:
+                        self.after_safe(lambda c=code: self.add_task_log(f"⚠️ {c}: không có link Shopee", "warning"))
+
+            # Summary
+            self.after_safe(lambda: self.add_task_log(f"\n{'='*40}", "info"))
+            self.after_safe(lambda: self.add_task_log(f"✅ Hoàn thành!", "success"))
+            self.after_safe(lambda: self.add_task_log(f"   Đã tải: {downloaded_count} sản phẩm", "info"))
+            self.after_safe(lambda: self.add_task_log(f"   Bỏ qua: {skipped_count} sản phẩm (đã có ảnh)", "info"))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_task_log(f"Lỗi: {e}", "error"))
+            import traceback
+            self.after_safe(lambda: self.add_task_log(traceback.format_exc(), "error"))
+
+        finally:
+            self.after_safe(lambda: self.shopee_btn.configure(state="normal"))
 
     def after_safe(self, func):
         """Safely call function on main thread"""

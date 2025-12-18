@@ -1,6 +1,6 @@
 """
 Video Creator Tool - Main Application
-GUI chính để tạo video từ Grok, Sora, v.v.
+Giao diện đơn giản, gọn gàng, dễ sử dụng
 """
 
 import customtkinter as ctk
@@ -12,10 +12,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
 # Import các tab
-from .tabs.home_tab import HomeTab
-from .tabs.grok_tab import GrokTab
+from .tabs.main_tab import MainTab
 from .tabs.settings_tab import SettingsTab
-from .tabs.logs_tab import LogsTab
 
 # Config
 CONFIG_FILE = Path(__file__).parent.parent.parent / "config" / "gui_config.json"
@@ -36,6 +34,8 @@ class AppConfig:
     # Thư mục
     input_folder: str = "input"
     output_folder: str = "outputs"
+    music_folder: str = ""
+    voice_folder: str = ""
 
     # Google Sheets
     spreadsheet_id: str = ""
@@ -43,6 +43,10 @@ class AppConfig:
     credentials_file: str = "config/credentials.json"
     status_column: str = "E"
     prompt_column: str = "F"
+
+    # Shopee settings
+    auto_shopee: bool = True
+    shopee_link_column: str = "B"
 
     # Browser profiles
     browser_profiles: List[Dict] = field(default_factory=list)
@@ -64,10 +68,10 @@ class AppConfig:
 
 
 class VideoCreatorApp(ctk.CTk):
-    """Main Application Window"""
+    """Main Application Window - Giao diện tối giản"""
 
-    APP_NAME = "Video Creator Tool"
-    APP_VERSION = "1.0.0"
+    APP_NAME = "Video Creator"
+    APP_VERSION = "2.0"
 
     def __init__(self):
         super().__init__()
@@ -75,14 +79,14 @@ class VideoCreatorApp(ctk.CTk):
         # Load config
         self.config = self.load_config()
 
-        # Setup theme
+        # Setup theme - màu nhẹ nhàng hơn
         ctk.set_appearance_mode(self.config.theme)
         ctk.set_default_color_theme("blue")
 
         # Setup window
-        self.title(f"{self.APP_NAME} v{self.APP_VERSION}")
-        self.geometry("1200x800")
-        self.minsize(900, 600)
+        self.title(f"{self.APP_NAME}")
+        self.geometry("1000x700")
+        self.minsize(800, 550)
 
         # Center window
         self.center_window()
@@ -103,93 +107,98 @@ class VideoCreatorApp(ctk.CTk):
         self.geometry(f"+{x}+{y}")
 
     def setup_ui(self):
-        """Setup main UI"""
+        """Setup main UI - đơn giản, gọn gàng"""
         # Main container
-        self.main_container = ctk.CTkFrame(self)
-        self.main_container.pack(fill="both", expand=True, padx=10, pady=10)
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.pack(fill="both", expand=True, padx=15, pady=15)
 
-        # Header
+        # Header nhỏ gọn
         self.setup_header()
 
-        # Tab view
+        # Tab view - chỉ 2 tabs
         self.setup_tabs()
 
-        # Status bar
+        # Status bar nhỏ
         self.setup_statusbar()
 
     def setup_header(self):
-        """Setup header với logo và title"""
-        header = ctk.CTkFrame(self.main_container, height=60)
-        header.pack(fill="x", padx=5, pady=(5, 10))
+        """Header nhỏ gọn"""
+        header = ctk.CTkFrame(self.main_container, height=45, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 10))
         header.pack_propagate(False)
 
         # Title
         title_label = ctk.CTkLabel(
             header,
             text=f"🎬 {self.APP_NAME}",
-            font=ctk.CTkFont(size=24, weight="bold")
+            font=ctk.CTkFont(size=20, weight="bold")
         )
-        title_label.pack(side="left", padx=20, pady=10)
+        title_label.pack(side="left")
 
-        # Version
-        version_label = ctk.CTkLabel(
-            header,
-            text=f"v{self.APP_VERSION}",
-            font=ctk.CTkFont(size=12),
-            text_color="gray"
+        # Buttons bên phải
+        btn_frame = ctk.CTkFrame(header, fg_color="transparent")
+        btn_frame.pack(side="right")
+
+        # Help button
+        help_btn = ctk.CTkButton(
+            btn_frame,
+            text="❓",
+            width=35,
+            height=35,
+            command=self.show_help,
+            fg_color="transparent",
+            hover_color=("gray85", "gray25")
         )
-        version_label.pack(side="left", pady=10)
+        help_btn.pack(side="left", padx=5)
 
         # Theme toggle
-        self.theme_switch = ctk.CTkSwitch(
-            header,
-            text="Dark Mode",
+        self.theme_btn = ctk.CTkButton(
+            btn_frame,
+            text="🌙" if self.config.theme == "dark" else "☀️",
+            width=35,
+            height=35,
             command=self.toggle_theme,
-            onvalue="dark",
-            offvalue="light"
+            fg_color="transparent",
+            hover_color=("gray85", "gray25")
         )
-        self.theme_switch.pack(side="right", padx=20, pady=10)
-        if self.config.theme == "dark":
-            self.theme_switch.select()
+        self.theme_btn.pack(side="left", padx=5)
 
     def setup_tabs(self):
-        """Setup tab view"""
+        """Setup tab view - chỉ 2 tabs chính"""
         self.tabview = ctk.CTkTabview(self.main_container)
-        self.tabview.pack(fill="both", expand=True, padx=5, pady=5)
+        self.tabview.pack(fill="both", expand=True)
 
-        # Add tabs
-        self.tabview.add("🏠 Trang chủ")
-        self.tabview.add("🎬 Grok Video")
+        # Chỉ 2 tabs
+        self.tabview.add("🎬 Tạo Video")
         self.tabview.add("⚙️ Cài đặt")
-        self.tabview.add("📋 Logs")
 
-        # Initialize tab contents
-        self.home_tab = HomeTab(self.tabview.tab("🏠 Trang chủ"), self)
-        self.grok_tab = GrokTab(self.tabview.tab("🎬 Grok Video"), self)
+        # Initialize tabs
+        self.main_tab = MainTab(self.tabview.tab("🎬 Tạo Video"), self)
         self.settings_tab = SettingsTab(self.tabview.tab("⚙️ Cài đặt"), self)
-        self.logs_tab = LogsTab(self.tabview.tab("📋 Logs"), self)
 
     def setup_statusbar(self):
-        """Setup status bar"""
-        self.statusbar = ctk.CTkFrame(self.main_container, height=30)
-        self.statusbar.pack(fill="x", padx=5, pady=(5, 0))
+        """Status bar nhỏ gọn"""
+        self.statusbar = ctk.CTkFrame(self.main_container, height=25, fg_color="transparent")
+        self.statusbar.pack(fill="x", pady=(10, 0))
         self.statusbar.pack_propagate(False)
 
         # Status label
         self.status_label = ctk.CTkLabel(
             self.statusbar,
             text="Sẵn sàng",
-            font=ctk.CTkFont(size=12)
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
         )
-        self.status_label.pack(side="left", padx=10)
+        self.status_label.pack(side="left")
 
         # Progress
         self.progress_label = ctk.CTkLabel(
             self.statusbar,
             text="",
-            font=ctk.CTkFont(size=12)
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
         )
-        self.progress_label.pack(side="right", padx=10)
+        self.progress_label.pack(side="right")
 
     def set_status(self, text: str, progress: str = ""):
         """Update status bar"""
@@ -198,13 +207,81 @@ class VideoCreatorApp(ctk.CTk):
 
     def toggle_theme(self):
         """Toggle dark/light theme"""
-        if self.theme_switch.get() == "dark":
-            ctk.set_appearance_mode("dark")
-            self.config.theme = "dark"
-        else:
+        if self.config.theme == "dark":
             ctk.set_appearance_mode("light")
             self.config.theme = "light"
+            self.theme_btn.configure(text="☀️")
+        else:
+            ctk.set_appearance_mode("dark")
+            self.config.theme = "dark"
+            self.theme_btn.configure(text="🌙")
         self.save_config()
+
+    def show_help(self):
+        """Hiển thị hướng dẫn sử dụng"""
+        help_window = ctk.CTkToplevel(self)
+        help_window.title("Hướng dẫn sử dụng")
+        help_window.geometry("500x400")
+        help_window.transient(self)
+        help_window.grab_set()
+
+        # Center
+        help_window.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - 500) // 2
+        y = self.winfo_y() + (self.winfo_height() - 400) // 2
+        help_window.geometry(f"+{x}+{y}")
+
+        # Content
+        content = ctk.CTkScrollableFrame(help_window)
+        content.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title = ctk.CTkLabel(
+            content,
+            text="📖 Hướng dẫn sử dụng",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        title.pack(pady=(0, 15))
+
+        instructions = """
+1️⃣ CÀI ĐẶT (làm 1 lần):
+   • Vào tab "Cài đặt"
+   • Thêm Browser Profile (đã đăng nhập Grok)
+   • Nhập Google Sheets ID
+   • Đặt credentials.json vào thư mục config/
+
+2️⃣ CHUẨN BỊ DỮ LIỆU:
+   • Google Sheet: Cột A = mã, Cột B = link Shopee
+   • Cột E = trạng thái (để trống = chưa làm)
+   • Cột F = prompt cho Grok
+
+3️⃣ TẠO VIDEO:
+   • Nhấn "🛒 Tải ảnh Shopee" để tải ảnh trước
+   • Nhấn "▶️ Tạo Video" để bắt đầu
+   • Video sẽ lưu vào thư mục outputs/
+
+4️⃣ TIPS:
+   • Dùng ảnh tỷ lệ 9:16 để đẹp nhất
+   • Có thể thêm nhạc vào thư mục music/
+   • Kiểm tra trạng thái ở Google Sheet
+        """
+
+        text = ctk.CTkLabel(
+            content,
+            text=instructions.strip(),
+            font=ctk.CTkFont(size=13),
+            justify="left",
+            anchor="w"
+        )
+        text.pack(fill="x")
+
+        # Close button
+        close_btn = ctk.CTkButton(
+            help_window,
+            text="Đóng",
+            command=help_window.destroy,
+            width=100
+        )
+        close_btn.pack(pady=15)
 
     def load_config(self) -> AppConfig:
         """Load config từ file"""
@@ -227,13 +304,13 @@ class VideoCreatorApp(ctk.CTk):
             print(f"Lỗi save config: {e}")
 
     def log(self, message: str, level: str = "INFO"):
-        """Add log message"""
+        """Add log message - gửi đến main_tab"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        log_text = f"[{timestamp}] [{level}] {message}"
+        log_text = f"[{timestamp}] {message}"
 
-        # Add to logs tab
-        if hasattr(self, 'logs_tab'):
-            self.logs_tab.add_log(log_text, level)
+        # Add to main tab
+        if hasattr(self, 'main_tab'):
+            self.main_tab.add_log(log_text, level)
 
         print(log_text)
 

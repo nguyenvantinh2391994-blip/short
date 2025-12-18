@@ -102,6 +102,49 @@ class GrokWorker:
             images.extend(folder.glob(f"*{ext.upper()}"))
         return sorted(images)
 
+    def process_single_item(self, item: Dict, reader: Any = None) -> Any:
+        """
+        Simplified method cho main_tab.py
+        Tự động chọn profile và tạo merger
+
+        Args:
+            item: Dict chứa code, row, images
+            reader: SheetsReader (optional)
+
+        Returns:
+            Object với success và output_path
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class Result:
+            success: bool = False
+            output_path: str = ""
+            error: str = ""
+
+        # Lấy profile đầu tiên
+        if not self.browser_profiles:
+            return Result(success=False, error="Không có browser profile")
+
+        profile = self.browser_profiles[0]
+
+        # Tạo merger
+        from ...video_merger import VideoMerger
+        merger = VideoMerger(
+            transition_type=self.transition_type,
+            transition_duration=0.5,
+            on_log=self.log
+        )
+
+        # Gọi process_single_product
+        try:
+            success = self.process_single_product(item, profile, reader, merger)
+            code = item.get("code", "")
+            output_path = str(self.output_folder / f"{code}.mp4") if success else ""
+            return Result(success=success, output_path=output_path)
+        except Exception as e:
+            return Result(success=False, error=str(e))
+
     def process_single_product(
         self,
         item: Dict,
@@ -193,33 +236,37 @@ class GrokWorker:
             # ===== BƯỚC 2: Ghép video + nhạc + voice =====
             self.log(f"[{profile_name}] Ghép {len(created_videos)} video...", "progress")
 
-            # Lấy nhạc (thread-safe)
-            music_path = None
-            if self.music_folder and self.music_folder.exists():
-                with self._lock:
-                    music_path = get_music_for_index(str(self.music_folder), self._music_index)
-                    self._music_index += 1
-                if music_path:
-                    self.log(f"[{profile_name}] 🎵 Nhạc: {Path(music_path).name}", "info")
-
-            # Lấy voice
+            # Lấy voice trước
             voice_path = None
             if self.voice_folder and self.voice_folder.exists():
                 voice_path = get_voice_for_code(str(self.voice_folder), code)
                 if voice_path:
                     self.log(f"[{profile_name}] 🎤 Voice: {Path(voice_path).name}", "info")
 
+            # Lấy nhạc - LUÔN lấy nhạc nếu không có voice
+            music_path = None
+            if self.music_folder and self.music_folder.exists():
+                with self._lock:
+                    music_path = get_music_for_index(str(self.music_folder), self._music_index)
+                    self._music_index += 1
+                if music_path:
+                    if not voice_path:
+                        self.log(f"[{profile_name}] 🎵 Không có voice, dùng nhạc: {Path(music_path).name}", "info")
+                    else:
+                        self.log(f"[{profile_name}] 🎵 Nhạc nền: {Path(music_path).name}", "info")
+
             # Đường dẫn output
             final_video = self.output_folder / f"{code}.mp4"
 
-            # Ghép video
+            # Ghép video (mute_original=True để tắt âm gốc)
             success = merger.merge_videos(
                 video_paths=created_videos,
                 output_path=str(final_video),
                 music_path=music_path,
                 voice_path=voice_path,
                 music_volume=0.3,
-                voice_volume=1.0
+                voice_volume=1.0,
+                mute_original=True  # Tắt âm thanh gốc của video
             )
 
             if success:
@@ -299,6 +346,65 @@ class GrokWorker:
                 return
 
             self.log(f"Tìm thấy {len(pending)} mã cần xử lý", "info")
+
+            # ===== AUTO DOWNLOAD ẢNH TỪ SHOPEE =====
+            auto_shopee = getattr(self.config, 'auto_shopee', True)
+            shopee_link_column = getattr(self.config, 'shopee_link_column', 'B')
+
+            if auto_shopee:
+                self.log("🛒 Kiểm tra và tải ảnh từ Shopee...", "progress")
+                try:
+                    from ...shopee_downloader import ShopeeDownloader
+
+                    # Lấy dữ liệu cột link Shopee
+                    all_values = reader.sheet.get_all_values()
+                    link_col_idx = ord(shopee_link_column.upper()) - ord('A')
+
+                    # Lấy browser profile để dùng (profile đầu tiên nếu có)
+                    chrome_path = None
+                    profile_path = None
+                    if self.browser_profiles:
+                        first_profile = self.browser_profiles[0]
+                        chrome_path = first_profile.get("chrome_path")
+                        profile_path = first_profile.get("profile_path")
+                        self.log(f"  📱 Dùng profile: {first_profile.get('name', 'Default')}", "info")
+
+                    downloader = ShopeeDownloader(
+                        output_dir=str(self.input_folder),
+                        chrome_path=chrome_path,
+                        profile_path=profile_path
+                    )
+
+                    for item in pending:
+                        code = item["code"]
+                        row_idx = item["row"] - 1  # Row trong sheet bắt đầu từ 1
+                        code_folder = self.input_folder / code
+
+                        # Kiểm tra đã có ảnh chưa
+                        if code_folder.exists():
+                            existing = self.get_images_in_folder(code_folder)
+                            if existing:
+                                continue  # Đã có ảnh, bỏ qua
+
+                        # Lấy link Shopee từ sheet
+                        if row_idx < len(all_values):
+                            row_data = all_values[row_idx]
+                            shopee_link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
+
+                            if shopee_link and "shopee" in shopee_link.lower():
+                                self.log(f"  🛒 Tải ảnh cho {code}...", "progress")
+                                images = downloader.download_from_url(
+                                    url=shopee_link.strip(),
+                                    folder_name=code,
+                                    skip_existing=True
+                                )
+                                if images:
+                                    self.log(f"  ✅ Đã tải {len(images)} ảnh cho {code}", "success")
+                                else:
+                                    self.log(f"  ⚠️ Không tải được ảnh cho {code}", "warning")
+
+                except Exception as e:
+                    self.log(f"⚠️ Lỗi tải ảnh Shopee: {e}", "warning")
 
             # Kiểm tra thư mục con
             valid_items = []

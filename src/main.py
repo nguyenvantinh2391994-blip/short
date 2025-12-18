@@ -28,6 +28,12 @@ from .grok_automation import (
 from .sheets_reader import SheetsReader, LocalProductReader, Product
 from .video_generator import VideoGenerator, VideoConfig
 from .watcher import AutoVideoWatcher, SheetsWatcher
+from .shopee_downloader import (
+    ShopeeDownloader,
+    ShopeeSheetProcessor,
+    download_shopee_images,
+    batch_download_from_sheet,
+)
 
 console = Console()
 
@@ -312,6 +318,20 @@ python -m src.main generate --all --use-grok
 
 # Auto watch và tạo video
 python -m src.main watch
+
+# === SHOPEE DOWNLOADER ===
+
+# Tải ảnh từ 1 link Shopee
+python -m src.main shopee-download "https://shopee.vn/...-i.123.456" KA1-0001
+
+# Tải ảnh hàng loạt từ Google Sheets
+python -m src.main shopee-batch
+
+# Tải với tùy chọn
+python -m src.main shopee-batch -s "Sheet1" -o "INPUT" -c A -l B
+
+# Test parse link Shopee
+python -m src.main shopee-test "https://shopee.vn/...-i.123.456"
 ```
 
 ## 5. Tips
@@ -588,6 +608,155 @@ def grok_batch(ctx, input_folder, output_folder):
     if results:
         success = sum(1 for r in results if r.success)
         console.print(f"\n[bold green]===== KẾT QUẢ: {success}/{len(results)} video thành công =====[/]")
+
+
+# ============= SHOPEE IMAGE DOWNLOADER =============
+
+@cli.command("shopee-download")
+@click.argument("url")
+@click.argument("folder_name")
+@click.option("--output", "-o", default="INPUT", help="Thư mục gốc lưu ảnh (mặc định: INPUT)")
+@click.option("--force", "-f", is_flag=True, help="Tải lại dù thư mục đã có ảnh")
+def shopee_download(url, folder_name, output, force):
+    """
+    Tải ảnh sản phẩm từ 1 link Shopee.
+
+    URL: Link sản phẩm Shopee (VD: https://shopee.vn/...-i.123.456)
+
+    FOLDER_NAME: Tên thư mục lưu ảnh (VD: KA1-0001)
+
+    Ảnh sẽ được lưu vào: OUTPUT/FOLDER_NAME/
+    """
+    console.print(Panel(
+        f"[bold]Shopee Image Downloader[/]\n\n"
+        f"URL: {url[:60]}{'...' if len(url) > 60 else ''}\n"
+        f"Folder: {folder_name}\n"
+        f"Output: {output}/{folder_name}/\n"
+        f"Force: {force}",
+        title="Download Ảnh Shopee"
+    ))
+
+    images = download_shopee_images(
+        url=url,
+        folder_name=folder_name,
+        output_dir=output,
+        skip_existing=not force,
+    )
+
+    if images:
+        console.print(f"\n[bold green]✅ Thành công! Đã tải {len(images)} ảnh[/]")
+        console.print(f"[dim]Thư mục: {output}/{folder_name}/[/]")
+    else:
+        console.print(f"\n[bold red]❌ Không tải được ảnh nào[/]")
+
+
+@cli.command("shopee-batch")
+@click.option("--sheet-name", "-s", default="Sheet1", help="Tên sheet (mặc định: Sheet1)")
+@click.option("--output", "-o", default="INPUT", help="Thư mục gốc lưu ảnh (mặc định: INPUT)")
+@click.option("--code-col", "-c", default="A", help="Cột chứa mã sản phẩm (mặc định: A)")
+@click.option("--link-col", "-l", default="B", help="Cột chứa link Shopee (mặc định: B)")
+@click.option("--force", "-f", is_flag=True, help="Tải lại dù thư mục đã có ảnh")
+@click.option("--delay", "-d", default=1.0, type=float, help="Delay giữa các request (giây)")
+@click.pass_context
+def shopee_batch(ctx, sheet_name, output, code_col, link_col, force, delay):
+    """
+    Tải ảnh Shopee HÀNG LOẠT từ Google Sheets.
+
+    Đọc từ Google Sheets với format:
+    - Cột A (hoặc --code-col): Mã sản phẩm (VD: KA1-0001)
+    - Cột B (hoặc --link-col): Link sản phẩm Shopee
+
+    Ảnh được lưu vào: OUTPUT/<MÃ>/
+
+    Ví dụ:
+        python -m src.main shopee-batch
+        python -m src.main shopee-batch -s "Products" -o "INPUT" -c A -l B
+    """
+    config = get_config(ctx.obj["config_path"])
+
+    console.print(Panel(
+        f"[bold]Shopee Batch Downloader[/]\n\n"
+        f"Sheet: {sheet_name}\n"
+        f"Output: {output}/\n"
+        f"Cột mã: {code_col}\n"
+        f"Cột link: {link_col}\n"
+        f"Force: {force}\n"
+        f"Delay: {delay}s",
+        title="Tải Ảnh Shopee Hàng Loạt"
+    ))
+
+    # Khởi tạo Sheets reader
+    reader = SheetsReader(
+        credentials_file=config.get("google_sheets.credentials_file"),
+        spreadsheet_id=config.get("google_sheets.spreadsheet_id"),
+        sheet_name=sheet_name,
+    )
+
+    if not reader.connect():
+        console.print("[red]❌ Không thể kết nối Google Sheets[/]")
+        return
+
+    if not reader.open_spreadsheet():
+        console.print("[red]❌ Không thể mở spreadsheet[/]")
+        return
+
+    # Khởi tạo downloader
+    downloader = ShopeeDownloader(output_dir=output)
+    processor = ShopeeSheetProcessor(
+        downloader=downloader,
+        code_column=code_col,
+        link_column=link_col,
+    )
+
+    # Xử lý
+    results = processor.process_from_reader(
+        sheets_reader=reader,
+        skip_existing=not force,
+        delay_between=delay,
+    )
+
+    # Summary
+    if results:
+        total_images = sum(len(imgs) for imgs in results.values())
+        console.print(f"\n[bold green]===== KẾT QUẢ =====[/]")
+        console.print(f"Đã xử lý: {len(results)} sản phẩm")
+        console.print(f"Tổng ảnh: {total_images}")
+        console.print(f"Thư mục: {output}/")
+    else:
+        console.print(f"\n[bold yellow]⚠️ Không có sản phẩm nào được xử lý[/]")
+
+
+@cli.command("shopee-test")
+@click.argument("url")
+def shopee_test(url):
+    """
+    Test parse link Shopee (không download).
+
+    Dùng để kiểm tra xem link có đúng format không.
+    """
+    downloader = ShopeeDownloader()
+
+    shop_id, item_id = downloader.parse_shopee_url(url)
+
+    if shop_id and item_id:
+        console.print(f"[green]✅ Parse thành công![/]")
+        console.print(f"   Shop ID: {shop_id}")
+        console.print(f"   Item ID: {item_id}")
+
+        # Thử lấy thông tin sản phẩm
+        console.print(f"\n[cyan]Đang lấy thông tin sản phẩm...[/]")
+        product = downloader.get_product_info(shop_id, item_id)
+
+        if product:
+            console.print(f"[green]✅ Lấy thông tin thành công![/]")
+            console.print(f"   Tên: {product.name[:50]}{'...' if len(product.name) > 50 else ''}")
+            console.print(f"   Giá: {product.price:,.0f}đ")
+            console.print(f"   Số ảnh: {len(product.images)}")
+        else:
+            console.print(f"[red]❌ Không lấy được thông tin sản phẩm[/]")
+    else:
+        console.print(f"[red]❌ Không thể parse link![/]")
+        console.print(f"[dim]Link cần có format: https://shopee.vn/...-i.<shop_id>.<item_id>[/]")
 
 
 def main():

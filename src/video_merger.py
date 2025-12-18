@@ -39,7 +39,8 @@ class VideoMerger:
         music_path: Optional[str] = None,
         voice_path: Optional[str] = None,
         music_volume: float = 0.3,
-        voice_volume: float = 1.0
+        voice_volume: float = 1.0,
+        mute_original: bool = True
     ) -> bool:
         """
         Ghép nhiều video thành 1
@@ -51,6 +52,7 @@ class VideoMerger:
             voice_path: Đường dẫn file voice (optional)
             music_volume: Âm lượng nhạc (0-1)
             voice_volume: Âm lượng voice (0-1)
+            mute_original: Tắt âm thanh gốc của video (default: True)
 
         Returns:
             True nếu thành công
@@ -72,6 +74,9 @@ class VideoMerger:
 
                 self.log(f"  [{i+1}/{len(video_paths)}] {Path(path).name}")
                 clip = VideoFileClip(path)
+                # Tắt âm thanh gốc nếu mute_original=True
+                if mute_original:
+                    clip = clip.without_audio()
                 clips.append(clip)
 
             if not clips:

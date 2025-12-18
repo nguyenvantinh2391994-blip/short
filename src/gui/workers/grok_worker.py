@@ -236,33 +236,37 @@ class GrokWorker:
             # ===== BƯỚC 2: Ghép video + nhạc + voice =====
             self.log(f"[{profile_name}] Ghép {len(created_videos)} video...", "progress")
 
-            # Lấy nhạc (thread-safe)
-            music_path = None
-            if self.music_folder and self.music_folder.exists():
-                with self._lock:
-                    music_path = get_music_for_index(str(self.music_folder), self._music_index)
-                    self._music_index += 1
-                if music_path:
-                    self.log(f"[{profile_name}] 🎵 Nhạc: {Path(music_path).name}", "info")
-
-            # Lấy voice
+            # Lấy voice trước
             voice_path = None
             if self.voice_folder and self.voice_folder.exists():
                 voice_path = get_voice_for_code(str(self.voice_folder), code)
                 if voice_path:
                     self.log(f"[{profile_name}] 🎤 Voice: {Path(voice_path).name}", "info")
 
+            # Lấy nhạc - LUÔN lấy nhạc nếu không có voice
+            music_path = None
+            if self.music_folder and self.music_folder.exists():
+                with self._lock:
+                    music_path = get_music_for_index(str(self.music_folder), self._music_index)
+                    self._music_index += 1
+                if music_path:
+                    if not voice_path:
+                        self.log(f"[{profile_name}] 🎵 Không có voice, dùng nhạc: {Path(music_path).name}", "info")
+                    else:
+                        self.log(f"[{profile_name}] 🎵 Nhạc nền: {Path(music_path).name}", "info")
+
             # Đường dẫn output
             final_video = self.output_folder / f"{code}.mp4"
 
-            # Ghép video
+            # Ghép video (mute_original=True để tắt âm gốc)
             success = merger.merge_videos(
                 video_paths=created_videos,
                 output_path=str(final_video),
                 music_path=music_path,
                 voice_path=voice_path,
                 music_volume=0.3,
-                voice_volume=1.0
+                voice_volume=1.0,
+                mute_original=True  # Tắt âm thanh gốc của video
             )
 
             if success:

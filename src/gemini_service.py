@@ -6,6 +6,8 @@ import os
 import json
 import base64
 import time
+import tempfile
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -191,15 +193,17 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
         self,
         text: str,
         output_path: str,
-        voice_name: str = "Aoede"
+        voice_name: str = "Aoede",
+        output_format: str = "mp3"
     ) -> VoiceResult:
         """
         Tạo voice từ text sử dụng Gemini TTS
 
         Args:
             text: Nội dung cần đọc
-            output_path: Đường dẫn file output (.wav)
+            output_path: Đường dẫn file output (.mp3 hoặc .wav)
             voice_name: Tên giọng đọc (Aoede, Charon, Fenrir, Kore, Puck)
+            output_format: Format output (mp3 hoặc wav)
 
         Returns:
             VoiceResult với đường dẫn file hoặc lỗi
@@ -267,15 +271,44 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
             if not audio_data:
                 return VoiceResult(False, error="Không tìm thấy audio trong response")
 
-            # Decode base64 và lưu file
+            # Decode base64
             audio_bytes = base64.b64decode(audio_data)
 
             # Tạo thư mục nếu chưa có
             output_file = Path(output_path)
+            # Đảm bảo extension đúng
+            if output_format == "mp3" and not str(output_file).endswith(".mp3"):
+                output_file = output_file.with_suffix(".mp3")
             output_file.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(output_file, "wb") as f:
-                f.write(audio_bytes)
+            # Nếu cần MP3, convert từ WAV
+            if output_format == "mp3":
+                # Lưu tạm file WAV
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    tmp.write(audio_bytes)
+                    tmp_wav = tmp.name
+
+                try:
+                    # Convert sang MP3 bằng ffmpeg
+                    result = subprocess.run(
+                        ["ffmpeg", "-y", "-i", tmp_wav, "-acodec", "libmp3lame", "-q:a", "2", str(output_file)],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode != 0:
+                        # Nếu ffmpeg fail, lưu WAV thay thế
+                        console.print(f"[yellow]⚠️ ffmpeg không khả dụng, lưu WAV[/]")
+                        output_file = output_file.with_suffix(".wav")
+                        with open(output_file, "wb") as f:
+                            f.write(audio_bytes)
+                finally:
+                    # Xóa file tạm
+                    if os.path.exists(tmp_wav):
+                        os.unlink(tmp_wav)
+            else:
+                # Lưu trực tiếp WAV
+                with open(output_file, "wb") as f:
+                    f.write(audio_bytes)
 
             console.print(f"[green]✓ Đã tạo voice: {output_file.name}[/]")
             return VoiceResult(True, audio_path=str(output_file))
@@ -315,13 +348,14 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
 
         console.print(f"[dim]Kịch bản: {script_result.script[:100]}...[/]")
 
-        # Bước 2: Tạo voice
+        # Bước 2: Tạo voice (MP3)
         console.print(f"[cyan]🎙️ Đang tạo voice...[/]")
-        voice_path = Path(voice_folder) / f"{product_code}.wav"
+        voice_path = Path(voice_folder) / f"{product_code}.mp3"
         voice_result = self.generate_voice(
             text=script_result.script,
             output_path=str(voice_path),
-            voice_name=voice_name
+            voice_name=voice_name,
+            output_format="mp3"
         )
 
         return script_result, voice_result
@@ -410,9 +444,12 @@ class ScriptProcessor:
                 if not code or not name:
                     continue
 
-                # Kiểm tra đã có voice chưa
-                voice_path = self.voice_folder / f"{code}.wav"
-                if skip_existing and voice_path.exists():
+                # Kiểm tra đã có voice chưa (check cả .mp3 và .wav)
+                voice_path_mp3 = self.voice_folder / f"{code}.mp3"
+                voice_path_wav = self.voice_folder / f"{code}.wav"
+                voice_exists = voice_path_mp3.exists() or voice_path_wav.exists()
+
+                if skip_existing and voice_exists:
                     console.print(f"[dim]⏭️ {code}: đã có voice[/]")
                     results["skipped"].append(code)
                     continue
@@ -421,12 +458,13 @@ class ScriptProcessor:
                 if skip_existing and existing_script:
                     console.print(f"[dim]⏭️ {code}: đã có kịch bản[/]")
                     # Nếu có script nhưng chưa có voice -> tạo voice
-                    if not voice_path.exists():
+                    if not voice_exists:
                         console.print(f"[cyan]🎙️ Tạo voice từ kịch bản có sẵn...[/]")
                         voice_result = self.gemini.generate_voice(
                             text=existing_script,
-                            output_path=str(voice_path),
-                            voice_name=voice_name
+                            output_path=str(voice_path_mp3),
+                            voice_name=voice_name,
+                            output_format="mp3"
                         )
                         if voice_result.success:
                             results["success"].append(code)

@@ -244,14 +244,67 @@ class ShopeeDownloader:
             console.print(f"[red]❌ Fallback failed: {e}[/]")
             return self._get_product_selenium(shop_id, item_id)
 
-    def _get_product_selenium(self, shop_id: int, item_id: int) -> Optional[ShopeeProduct]:
+    def _load_cookies_from_file(self, driver, cookie_file: str = "config/shopee_cookies.txt"):
+        """Load cookies từ file Netscape format vào browser"""
+        from pathlib import Path
+        cookie_path = Path(cookie_file)
+
+        if not cookie_path.exists():
+            console.print(f"[dim]Cookie file không tồn tại: {cookie_file}[/]")
+            return False
+
+        try:
+            with open(cookie_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        domain, _, path, secure, expiry, name, value = parts[:7]
+
+                        cookie = {
+                            'name': name,
+                            'value': value,
+                            'domain': domain,
+                            'path': path,
+                            'secure': secure.upper() == 'TRUE',
+                        }
+
+                        # Chỉ set expiry nếu không phải 0 (session cookie)
+                        if expiry and expiry != '0':
+                            try:
+                                cookie['expiry'] = int(expiry)
+                            except ValueError:
+                                pass
+
+                        try:
+                            driver.add_cookie(cookie)
+                        except Exception:
+                            pass  # Bỏ qua cookies không thêm được
+
+            console.print(f"[dim]Đã load cookies từ {cookie_file}[/]")
+            return True
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Không load được cookies: {e}[/]")
+            return False
+
+    def _get_product_selenium(self, shop_id: int, item_id: int, headless: bool = False) -> Optional[ShopeeProduct]:
         """
         Fallback cuối: Sử dụng Selenium để crawl trang sản phẩm
         Sử dụng selector 'picture.UkIsx8 img' và bỏ resize param để tránh 403
+
+        Args:
+            shop_id: Shopee shop ID
+            item_id: Shopee item ID
+            headless: Chạy ở chế độ ẩn browser (mặc định False để đảm bảo load được)
         """
         try:
             from selenium import webdriver
             from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
             from selenium.webdriver.common.by import By
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
@@ -260,101 +313,131 @@ class ShopeeDownloader:
             return None
 
         url = f"https://shopee.vn/-i.{shop_id}.{item_id}"
+        driver = None
 
         try:
-            console.print(f"[dim]Thử Selenium method...[/]")
+            console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
 
-            # Setup Chrome options
+            # Setup Chrome options - KHÔNG headless để đảm bảo page render đầy đủ
             options = Options()
-            options.add_argument("--headless=new")
+
+            if headless:
+                options.add_argument("--headless=new")
+
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
             options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
             # Thử dùng undetected-chromedriver nếu có
             try:
                 import undetected_chromedriver as uc
-                driver = uc.Chrome(options=options, headless=True)
+                driver = uc.Chrome(options=options, headless=headless)
             except ImportError:
                 driver = webdriver.Chrome(options=options)
 
+            # Đầu tiên vào trang chủ Shopee để set cookies
+            driver.get("https://shopee.vn")
+            time.sleep(2)
+
+            # Load cookies từ file
+            self._load_cookies_from_file(driver)
+
+            # Refresh để apply cookies
+            driver.refresh()
+            time.sleep(2)
+
+            # Giờ vào trang sản phẩm
+            console.print(f"[dim]Đang mở: {url}[/]")
             driver.get(url)
 
-            # Chờ trang load và ảnh render
-            time.sleep(5)
+            # Chờ trang load - dùng explicit wait
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "picture.UkIsx8 img"))
+                )
+                console.print(f"[dim]Đã tìm thấy ảnh sản phẩm[/]")
+            except Exception:
+                console.print(f"[dim]Chờ thêm để ảnh load...[/]")
+                time.sleep(8)
 
-            # Lấy page source và parse
-            html = driver.page_source
-            images = []
-            image_urls = []  # Lưu full URLs để download trực tiếp
+            # Scroll để load thêm ảnh nếu có
+            driver.execute_script("window.scrollTo(0, 500)")
+            time.sleep(2)
 
-            # Phương pháp 1: Tìm ảnh qua selector chính xác của Shopee
-            # Selector: picture.UkIsx8 img (ảnh sản phẩm chính)
-            selectors = [
-                "picture.UkIsx8 img",  # Ảnh sản phẩm chính
-                "div[class*='product-image'] img",
-                "div[class*='image-carousel'] img",
-                "img[src*='img.susercontent.com/file/']",
-            ]
+            image_urls = []
 
-            for selector in selectors:
+            # Dùng JavaScript để lấy ảnh - GIỐNG HỆT CÁCH THỦ CÔNG
+            js_script = """
+            var urls = [];
+            document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
+                let src = img.src.split('@')[0];
+                if (src && src.includes('susercontent.com/file/')) {
+                    urls.push(src);
+                }
+            });
+            return urls;
+            """
+
+            image_urls = driver.execute_script(js_script)
+
+            # Lọc unique
+            image_urls = list(dict.fromkeys(image_urls))
+
+            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh sản phẩm[/]")
+
+            # Nếu không tìm thấy, thử các selector khác
+            if not image_urls:
+                console.print(f"[dim]Thử selector backup...[/]")
+
+                backup_js = """
+                var urls = [];
+                document.querySelectorAll('img[src*="susercontent.com/file/"]').forEach(img => {
+                    let src = img.src.split('@')[0];
+                    if (src && !urls.includes(src)) {
+                        urls.push(src);
+                    }
+                });
+                return urls;
+                """
+                image_urls = driver.execute_script(backup_js)
+                image_urls = list(dict.fromkeys(image_urls))
+                console.print(f"[dim]Backup: Tìm thấy {len(image_urls)} ảnh[/]")
+
+            # Lấy tên sản phẩm
+            name = ""
+            try:
+                title_elem = driver.find_element(By.CSS_SELECTOR, "div.HLQqkk span")
+                name = title_elem.text
+            except Exception:
                 try:
-                    img_elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                    for img in img_elements:
-                        src = img.get_attribute("src")
-                        if src and 'img.susercontent.com/file/' in src:
-                            # Bỏ phần resize (@...) để lấy ảnh gốc và tránh 403
-                            clean_url = src.split("@")[0]
-                            if clean_url not in image_urls:
-                                image_urls.append(clean_url)
-                                # Extract hash để backup
-                                hash_match = re.search(r'/file/([a-f0-9_]+)', clean_url)
-                                if hash_match:
-                                    images.append(hash_match.group(1))
+                    name = driver.title.replace(" | Shopee Việt Nam", "")
                 except Exception:
-                    continue
-
-            # Phương pháp 2: Tìm trong JSON data của page
-            patterns = [
-                r'"images"\s*:\s*\[([^\]]+)\]',
-                r'"image"\s*:\s*"([^"]+)"',
-            ]
-
-            for pattern in patterns:
-                matches = re.findall(pattern, html)
-                for match in matches:
-                    if isinstance(match, str):
-                        # Có thể là list string hoặc single string
-                        if '","' in match:
-                            # List of images
-                            for img_hash in re.findall(r'"([a-f0-9_]+)"', match):
-                                if img_hash not in images and len(img_hash) > 20:
-                                    images.append(img_hash)
-                        elif len(match) > 20 and not match.startswith('http'):
-                            if match not in images:
-                                images.append(match)
+                    pass
 
             driver.quit()
+            driver = None
 
-            # Lọc unique images
-            images = list(dict.fromkeys(images))
-
-            if images or image_urls:
-                # Lấy tên sản phẩm từ title
-                title_match = re.search(r'<title>([^<]+)</title>', html)
-                name = title_match.group(1).replace(" | Shopee Việt Nam", "") if title_match else ""
+            if image_urls:
+                # Extract hash từ URLs
+                images = []
+                for url in image_urls:
+                    hash_match = re.search(r'/file/([a-zA-Z0-9_-]+)', url)
+                    if hash_match:
+                        images.append(hash_match.group(1))
 
                 product = ShopeeProduct(
                     shop_id=shop_id,
                     item_id=item_id,
                     name=name,
-                    images=images if images else [],
+                    images=images,
                 )
-                # Lưu URLs vào extra field để download trực tiếp
-                if image_urls:
-                    product.description = json.dumps(image_urls)  # Tạm lưu URLs
+                # Lưu direct URLs để download (đã bỏ resize param)
+                product.description = json.dumps(image_urls)
 
                 return product
 
@@ -362,7 +445,15 @@ class ShopeeDownloader:
 
         except Exception as e:
             console.print(f"[red]❌ Selenium failed: {e}[/]")
+            import traceback
+            traceback.print_exc()
             return None
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
 
     def download_images(
         self,

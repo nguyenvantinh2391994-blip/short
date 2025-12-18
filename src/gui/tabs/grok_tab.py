@@ -1,5 +1,6 @@
 """
 Grok Tab - Tạo video từ Grok AI
+Giao diện đơn giản, dễ dùng
 """
 
 import customtkinter as ctk
@@ -10,7 +11,7 @@ import queue
 
 
 class GrokTab:
-    """Grok Video Creation Tab"""
+    """Grok Video Creation Tab - Giao diện đơn giản"""
 
     def __init__(self, parent, app):
         self.parent = parent
@@ -23,327 +24,164 @@ class GrokTab:
         self.setup_ui()
 
     def setup_ui(self):
-        """Setup UI"""
-        # Main container with 2 columns
+        """Setup UI - Đơn giản, dễ dùng"""
+        # Main container
         self.main_frame = ctk.CTkFrame(self.parent, fg_color="transparent")
         self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Left column - Controls
-        self.setup_controls()
+        # ========== PHẦN TRÊN: ACTION BUTTONS (QUAN TRỌNG NHẤT) ==========
+        self.setup_action_section()
 
-        # Right column - Progress
-        self.setup_progress()
+        # ========== PHẦN GIỮA: PROGRESS ==========
+        self.setup_progress_section()
 
-    def setup_controls(self):
-        """Setup control panel"""
-        # Outer frame
-        outer_frame = ctk.CTkFrame(self.main_frame)
-        outer_frame.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=0)
-
-        # Scrollable frame cho controls
-        controls_frame = ctk.CTkScrollableFrame(outer_frame, label_text="")
-        controls_frame.pack(fill="both", expand=True)
+    def setup_action_section(self):
+        """Phần action chính - NỔI BẬT, DỄ DÙNG"""
+        action_frame = ctk.CTkFrame(self.main_frame)
+        action_frame.pack(fill="x", padx=5, pady=(0, 10))
 
         # Title
         title = ctk.CTkLabel(
-            controls_frame,
-            text="🎬 Grok Video Creator",
-            font=ctk.CTkFont(size=18, weight="bold")
+            action_frame,
+            text="🎬 Tạo Video Tự Động",
+            font=ctk.CTkFont(size=22, weight="bold")
         )
-        title.pack(padx=20, pady=(20, 10))
+        title.pack(pady=(20, 5))
 
-        # Browser profile selection
-        profile_frame = ctk.CTkFrame(controls_frame)
-        profile_frame.pack(fill="x", padx=20, pady=10)
-
-        ctk.CTkLabel(
-            profile_frame,
-            text="Browser Profile:",
-            font=ctk.CTkFont(size=13)
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-
-        self.profile_var = ctk.StringVar(value="Default")
-        self.profile_dropdown = ctk.CTkOptionMenu(
-            profile_frame,
-            variable=self.profile_var,
-            values=self.get_profile_names(),
-            width=300
+        subtitle = ctk.CTkLabel(
+            action_frame,
+            text="Tải ảnh từ Shopee → Tạo video với Grok AI",
+            font=ctk.CTkFont(size=13),
+            text_color="gray"
         )
-        self.profile_dropdown.pack(padx=15, pady=(0, 10))
+        subtitle.pack(pady=(0, 15))
 
-        # Input/Output folders
-        folder_frame = ctk.CTkFrame(controls_frame)
-        folder_frame.pack(fill="x", padx=20, pady=10)
+        # ===== HÀNG NÚT CHÍNH =====
+        main_btn_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        main_btn_frame.pack(pady=10)
 
-        # Thư mục ảnh (chứa thư mục con theo mã)
-        ctk.CTkLabel(
-            folder_frame,
-            text="📁 Thư mục ảnh (chứa thư mục con theo mã):",
-            font=ctk.CTkFont(size=13)
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-
-        input_row = ctk.CTkFrame(folder_frame, fg_color="transparent")
-        input_row.pack(fill="x", padx=15)
-
-        self.input_entry = ctk.CTkEntry(input_row, width=250)
-        self.input_entry.pack(side="left")
-        self.input_entry.insert(0, self.app.config.input_folder)
-
-        ctk.CTkButton(
-            input_row,
-            text="📁",
-            width=40,
-            command=lambda: self.browse_folder("input")
-        ).pack(side="left", padx=5)
-
-        # Thư mục nhạc
-        ctk.CTkLabel(
-            folder_frame,
-            text="🎵 Thư mục nhạc (lấy lần lượt):",
-            font=ctk.CTkFont(size=13)
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-
-        music_row = ctk.CTkFrame(folder_frame, fg_color="transparent")
-        music_row.pack(fill="x", padx=15)
-
-        self.music_entry = ctk.CTkEntry(music_row, width=250)
-        self.music_entry.pack(side="left")
-        self.music_entry.insert(0, getattr(self.app.config, 'music_folder', ''))
-
-        ctk.CTkButton(
-            music_row,
-            text="📁",
-            width=40,
-            command=lambda: self.browse_folder("music")
-        ).pack(side="left", padx=5)
-
-        # Thư mục voice
-        ctk.CTkLabel(
-            folder_frame,
-            text="🎤 Thư mục voice (theo mã sản phẩm):",
-            font=ctk.CTkFont(size=13)
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-
-        voice_row = ctk.CTkFrame(folder_frame, fg_color="transparent")
-        voice_row.pack(fill="x", padx=15)
-
-        self.voice_entry = ctk.CTkEntry(voice_row, width=250)
-        self.voice_entry.pack(side="left")
-        self.voice_entry.insert(0, getattr(self.app.config, 'voice_folder', ''))
-
-        ctk.CTkButton(
-            voice_row,
-            text="📁",
-            width=40,
-            command=lambda: self.browse_folder("voice")
-        ).pack(side="left", padx=5)
-
-        # Thư mục done (output video hoàn chỉnh)
-        ctk.CTkLabel(
-            folder_frame,
-            text="✅ Thư mục Done (video hoàn chỉnh):",
-            font=ctk.CTkFont(size=13)
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-
-        output_row = ctk.CTkFrame(folder_frame, fg_color="transparent")
-        output_row.pack(fill="x", padx=15, pady=(0, 10))
-
-        self.output_entry = ctk.CTkEntry(output_row, width=250)
-        self.output_entry.pack(side="left")
-        self.output_entry.insert(0, self.app.config.output_folder)
-
-        ctk.CTkButton(
-            output_row,
-            text="📁",
-            width=40,
-            command=lambda: self.browse_folder("output")
-        ).pack(side="left", padx=5)
-
-        # Options
-        options_frame = ctk.CTkFrame(controls_frame)
-        options_frame.pack(fill="x", padx=20, pady=10)
-
-        ctk.CTkLabel(
-            options_frame,
-            text="Tùy chọn:",
-            font=ctk.CTkFont(size=13, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-
-        # Transition type (chuyển cảnh)
-        transition_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        transition_row.pack(fill="x", padx=15, pady=5)
-
-        ctk.CTkLabel(transition_row, text="Chuyển cảnh:").pack(side="left")
-        self.transition_var = ctk.StringVar(value="fade_black")
-        self.transition_dropdown = ctk.CTkOptionMenu(
-            transition_row,
-            variable=self.transition_var,
-            values=["fade_black", "crossfade"],
-            width=120
-        )
-        self.transition_dropdown.pack(side="left", padx=10)
-
-        # Max retries
-        retry_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        retry_row.pack(fill="x", padx=15, pady=5)
-
-        ctk.CTkLabel(retry_row, text="Số lần thử lại:").pack(side="left")
-        self.retry_spinbox = ctk.CTkEntry(retry_row, width=60)
-        self.retry_spinbox.pack(side="left", padx=10)
-        self.retry_spinbox.insert(0, str(self.app.config.max_retries))
-
-        # Wait time
-        wait_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        wait_row.pack(fill="x", padx=15, pady=(5, 10))
-
-        ctk.CTkLabel(wait_row, text="Chờ sau done (s):").pack(side="left")
-        self.wait_spinbox = ctk.CTkEntry(wait_row, width=60)
-        self.wait_spinbox.pack(side="left", padx=10)
-        self.wait_spinbox.insert(0, str(self.app.config.wait_after_done))
-
-        # Hidden mode checkbox - MẶC ĐỊNH BẬT
-        self.hidden_var = ctk.BooleanVar(value=True)
-        self.hidden_check = ctk.CTkCheckBox(
-            options_frame,
-            text="🔒 Chạy ẩn (headless - không hiện browser)",
-            variable=self.hidden_var,
-            font=ctk.CTkFont(size=13)
-        )
-        self.hidden_check.pack(anchor="w", padx=15, pady=(0, 5))
-        self.hidden_check.select()  # Mặc định chọn
-
-        # Auto-update checkbox - MẶC ĐỊNH BẬT
-        self.auto_update_var = ctk.BooleanVar(value=True)
-        self.auto_update_check = ctk.CTkCheckBox(
-            options_frame,
-            text="🔄 Tự động cập nhật trước khi chạy",
-            variable=self.auto_update_var,
-            font=ctk.CTkFont(size=13)
-        )
-        self.auto_update_check.pack(anchor="w", padx=15, pady=(0, 5))
-        self.auto_update_check.select()  # Mặc định chọn
-
-        # Auto-download Shopee images checkbox - MẶC ĐỊNH BẬT
-        self.auto_shopee_var = ctk.BooleanVar(value=True)
-        self.auto_shopee_check = ctk.CTkCheckBox(
-            options_frame,
-            text="🛒 Tự động tải ảnh từ Shopee (nếu chưa có)",
-            variable=self.auto_shopee_var,
-            font=ctk.CTkFont(size=13)
-        )
-        self.auto_shopee_check.pack(anchor="w", padx=15, pady=(0, 5))
-        self.auto_shopee_check.select()  # Mặc định chọn
-
-        # Shopee link column
-        shopee_col_row = ctk.CTkFrame(options_frame, fg_color="transparent")
-        shopee_col_row.pack(fill="x", padx=15, pady=(0, 10))
-
-        ctk.CTkLabel(shopee_col_row, text="Cột link Shopee:").pack(side="left")
-        self.shopee_col_entry = ctk.CTkEntry(shopee_col_row, width=50)
-        self.shopee_col_entry.pack(side="left", padx=10)
-        self.shopee_col_entry.insert(0, getattr(self.app.config, 'shopee_link_column', 'B'))
-
-        # Action buttons
-        btn_frame = ctk.CTkFrame(controls_frame, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=20, pady=20)
-
-        self.start_btn = ctk.CTkButton(
-            btn_frame,
-            text="▶️ Bắt đầu",
-            command=self.start_process,
-            width=150,
-            height=45,
-            fg_color="green",
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        self.start_btn.pack(side="left", padx=5)
-
-        self.stop_btn = ctk.CTkButton(
-            btn_frame,
-            text="⏹️ Dừng",
-            command=self.stop_process,
-            width=150,
-            height=45,
-            fg_color="red",
-            state="disabled",
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        self.stop_btn.pack(side="left", padx=5)
-
-        # Nút tải ảnh Shopee riêng
+        # Nút 1: Tải ảnh Shopee
         self.shopee_btn = ctk.CTkButton(
-            btn_frame,
+            main_btn_frame,
             text="🛒 Tải ảnh Shopee",
             command=self.download_shopee_images,
-            width=150,
-            height=45,
+            width=180,
+            height=55,
             fg_color="#FF5722",
-            font=ctk.CTkFont(size=13, weight="bold")
+            hover_color="#E64A19",
+            font=ctk.CTkFont(size=15, weight="bold")
         )
-        self.shopee_btn.pack(side="left", padx=5)
+        self.shopee_btn.pack(side="left", padx=8)
 
-        # Nút ẩn/hiện browser
-        self.show_btn = ctk.CTkButton(
-            btn_frame,
-            text="👁️ Hiện Browser",
-            command=self.toggle_browser_visibility,
-            width=130,
-            height=45,
-            fg_color="#FF9800",
+        # Nút 2: Bắt đầu tạo video
+        self.start_btn = ctk.CTkButton(
+            main_btn_frame,
+            text="▶️ Tạo Video",
+            command=self.start_process,
+            width=180,
+            height=55,
+            fg_color="#4CAF50",
+            hover_color="#388E3C",
+            font=ctk.CTkFont(size=15, weight="bold")
+        )
+        self.start_btn.pack(side="left", padx=8)
+
+        # Nút 3: Dừng
+        self.stop_btn = ctk.CTkButton(
+            main_btn_frame,
+            text="⏹️ Dừng",
+            command=self.stop_process,
+            width=120,
+            height=55,
+            fg_color="#f44336",
+            hover_color="#D32F2F",
             state="disabled",
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(size=15, weight="bold")
         )
-        self.show_btn.pack(side="left", padx=5)
+        self.stop_btn.pack(side="left", padx=8)
 
-        # Biến lưu automation object để có thể ẩn/hiện
-        self.current_worker = None
-        self._browser_visible = False
+        # Nút 4: Hiện Browser
+        self.show_btn = ctk.CTkButton(
+            main_btn_frame,
+            text="👁️ Hiện",
+            command=self.toggle_browser_visibility,
+            width=80,
+            height=55,
+            fg_color="#9E9E9E",
+            hover_color="#757575",
+            state="disabled",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.show_btn.pack(side="left", padx=8)
 
-    def setup_progress(self):
-        """Setup progress panel"""
-        progress_frame = ctk.CTkFrame(self.main_frame, width=400)
-        progress_frame.pack(side="right", fill="both", padx=(5, 0), pady=0)
-        progress_frame.pack_propagate(False)
+        # ===== HƯỚNG DẪN NHANH =====
+        help_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        help_frame.pack(fill="x", padx=30, pady=(15, 20))
 
-        # Title
-        title = ctk.CTkLabel(
-            progress_frame,
+        steps = [
+            "1️⃣ Điền link Shopee vào cột B trong Google Sheet",
+            "2️⃣ Bấm '🛒 Tải ảnh Shopee' để tải ảnh",
+            "3️⃣ Bấm '▶️ Tạo Video' để tạo video tự động"
+        ]
+
+        for step in steps:
+            label = ctk.CTkLabel(
+                help_frame,
+                text=step,
+                font=ctk.CTkFont(size=12),
+                text_color="gray"
+            )
+            label.pack(anchor="w", pady=1)
+
+    def setup_progress_section(self):
+        """Phần hiển thị tiến trình"""
+        progress_frame = ctk.CTkFrame(self.main_frame)
+        progress_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Header
+        header_frame = ctk.CTkFrame(progress_frame, fg_color="transparent")
+        header_frame.pack(fill="x", padx=20, pady=(15, 10))
+
+        ctk.CTkLabel(
+            header_frame,
             text="📊 Tiến trình",
             font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(side="left")
+
+        # Progress info
+        self.progress_label = ctk.CTkLabel(
+            header_frame,
+            text="0/0",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#4CAF50"
         )
-        title.pack(padx=20, pady=(20, 10))
+        self.progress_label.pack(side="right")
 
         # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(progress_frame, width=350)
-        self.progress_bar.pack(padx=20, pady=10)
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, width=500, height=15)
+        self.progress_bar.pack(padx=20, pady=(0, 10))
         self.progress_bar.set(0)
-
-        # Progress label
-        self.progress_label = ctk.CTkLabel(
-            progress_frame,
-            text="0/0 video",
-            font=ctk.CTkFont(size=14)
-        )
-        self.progress_label.pack(pady=5)
 
         # Current task
         self.current_task_label = ctk.CTkLabel(
             progress_frame,
-            text="Chưa bắt đầu",
-            font=ctk.CTkFont(size=12),
+            text="Sẵn sàng",
+            font=ctk.CTkFont(size=13),
             text_color="gray"
         )
-        self.current_task_label.pack(pady=5)
+        self.current_task_label.pack(pady=(0, 10))
 
-        # Task list
-        ctk.CTkLabel(
+        # Task list (log)
+        self.task_list = ctk.CTkTextbox(
             progress_frame,
-            text="Danh sách task:",
-            font=ctk.CTkFont(size=13, weight="bold")
-        ).pack(anchor="w", padx=20, pady=(20, 5))
-
-        self.task_list = ctk.CTkTextbox(progress_frame, height=300)
+            font=ctk.CTkFont(size=12),
+            wrap="word"
+        )
         self.task_list.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        # Biến lưu automation
+        self.current_worker = None
+        self._browser_visible = False
 
     def get_profile_names(self) -> list:
         """Get list of browser profile names"""
@@ -351,28 +189,6 @@ class GrokTab:
         if not profiles:
             return ["Default"]
         return [p.get("name", "Profile") for p in profiles]
-
-    def refresh_profiles(self):
-        """Refresh profile dropdown"""
-        self.profile_dropdown.configure(values=self.get_profile_names())
-
-    def browse_folder(self, folder_type: str):
-        """Browse for folder"""
-        from tkinter import filedialog
-        folder = filedialog.askdirectory()
-        if folder:
-            if folder_type == "input":
-                self.input_entry.delete(0, "end")
-                self.input_entry.insert(0, folder)
-            elif folder_type == "music":
-                self.music_entry.delete(0, "end")
-                self.music_entry.insert(0, folder)
-            elif folder_type == "voice":
-                self.voice_entry.delete(0, "end")
-                self.voice_entry.insert(0, folder)
-            else:  # output
-                self.output_entry.delete(0, "end")
-                self.output_entry.insert(0, folder)
 
     def add_task_log(self, message: str, status: str = "info"):
         """Add message to task list"""
@@ -391,7 +207,7 @@ class GrokTab:
         """Update progress bar and label"""
         if total > 0:
             self.progress_bar.set(current / total)
-            self.progress_label.configure(text=f"{current}/{total} video")
+            self.progress_label.configure(text=f"{current}/{total}")
         if task_name:
             self.current_task_label.configure(text=task_name)
 
@@ -405,29 +221,19 @@ class GrokTab:
 
         # Update UI
         self.start_btn.configure(state="disabled")
+        self.shopee_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.task_list.delete("1.0", "end")
         self.progress_bar.set(0)
 
-        # Get settings
-        input_folder = self.input_entry.get()
-        output_folder = self.output_entry.get()
-        music_folder = self.music_entry.get()
-        voice_folder = self.voice_entry.get()
-        transition_type = self.transition_var.get()
-        auto_shopee = self.auto_shopee_var.get()
-        shopee_link_column = self.shopee_col_entry.get() or "B"
+        # Get settings from app config
+        input_folder = self.app.config.input_folder
+        output_folder = self.app.config.output_folder
+        music_folder = getattr(self.app.config, 'music_folder', '')
+        voice_folder = getattr(self.app.config, 'voice_folder', '')
+        transition_type = "fade_black"
 
-        # Save to config
-        self.app.config.input_folder = input_folder
-        self.app.config.output_folder = output_folder
-        self.app.config.music_folder = music_folder
-        self.app.config.voice_folder = voice_folder
-        self.app.config.auto_shopee = auto_shopee
-        self.app.config.shopee_link_column = shopee_link_column
-        self.app.save_config()
-
-        # Start thread - truyền tất cả profiles để chạy song song
+        # Start thread
         self.current_thread = threading.Thread(
             target=self.run_grok_process,
             args=(input_folder, output_folder, music_folder, voice_folder, transition_type),
@@ -437,7 +243,7 @@ class GrokTab:
 
         num_profiles = len(self.app.config.browser_profiles)
         self.app.log(f"Bắt đầu tạo video Grok với {num_profiles} profile")
-        self.add_task_log(f"Bắt đầu quá trình tạo video ({num_profiles} profile song song)...", "progress")
+        self.add_task_log(f"Bắt đầu tạo video ({num_profiles} profile)...", "progress")
 
     def stop_process(self):
         """Stop video creation process"""
@@ -453,10 +259,11 @@ class GrokTab:
         voice_folder: str,
         transition_type: str
     ):
-        """Run Grok video creation (in background thread) - chạy song song với nhiều profile"""
+        """Run Grok video creation (in background thread)"""
         try:
             # Auto-update nếu được bật
-            if self.auto_update_var.get():
+            auto_update = getattr(self.app.config, 'auto_update', True)
+            if auto_update:
                 self.after_safe(lambda: self.add_task_log("Kiểm tra cập nhật...", "progress"))
                 try:
                     from ..utils.updater import AutoUpdater
@@ -470,24 +277,24 @@ class GrokTab:
             # Import here to avoid circular imports
             from ..workers.grok_worker import GrokWorker
 
-            # Get ALL browser profiles để chạy song song
+            # Get ALL browser profiles
             browser_profiles = self.app.config.browser_profiles or []
 
             if not browser_profiles:
-                self.after_safe(lambda: self.add_task_log("Chưa có profile nào! Vào Cài đặt để tạo profile.", "error"))
+                self.after_safe(lambda: self.add_task_log("Chưa có profile! Vào ⚙️ Cài đặt để thêm.", "error"))
                 return
 
             # Get headless setting
-            headless = self.hidden_var.get()
+            headless = getattr(self.app.config, 'headless', True)
 
-            # Create worker với TẤT CẢ profiles
+            # Create worker
             worker = GrokWorker(
                 input_folder=input_folder,
                 output_folder=output_folder,
                 music_folder=music_folder,
                 voice_folder=voice_folder,
                 transition_type=transition_type,
-                browser_profiles=browser_profiles,  # Truyền tất cả profiles
+                browser_profiles=browser_profiles,
                 config=self.app.config,
                 stop_flag=self.stop_flag,
                 on_progress=self.on_worker_progress,
@@ -518,6 +325,7 @@ class GrokTab:
         """Called when process completes"""
         self.is_running = False
         self.start_btn.configure(state="normal")
+        self.shopee_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.show_btn.configure(state="disabled")
         self.current_task_label.configure(text="Hoàn thành")
@@ -531,40 +339,39 @@ class GrokTab:
             try:
                 if self._browser_visible:
                     self.current_worker.hide_all_browsers()
-                    self.show_btn.configure(text="👁️ Hiện Browser")
+                    self.show_btn.configure(text="👁️ Hiện")
                     self._browser_visible = False
-                    self.add_task_log("Đã ẩn tất cả browser", "info")
+                    self.add_task_log("Đã ẩn browser", "info")
                 else:
                     self.current_worker.show_all_browsers()
-                    self.show_btn.configure(text="🙈 Ẩn Browser")
+                    self.show_btn.configure(text="🙈 Ẩn")
                     self._browser_visible = True
-                    self.add_task_log("Đã hiện tất cả browser", "info")
+                    self.add_task_log("Đã hiện browser", "info")
             except Exception as e:
-                self.add_task_log(f"Lỗi toggle browser: {e}", "error")
+                self.add_task_log(f"Lỗi: {e}", "error")
 
     def set_automation(self, worker):
-        """Lưu reference đến worker để có thể ẩn/hiện browsers"""
+        """Lưu reference đến worker"""
         self.current_worker = worker
-        # Kích hoạt nút ẩn/hiện
         self.after_safe(lambda: self.show_btn.configure(state="normal"))
-        # Mặc định là ẩn (headless)
         self._browser_visible = False
-        self.after_safe(lambda: self.show_btn.configure(text="👁️ Hiện Browser"))
+        self.after_safe(lambda: self.show_btn.configure(text="👁️ Hiện"))
 
     def download_shopee_images(self):
-        """Tải ảnh từ Shopee - chạy riêng"""
+        """Tải ảnh từ Shopee"""
         if self.is_running:
-            self.add_task_log("Đang chạy task khác, vui lòng đợi...", "warning")
+            self.add_task_log("Đang chạy task khác...", "warning")
             return
 
         # Disable button
         self.shopee_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
         self.task_list.delete("1.0", "end")
         self.add_task_log("🛒 Bắt đầu tải ảnh từ Shopee...", "progress")
 
         # Get settings
-        input_folder = self.input_entry.get()
-        shopee_link_column = self.shopee_col_entry.get() or "B"
+        input_folder = self.app.config.input_folder
+        shopee_link_column = getattr(self.app.config, 'shopee_link_column', 'B')
 
         # Start thread
         thread = threading.Thread(
@@ -609,7 +416,9 @@ class GrokTab:
                 self.after_safe(lambda: self.add_task_log("Không có sản phẩm nào cần xử lý", "warning"))
                 return
 
-            self.after_safe(lambda: self.add_task_log(f"Tìm thấy {len(pending)} mã cần xử lý", "info"))
+            total = len(pending)
+            self.after_safe(lambda: self.add_task_log(f"Tìm thấy {total} mã cần xử lý", "info"))
+            self.after_safe(lambda: self.update_progress(0, total, "Đang tải ảnh..."))
 
             # Get all values for Shopee links
             all_values = reader.sheet.get_all_values()
@@ -622,10 +431,13 @@ class GrokTab:
             downloaded_count = 0
             skipped_count = 0
 
-            for item in pending:
+            for idx, item in enumerate(pending):
                 code = item["code"]
                 row_idx = item["row"] - 1
                 code_folder = Path(input_folder) / code
+
+                # Update progress
+                self.after_safe(lambda i=idx, t=total: self.update_progress(i, t, f"Đang xử lý: {code}"))
 
                 # Check if already has images
                 if code_folder.exists():
@@ -650,18 +462,19 @@ class GrokTab:
                         )
 
                         if images:
-                            self.after_safe(lambda c=code, n=len(images): self.add_task_log(f"✅ {c}: tải được {n} ảnh", "success"))
+                            self.after_safe(lambda c=code, n=len(images): self.add_task_log(f"✅ {c}: {n} ảnh", "success"))
                             downloaded_count += 1
                         else:
-                            self.after_safe(lambda c=code: self.add_task_log(f"⚠️ {c}: không tải được ảnh", "warning"))
+                            self.after_safe(lambda c=code: self.add_task_log(f"⚠️ {c}: không tải được", "warning"))
                     else:
-                        self.after_safe(lambda c=code: self.add_task_log(f"⚠️ {c}: không có link Shopee", "warning"))
+                        self.after_safe(lambda c=code: self.add_task_log(f"⚠️ {c}: không có link", "warning"))
 
             # Summary
+            self.after_safe(lambda: self.update_progress(total, total, "Hoàn thành"))
             self.after_safe(lambda: self.add_task_log(f"\n{'='*40}", "info"))
             self.after_safe(lambda: self.add_task_log(f"✅ Hoàn thành!", "success"))
             self.after_safe(lambda: self.add_task_log(f"   Đã tải: {downloaded_count} sản phẩm", "info"))
-            self.after_safe(lambda: self.add_task_log(f"   Bỏ qua: {skipped_count} sản phẩm (đã có ảnh)", "info"))
+            self.after_safe(lambda: self.add_task_log(f"   Bỏ qua: {skipped_count} (đã có ảnh)", "info"))
 
         except Exception as e:
             self.after_safe(lambda: self.add_task_log(f"Lỗi: {e}", "error"))
@@ -670,6 +483,7 @@ class GrokTab:
 
         finally:
             self.after_safe(lambda: self.shopee_btn.configure(state="normal"))
+            self.after_safe(lambda: self.start_btn.configure(state="normal"))
 
     def after_safe(self, func):
         """Safely call function on main thread"""

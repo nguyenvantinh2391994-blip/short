@@ -87,32 +87,47 @@ class ShopeeDownloader:
     def _hide_chrome_window(self):
         """Ẩn Chrome window của tool bằng cách đẩy ra ngoài màn hình"""
         if not self.driver:
-            return
+            console.print("[dim]Không có browser để ẩn[/]")
+            return False
         try:
             # Chỉ dùng Selenium - chỉ ảnh hưởng Chrome của tool
             self.driver.set_window_position(-2000, -2000)
             self._is_hidden = True
-        except Exception:
-            pass
+            console.print("[dim]Đã ẩn browser[/]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]Lỗi ẩn browser: {e}[/]")
+            return False
 
     def show_chrome_window(self):
         """Hiện Chrome window của tool"""
         if not self.driver:
-            return
+            console.print("[dim]Không có browser để hiện[/]")
+            return False
         try:
             # Đưa vào giữa màn hình
             self.driver.set_window_position(100, 100)
             self.driver.set_window_size(1200, 800)
             self._is_hidden = False
-        except Exception:
-            pass
+            console.print("[dim]Đã hiện browser[/]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]Lỗi hiện browser: {e}[/]")
+            return False
 
     def toggle_browser_visibility(self):
         """Toggle ẩn/hiện browser"""
-        if hasattr(self, '_is_hidden') and self._is_hidden:
-            self.show_chrome_window()
+        if not self.driver:
+            console.print("[yellow]Không có browser đang chạy[/]")
+            return False
+
+        is_hidden = getattr(self, '_is_hidden', False)
+        console.print(f"[dim]Toggle: _is_hidden = {is_hidden}[/]")
+
+        if is_hidden:
+            return self.show_chrome_window()
         else:
-            self._hide_chrome_window()
+            return self._hide_chrome_window()
 
     def parse_shopee_url(self, url: str) -> Tuple[Optional[int], Optional[int]]:
         """
@@ -155,7 +170,7 @@ class ShopeeDownloader:
 
         return None, None
 
-    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None, force_selenium: bool = True) -> Optional[ShopeeProduct]:
+    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None, force_selenium: bool = False, min_images: int = 3) -> Optional[ShopeeProduct]:
         """
         Lấy thông tin sản phẩm từ Shopee API
 
@@ -163,7 +178,8 @@ class ShopeeDownloader:
             shop_id: Shop ID
             item_id: Item ID
             original_url: Link Shopee gốc (để dùng khi fallback sang Selenium)
-            force_selenium: Luôn dùng Selenium để lấy đầy đủ ảnh (default: True)
+            force_selenium: Luôn dùng Selenium (default: False - thử API trước)
+            min_images: Số ảnh tối thiểu, nếu API trả về ít hơn sẽ dùng Selenium
 
         Returns:
             ShopeeProduct hoặc None nếu lỗi
@@ -185,47 +201,48 @@ class ShopeeDownloader:
 
         try:
             # Thử gọi API v4
+            console.print(f"[dim]Thử API trước...[/]")
             response = self.session.get(
                 self.API_URL,
                 params=params,
                 timeout=30
             )
 
-            if response.status_code != 200:
-                console.print(f"[yellow]⚠️ API trả về status {response.status_code}[/]")
-                return self._get_product_fallback(shop_id, item_id, original_url)
+            if response.status_code == 200:
+                data = response.json()
+                if not data.get("error"):
+                    item_data = data.get("data", {})
+                    if item_data:
+                        images = item_data.get("images", [])
+                        # Lấy thêm ảnh từ tier_variations
+                        tier_variations = item_data.get("tier_variations", [])
+                        for variation in tier_variations:
+                            var_images = variation.get("images", [])
+                            for img in var_images:
+                                if img and img not in images:
+                                    images.append(img)
 
-            data = response.json()
+                        # Nếu đủ ảnh, trả về luôn
+                        if len(images) >= min_images:
+                            console.print(f"[green]✓ API trả về {len(images)} ảnh[/]")
+                            return ShopeeProduct(
+                                shop_id=shop_id,
+                                item_id=item_id,
+                                name=item_data.get("name", ""),
+                                price=item_data.get("price", 0) / 100000,
+                                images=images,
+                                description=item_data.get("description", ""),
+                            )
+                        else:
+                            console.print(f"[yellow]API chỉ trả về {len(images)} ảnh, thử Selenium...[/]")
 
-            # Check error
-            if data.get("error"):
-                error_msg = data.get("error_msg", "Unknown error")
-                console.print(f"[yellow]⚠️ API error: {error_msg}[/]")
-                return self._get_product_fallback(shop_id, item_id, original_url)
-
-            item_data = data.get("data", {})
-            if not item_data:
-                console.print("[yellow]⚠️ Không có dữ liệu sản phẩm[/]")
-                return self._get_product_fallback(shop_id, item_id, original_url)
-
-            # Parse images
-            images = item_data.get("images", [])
-
-            # Lấy thêm ảnh từ tier_variations (các biến thể màu sắc, size)
-            tier_variations = item_data.get("tier_variations", [])
-            for variation in tier_variations:
-                var_images = variation.get("images", [])
-                for img in var_images:
-                    if img and img not in images:
-                        images.append(img)
-
-            return ShopeeProduct(
-                shop_id=shop_id,
-                item_id=item_id,
-                name=item_data.get("name", ""),
-                price=item_data.get("price", 0) / 100000,  # Shopee lưu giá * 100000
-                images=images,
-                description=item_data.get("description", ""),
+            # API không đủ ảnh hoặc lỗi -> dùng Selenium
+            console.print(f"[yellow]API không đủ ảnh, thử Selenium...[/]")
+            return self._get_product_selenium(
+                shop_id, item_id,
+                original_url=original_url,
+                chrome_path=self.chrome_path,
+                profile_path=self.profile_path
             )
 
         except requests.RequestException as e:
@@ -478,70 +495,17 @@ class ShopeeDownloader:
                 driver.refresh()
                 time.sleep(2)
 
-            # Giờ vào trang sản phẩm
+            # Vào trang sản phẩm
             console.print(f"[dim]Đang mở: {url}[/]")
             driver.get(url)
 
-            # Chờ trang load - dùng explicit wait
-            try:
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "picture.UkIsx8 img"))
-                )
-                console.print(f"[dim]Đã tìm thấy ảnh sản phẩm[/]")
-            except Exception:
-                console.print(f"[dim]Chờ thêm để ảnh load...[/]")
-                time.sleep(8)
-
-            # Chờ thêm để trang load hoàn toàn
-            time.sleep(5)
-
-            # Scroll xuống rồi lên để trigger lazy loading
-            console.print(f"[dim]Scroll page để load ảnh...[/]")
-            driver.execute_script("window.scrollTo(0, 500);")
-            time.sleep(2)
-            driver.execute_script("window.scrollTo(0, 0);")
-            time.sleep(2)
-
-            # Tìm thumbnail container và scroll sang phải nhiều lần
-            console.print(f"[dim]Scroll thumbnail container...[/]")
-            driver.execute_script("""
-                // Tìm container chứa thumbnails (thường là div cha của picture.UkIsx8)
-                var thumbs = document.querySelectorAll('picture.UkIsx8');
-                if (thumbs.length > 0) {
-                    var container = thumbs[0].parentElement;
-                    // Scroll container sang phải
-                    for (var i = 0; i < 5; i++) {
-                        if (container && container.scrollWidth > container.clientWidth) {
-                            container.scrollLeft = container.scrollWidth;
-                        }
-                        container = container ? container.parentElement : null;
-                    }
-                }
-            """)
-            time.sleep(2)
-
-            # Click vào từng thumbnail để load ảnh đầy đủ
-            console.print(f"[dim]Click qua các thumbnail...[/]")
-            thumbnails = driver.find_elements(By.CSS_SELECTOR, "picture.UkIsx8")
-            console.print(f"[cyan]Tìm thấy {len(thumbnails)} thumbnail elements[/]")
-
-            for i, thumb in enumerate(thumbnails):
-                try:
-                    # Scroll element vào view
-                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", thumb)
-                    time.sleep(0.3)
-                    # Click
-                    driver.execute_script("arguments[0].click();", thumb)
-                    time.sleep(0.5)
-                except Exception:
-                    pass
-
-            # Chờ sau khi click hết
-            time.sleep(3)
+            # Chờ trang load - đơn giản chỉ chờ vài giây là đủ
+            console.print(f"[dim]Chờ trang load...[/]")
+            time.sleep(8)
 
             # Debug: Đếm số img
             debug_count = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
-            console.print(f"[yellow]DEBUG: Số img trong picture.UkIsx8: {debug_count}[/]")
+            console.print(f"[dim]Số img trong picture.UkIsx8: {debug_count}[/]")
 
             # Lấy tất cả URLs - chạy script giống hệt như thủ công
             image_urls = driver.execute_script("""

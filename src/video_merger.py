@@ -121,7 +121,7 @@ class VideoMerger:
             # Xử lý audio
             audio_clips = []
 
-            # Voice (nếu có)
+            # Voice (nếu có) - không bắt buộc
             if voice_path and os.path.exists(voice_path):
                 self.log(f"Thêm voice: {Path(voice_path).name}")
                 voice_audio = AudioFileClip(voice_path)
@@ -130,23 +130,34 @@ class VideoMerger:
                     voice_audio = voice_audio.subclip(0, final_clip.duration)
                 voice_audio = voice_audio.volumex(voice_volume)
                 audio_clips.append(voice_audio)
+            else:
+                self.log("Không có voice - tiếp tục xử lý...")
 
-            # Nhạc nền (nếu có)
+            # Nhạc nền (nếu có) - cắt theo thời lượng video
             if music_path and os.path.exists(music_path):
                 self.log(f"Thêm nhạc: {Path(music_path).name}")
                 music_audio = AudioFileClip(music_path)
+
+                # Cắt nhạc theo đúng thời lượng video
+                video_duration = final_clip.duration
+                self.log(f"  Thời lượng video: {video_duration:.1f}s")
+                self.log(f"  Thời lượng nhạc gốc: {music_audio.duration:.1f}s")
+
                 # Loop nhạc nếu ngắn hơn video
-                if music_audio.duration < final_clip.duration:
-                    loops_needed = int(final_clip.duration / music_audio.duration) + 1
-                    music_clips = [music_audio] * loops_needed
+                if music_audio.duration < video_duration:
+                    loops_needed = int(video_duration / music_audio.duration) + 1
+                    self.log(f"  Loop nhạc {loops_needed} lần")
                     from moviepy.editor import concatenate_audioclips
-                    music_audio = concatenate_audioclips(music_clips)
-                # Cắt nhạc nếu dài hơn video
-                music_audio = music_audio.subclip(0, final_clip.duration)
+                    music_clips_list = [music_audio] * loops_needed
+                    music_audio = concatenate_audioclips(music_clips_list)
+
+                # Cắt nhạc bằng đúng thời lượng video
+                music_audio = music_audio.subclip(0, video_duration)
                 music_audio = music_audio.volumex(music_volume)
-                # Fade out nhạc ở cuối
+                # Fade out nhạc ở cuối (2s)
                 music_audio = music_audio.fx(vfx.audio_fadeout, 2)
                 audio_clips.append(music_audio)
+                self.log(f"  ✓ Đã cắt nhạc = {video_duration:.1f}s")
 
             # Ghép audio
             if audio_clips:

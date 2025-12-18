@@ -724,7 +724,8 @@ class MainTab:
                     link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
 
                     if link and "shopee" in link.lower():
-                        images = self.shopee_downloader.download_from_url(
+                        # Dùng get_product_and_download để lấy cả thông tin sản phẩm
+                        product, images = self.shopee_downloader.get_product_and_download(
                             url=link.strip(),
                             folder_name=code,
                             skip_existing=True
@@ -733,6 +734,19 @@ class MainTab:
                         if images:
                             self.set_task_input_status(code, TaskItem.STATUS_DONE)
                             self.after_safe(lambda c=code, n=len(images): self.add_log(f"✓ {c}: {n} ảnh"))
+
+                            # Ghi tên và mô tả vào sheet
+                            if product:
+                                try:
+                                    sheet_row = item["row"]  # Row trong sheet (1-indexed)
+                                    if product.name:
+                                        reader.sheet.update_acell(f"C{sheet_row}", product.name)
+                                        self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi tên vào C{sheet_row}"))
+                                    if product.description:
+                                        reader.sheet.update_acell(f"D{sheet_row}", product.description)
+                                        self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi mô tả vào D{sheet_row}"))
+                                except Exception as e:
+                                    self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi sheet: {e}"))
                         else:
                             self.set_task_input_status(code, TaskItem.STATUS_ERROR)
                             self.after_safe(lambda c=code: self.add_log(f"❌ {c}: không tải được"))
@@ -933,7 +947,8 @@ class MainTab:
                 link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
 
                 if link and "shopee" in link.lower():
-                    images = self.shopee_downloader.download_from_url(
+                    # Dùng get_product_and_download để lấy cả thông tin sản phẩm
+                    product, images = self.shopee_downloader.get_product_and_download(
                         url=link.strip(),
                         folder_name=code,
                         skip_existing=True
@@ -942,6 +957,17 @@ class MainTab:
                     if images:
                         self.set_task_input_status(code, TaskItem.STATUS_DONE)
                         self.after_safe(lambda c=code, n=len(images): self.add_log(f"✓ {c}: {n} ảnh"))
+
+                        # Ghi tên và mô tả vào sheet
+                        if product:
+                            try:
+                                sheet_row = item["row"]
+                                if product.name:
+                                    reader.sheet.update_acell(f"C{sheet_row}", product.name)
+                                if product.description:
+                                    reader.sheet.update_acell(f"D{sheet_row}", product.description)
+                            except Exception:
+                                pass
                     else:
                         self.set_task_input_status(code, TaskItem.STATUS_ERROR)
                 else:

@@ -342,15 +342,8 @@ class MainTab:
         )
         self.table_scroll.pack(fill="both", expand=True, padx=2, pady=2)
 
-        # Placeholder với style mới
-        self.placeholder_label = ctk.CTkLabel(
-            self.table_scroll,
-            text="Chưa có task nào\nNhấn 'Tải ảnh Shopee' hoặc 'Tạo Video' để bắt đầu",
-            font=ctk.CTkFont(family="Segoe UI", size=14),
-            text_color=self.COLORS["text_secondary"],
-            justify="center"
-        )
-        self.placeholder_label.pack(pady=60)
+        # Không cần placeholder - để trống cho tiến độ
+        self.placeholder_label = None
 
     def setup_log_area(self):
         """Log area - Modern terminal style"""
@@ -415,8 +408,9 @@ class MainTab:
 
     def add_task_row(self, task: TaskItem):
         """Thêm 1 row vào bảng - Modern style với alternating colors"""
-        if self.placeholder_label.winfo_exists():
+        if self.placeholder_label and self.placeholder_label.winfo_exists():
             self.placeholder_label.destroy()
+            self.placeholder_label = None
 
         # Alternating row colors
         self.row_count += 1
@@ -605,16 +599,7 @@ class MainTab:
         self.tasks.clear()
         self.row_count = 0  # Reset row counter
 
-        # Re-add placeholder với style mới
-        self.placeholder_label = ctk.CTkLabel(
-            self.table_scroll,
-            text="Chưa có task nào\nNhấn 'Tải ảnh Shopee' hoặc 'Tạo Video' để bắt đầu",
-            font=ctk.CTkFont(family="Segoe UI", size=14),
-            text_color=self.COLORS["text_secondary"],
-            justify="center"
-        )
-        self.placeholder_label.pack(pady=60)
-
+        # Không cần placeholder - để trống cho tiến độ
         self.total_progress.set(0)
         self.stats_label.configure(text="0/0")
 
@@ -1872,21 +1857,33 @@ class MainTab:
                         if music_files:
                             music_path = str(random.choice(music_files))
 
+                    # Tìm ảnh từ INPUT folder để thêm cuối video
+                    image_paths = []
+                    code_input_folder = input_folder / code
+                    if code_input_folder.exists():
+                        for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
+                            image_paths.extend([str(p) for p in code_input_folder.glob(ext)])
+                        image_paths.sort()  # Sắp xếp theo tên
+                        if image_paths:
+                            self.after_safe(lambda c=code, n=len(image_paths): self.add_log(f"  📷 Thêm {n} ảnh cuối video"))
+
                     # Output path
                     final_video = output_folder / f"{code}_final.mp4"
 
-                    # Merge videos với music/voice
+                    # Merge videos với music/voice + ảnh cuối
                     # Nếu có voice -> nhạc nhỏ (0.1), không có voice -> nhạc to (0.5)
                     music_vol = 0.1 if voice_path else 0.5
 
-                    success = merger.merge_videos(
+                    success = merger.merge_videos_with_images(
                         video_paths=[str(v) for v in videos],
+                        image_paths=image_paths,
                         output_path=str(final_video),
                         music_path=music_path,
                         voice_path=voice_path,
                         music_volume=music_vol,
                         voice_volume=1.0,
                         mute_original=True,
+                        image_duration=1.0,  # Mỗi ảnh 1 giây
                         target_width=1080,
                         target_height=1920
                     )

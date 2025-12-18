@@ -601,15 +601,7 @@ class ShopeeDownloader:
 
             # Chờ trang load
             console.print(f"[dim]Chờ trang load...[/]")
-            time.sleep(5)
-
-            # Kiểm tra và xử lý captcha
-            if not self._check_and_handle_captcha(driver, timeout=120):
-                console.print("[red]❌ Không vượt được captcha[/]")
-                return None
-
-            # Đợi thêm sau khi vượt captcha
-            time.sleep(3)
+            time.sleep(8)
 
             # Debug: Đếm số img
             debug_count = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")

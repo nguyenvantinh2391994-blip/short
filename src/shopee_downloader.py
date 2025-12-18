@@ -476,86 +476,76 @@ class ShopeeDownloader:
                 console.print(f"[dim]Chờ thêm để ảnh load...[/]")
                 time.sleep(8)
 
-            # Chờ thêm để ảnh load hoàn toàn
-            time.sleep(3)
+            # Chờ thêm để trang load hoàn toàn
+            time.sleep(5)
 
-            # Scroll page để trigger lazy loading
-            driver.execute_script("window.scrollTo(0, 300);")
-            time.sleep(1)
+            # Scroll xuống rồi lên để trigger lazy loading
+            console.print(f"[dim]Scroll page để load ảnh...[/]")
+            driver.execute_script("window.scrollTo(0, 500);")
+            time.sleep(2)
             driver.execute_script("window.scrollTo(0, 0);")
-            time.sleep(1)
+            time.sleep(2)
 
-            # Tìm và scroll trong thumbnail container (nếu có)
-            console.print(f"[dim]Đang scroll thumbnail container...[/]")
-            try:
-                driver.execute_script("""
-                    // Tìm thumbnail container và scroll
-                    var containers = document.querySelectorAll('[class*="flex"][class*="overflow"]');
-                    containers.forEach(c => {
-                        if (c.querySelector('picture.UkIsx8')) {
-                            c.scrollLeft = c.scrollWidth;
+            # Tìm thumbnail container và scroll sang phải nhiều lần
+            console.print(f"[dim]Scroll thumbnail container...[/]")
+            driver.execute_script("""
+                // Tìm container chứa thumbnails (thường là div cha của picture.UkIsx8)
+                var thumbs = document.querySelectorAll('picture.UkIsx8');
+                if (thumbs.length > 0) {
+                    var container = thumbs[0].parentElement;
+                    // Scroll container sang phải
+                    for (var i = 0; i < 5; i++) {
+                        if (container && container.scrollWidth > container.clientWidth) {
+                            container.scrollLeft = container.scrollWidth;
                         }
-                    });
-                """)
-                time.sleep(1)
-            except Exception:
-                pass
-
-            # Click vào từng thumbnail để load ảnh (Shopee dùng lazy loading)
-            console.print(f"[dim]Đang click qua các thumbnail để load ảnh...[/]")
-            try:
-                # Tìm tất cả thumbnail images
-                thumbnails = driver.find_elements(By.CSS_SELECTOR, "picture.UkIsx8")
-                console.print(f"[dim]Tìm thấy {len(thumbnails)} thumbnail[/]")
-
-                # Click từng thumbnail
-                for i, thumb in enumerate(thumbnails):
-                    try:
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", thumb)
-                        time.sleep(0.2)
-                        driver.execute_script("arguments[0].click();", thumb)
-                        time.sleep(0.5)  # Chờ ảnh load
-                    except Exception:
-                        pass
-
-                # Chờ thêm sau khi click hết
-                time.sleep(2)
-            except Exception as e:
-                console.print(f"[dim]Lỗi click thumbnail: {e}[/]")
-
-            # Debug: In số lượng img tìm thấy
-            total_imgs = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
-            console.print(f"[dim]Debug: Tổng img trong picture.UkIsx8: {total_imgs}[/]")
-
-            # LẤY ẢNH - Dùng CÙNG script như user test thủ công
-            js_script = """
-            var hashes = new Set();
-            var urls = [];
-
-            // Dùng selector picture.UkIsx8 img - giống hệt script test thủ công
-            document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
-                var src = img.src;
-                if (!src) return;
-
-                // Bỏ resize param (@...)
-                src = src.split('@')[0];
-
-                if (src.includes('susercontent.com/file/')) {
-                    var match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
-                    if (match && match[1] && !hashes.has(match[1])) {
-                        hashes.add(match[1]);
-                        urls.push(src);
+                        container = container ? container.parentElement : null;
                     }
                 }
-            });
+            """)
+            time.sleep(2)
 
-            console.log("Tổng img:", document.querySelectorAll('picture.UkIsx8 img').length);
-            console.log("Unique URLs:", urls.length);
+            # Click vào từng thumbnail để load ảnh đầy đủ
+            console.print(f"[dim]Click qua các thumbnail...[/]")
+            thumbnails = driver.find_elements(By.CSS_SELECTOR, "picture.UkIsx8")
+            console.print(f"[cyan]Tìm thấy {len(thumbnails)} thumbnail elements[/]")
 
-            return urls;
-            """
+            for i, thumb in enumerate(thumbnails):
+                try:
+                    # Scroll element vào view
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", thumb)
+                    time.sleep(0.3)
+                    # Click
+                    driver.execute_script("arguments[0].click();", thumb)
+                    time.sleep(0.5)
+                except Exception:
+                    pass
 
-            image_urls = driver.execute_script(js_script)
+            # Chờ sau khi click hết
+            time.sleep(3)
+
+            # Debug: Đếm số img
+            debug_count = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
+            console.print(f"[yellow]DEBUG: Số img trong picture.UkIsx8: {debug_count}[/]")
+
+            # Lấy tất cả URLs - chạy script giống hệt như thủ công
+            image_urls = driver.execute_script("""
+                var hashes = new Set();
+                var urls = [];
+                document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
+                    var src = img.src;
+                    if (!src) return;
+                    src = src.split('@')[0];
+                    if (src.includes('susercontent.com/file/')) {
+                        var match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                        if (match && match[1] && !hashes.has(match[1])) {
+                            hashes.add(match[1]);
+                            urls.push(src);
+                        }
+                    }
+                });
+                return urls;
+            """)
+
             console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh (unique)[/]")
 
             # Nếu không tìm thấy, thử selector backup

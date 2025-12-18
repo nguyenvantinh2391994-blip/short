@@ -764,6 +764,17 @@ class ShopeeDownloader:
         if downloaded:
             console.print(f"[green]✅ Đã tải {len(downloaded)} ảnh vào {folder}[/]")
 
+            # Crop ảnh về 9:16
+            try:
+                from .image_processor import crop_folder_to_9_16
+                cropped = crop_folder_to_9_16(str(folder))
+                if cropped > 0:
+                    console.print(f"[green]✂️ Đã crop {cropped} ảnh về 9:16[/]")
+            except ImportError:
+                pass  # Module chưa có
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Lỗi crop: {e}[/]")
+
         return downloaded
 
     def download_from_url(

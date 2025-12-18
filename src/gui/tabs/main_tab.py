@@ -198,6 +198,21 @@ class MainTab:
         )
         self.full_btn.pack(side="left", padx=(0, 10))
 
+        # Nút Lọc ảnh - Pink
+        self.filter_btn = ctk.CTkButton(
+            btn_frame,
+            text="Lọc ảnh",
+            command=self.filter_images,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#EC4899",  # Pink
+            hover_color="#DB2777",
+            text_color="white"
+        )
+        self.filter_btn.pack(side="left", padx=(0, 10))
+
         # Nút Dừng - Red/Danger
         self.stop_btn = ctk.CTkButton(
             btn_frame,
@@ -1016,6 +1031,7 @@ class MainTab:
         self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     def stop_process(self):
@@ -1257,6 +1273,7 @@ class MainTab:
         self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     # ===== FULL WORKFLOW =====
@@ -1584,4 +1601,120 @@ class MainTab:
         self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
+    # ===== IMAGE FILTER =====
+
+    def filter_images(self):
+        """Lọc ảnh - xóa logo/banner, giữ ảnh sản phẩm"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        # Kiểm tra API key
+        if not self.app.config.gemini_api_key:
+            self.add_log("❌ Cần Gemini API key để lọc ảnh! Vào Settings.")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.add_log("🔍 Bắt đầu lọc ảnh...")
+
+        thread = threading.Thread(target=self._run_image_filter, daemon=True)
+        thread.start()
+
+    def _run_image_filter(self):
+        """Background thread lọc ảnh"""
+        try:
+            from ...image_processor import ImageFilter
+            import time
+
+            input_folder = Path(self.app.config.input_folder)
+            if not input_folder.exists():
+                self.after_safe(lambda: self.add_log(f"❌ Folder không tồn tại: {input_folder}"))
+                return
+
+            # Lấy tất cả subfolder
+            folders = [f for f in input_folder.iterdir() if f.is_dir()]
+
+            if not folders:
+                self.after_safe(lambda: self.add_log("Không có folder nào để lọc"))
+                return
+
+            self.after_safe(lambda n=len(folders): self.add_log(f"📁 Tìm thấy {n} folder"))
+
+            filter = ImageFilter(self.app.config.gemini_api_key)
+
+            total_kept = 0
+            total_deleted = 0
+
+            for folder in folders:
+                if self.stop_flag.is_set():
+                    break
+
+                # Đếm ảnh trong folder
+                extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+                images = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
+
+                if not images:
+                    continue
+
+                self.after_safe(lambda f=folder.name, n=len(images): self.add_log(f"\n📁 {f}: {n} ảnh"))
+
+                for img_path in images:
+                    if self.stop_flag.is_set():
+                        break
+
+                    try:
+                        analysis = filter.analyze_image(str(img_path))
+
+                        if analysis.should_keep:
+                            total_kept += 1
+                            self.after_safe(lambda p=img_path.name, d=analysis.description:
+                                self.add_log(f"  ✓ {p}: {d[:50]}"))
+                        else:
+                            total_deleted += 1
+                            self.after_safe(lambda p=img_path.name, d=analysis.description:
+                                self.add_log(f"  ✗ {p}: {d[:50]}"))
+
+                            # Xóa file
+                            try:
+                                img_path.unlink()
+                                self.after_safe(lambda: self.add_log("    → Đã xóa"))
+                            except Exception as e:
+                                self.after_safe(lambda e=e: self.add_log(f"    → Lỗi xóa: {e}"))
+
+                        # Rate limit
+                        time.sleep(0.5)
+
+                    except Exception as e:
+                        self.after_safe(lambda p=img_path.name, e=str(e): self.add_log(f"  ⚠️ {p}: {e}"))
+
+            # Tổng kết
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda k=total_kept, d=total_deleted:
+                self.add_log(f"✅ Hoàn thành! Giữ: {k}, Xóa: {d}"))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_filter_complete)
+
+    def _on_filter_complete(self):
+        """Callback khi hoàn thành lọc ảnh"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")

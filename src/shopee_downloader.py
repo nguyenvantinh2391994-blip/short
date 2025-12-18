@@ -67,18 +67,111 @@ class ShopeeDownloader:
         output_dir: str = "INPUT",
         chrome_path: str = None,
         profile_path: str = None,
+        headless: bool = True,
     ):
         """
         Args:
             output_dir: Thư mục gốc để lưu ảnh
             chrome_path: Đường dẫn Chrome executable (để dùng browser có sẵn)
             profile_path: Đường dẫn Chrome profile (để dùng profile đã đăng nhập)
+            headless: Chạy ẩn browser (mặc định True)
         """
         self.output_dir = Path(output_dir)
         self.chrome_path = chrome_path
         self.profile_path = profile_path
+        self.headless = headless
+        self.driver = None  # Lưu driver để có thể show/hide
         self.session = requests.Session()
         self.session.headers.update(self.DEFAULT_HEADERS)
+
+    def _hide_chrome_window(self):
+        """Ẩn Chrome window khỏi taskbar (Windows)"""
+        if not self.driver:
+            return
+        try:
+            import platform
+            if platform.system() != "Windows":
+                return
+
+            import ctypes
+            from ctypes import wintypes
+
+            # Lấy PID của Chrome
+            service = getattr(self.driver, 'service', None)
+            if not service:
+                return
+            pid = service.process.pid
+
+            # Dùng EnumWindows để tìm window của Chrome
+            user32 = ctypes.windll.user32
+            EnumWindows = user32.EnumWindows
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            GetWindowThreadProcessId = user32.GetWindowThreadProcessId
+
+            SW_HIDE = 0
+
+            def callback(hwnd, lparam):
+                process_id = ctypes.c_ulong()
+                GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+                if process_id.value == pid:
+                    user32.ShowWindow(hwnd, SW_HIDE)
+                return True
+
+            EnumWindows(EnumWindowsProc(callback), 0)
+        except Exception:
+            pass
+
+    def show_chrome_window(self):
+        """Hiện Chrome window"""
+        if not self.driver:
+            return
+        try:
+            import platform
+            if platform.system() != "Windows":
+                # Linux/Mac: di chuyển window vào màn hình
+                self.driver.set_window_position(100, 100)
+                return
+
+            import ctypes
+            from ctypes import wintypes
+
+            service = getattr(self.driver, 'service', None)
+            if not service:
+                return
+            pid = service.process.pid
+
+            user32 = ctypes.windll.user32
+            EnumWindows = user32.EnumWindows
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            GetWindowThreadProcessId = user32.GetWindowThreadProcessId
+
+            SW_SHOW = 5
+            SW_RESTORE = 9
+
+            def callback(hwnd, lparam):
+                process_id = ctypes.c_ulong()
+                GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+                if process_id.value == pid:
+                    user32.ShowWindow(hwnd, SW_RESTORE)
+                    user32.ShowWindow(hwnd, SW_SHOW)
+                    user32.SetForegroundWindow(hwnd)
+                return True
+
+            EnumWindows(EnumWindowsProc(callback), 0)
+
+            # Di chuyển vào giữa màn hình
+            self.driver.set_window_position(100, 100)
+        except Exception:
+            pass
+
+    def toggle_browser_visibility(self):
+        """Toggle ẩn/hiện browser"""
+        if hasattr(self, '_is_hidden') and self._is_hidden:
+            self.show_chrome_window()
+            self._is_hidden = False
+        else:
+            self._hide_chrome_window()
+            self._is_hidden = True
 
     def parse_shopee_url(self, url: str) -> Tuple[Optional[int], Optional[int]]:
         """
@@ -321,7 +414,7 @@ class ShopeeDownloader:
         self,
         shop_id: int,
         item_id: int,
-        headless: bool = False,
+        headless: bool = None,
         chrome_path: str = None,
         profile_path: str = None,
         original_url: str = None,
@@ -333,7 +426,7 @@ class ShopeeDownloader:
         Args:
             shop_id: Shopee shop ID
             item_id: Shopee item ID
-            headless: Chạy ở chế độ ẩn browser (mặc định False để đảm bảo load được)
+            headless: Chạy ở chế độ ẩn browser (None = dùng self.headless)
             chrome_path: Đường dẫn đến Chrome executable (tùy chọn)
             profile_path: Đường dẫn đến Chrome profile (tùy chọn, dùng profile có sẵn)
             original_url: Link Shopee gốc (ưu tiên dùng thay vì build từ shop_id/item_id)
@@ -349,9 +442,11 @@ class ShopeeDownloader:
             console.print("[yellow]⚠️ Selenium không được cài đặt. Chạy: pip install selenium[/]")
             return None
 
+        # Dùng self.headless nếu không truyền param
+        is_headless = headless if headless is not None else self.headless
+
         # Ưu tiên dùng link gốc, nếu không có thì build từ shop_id/item_id
         url = original_url if original_url else f"https://shopee.vn/-i.{shop_id}.{item_id}"
-        driver = None
 
         try:
             console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
@@ -371,13 +466,16 @@ class ShopeeDownloader:
             if chrome_path and Path(chrome_path).exists():
                 options.binary_location = chrome_path
 
-            if headless:
-                options.add_argument("--headless=new")
+            # Nếu chạy ẩn: đẩy window ra ngoài màn hình (không dùng headless vì hay lỗi)
+            if is_headless:
+                options.add_argument("--window-size=1200,800")
+                options.add_argument("--window-position=-2000,-2000")  # Ngoài màn hình
+            else:
+                options.add_argument("--window-size=1920,1080")
 
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920,1080")
             options.add_argument("--disable-blink-features=AutomationControlled")
 
             # Chrome preferences - tự động cho phép download, không hỏi lại
@@ -398,13 +496,22 @@ class ShopeeDownloader:
                 try:
                     import undetected_chromedriver as uc
                     console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
-                    driver = uc.Chrome(headless=headless)
+                    self.driver = uc.Chrome(headless=False)  # Không dùng headless, dùng window position
                 except ImportError:
-                    driver = webdriver.Chrome(options=options)
+                    self.driver = webdriver.Chrome(options=options)
             else:
                 # Dùng selenium thường với profile có sẵn
                 console.print(f"[dim]Sử dụng Selenium với profile đã đăng nhập...[/]")
-                driver = webdriver.Chrome(options=options)
+                self.driver = webdriver.Chrome(options=options)
+
+            # Ẩn khỏi taskbar nếu headless (Windows)
+            if is_headless:
+                self._is_hidden = True
+                self._hide_chrome_window()
+            else:
+                self._is_hidden = False
+
+            driver = self.driver  # Alias cho code cũ
 
             # Nếu không có profile, load cookies từ file
             if not profile_path:
@@ -428,47 +535,93 @@ class ShopeeDownloader:
                 console.print(f"[dim]Chờ thêm để ảnh load...[/]")
                 time.sleep(8)
 
-            # Scroll để load thêm ảnh nếu có
-            driver.execute_script("window.scrollTo(0, 500)")
-            time.sleep(2)
+            # Chờ thêm để ảnh load hoàn toàn
+            time.sleep(3)
 
-            image_urls = []
+            # Click qua từng thumbnail để load tất cả ảnh vào carousel
+            # Shopee chỉ load ảnh khi user click vào thumbnail
+            js_click_thumbnails = """
+            var thumbnails = document.querySelectorAll('div.ZDN4HL picture.OqFxyp img');
+            var count = thumbnails.length;
 
-            # Dùng JavaScript để lấy ảnh - GIỐNG HỆT CÁCH THỦ CÔNG
+            // Click từng thumbnail với delay
+            for (var i = 0; i < count; i++) {
+                (function(index) {
+                    setTimeout(function() {
+                        thumbnails[index].click();
+                    }, index * 300);  // 300ms giữa mỗi click
+                })(i);
+            }
+
+            return count;
+            """
+
+            thumbnail_count = driver.execute_script(js_click_thumbnails)
+            if thumbnail_count and thumbnail_count > 0:
+                console.print(f"[dim]Đang load {thumbnail_count} ảnh từ thumbnails...[/]")
+                # Chờ tất cả clicks hoàn thành + thời gian load ảnh
+                wait_time = (thumbnail_count * 0.3) + 2
+                time.sleep(wait_time)
+
+            # Lấy ảnh từ carousel chính (ảnh lớn đang hiển thị)
+            # Dùng Set để tự động loại trùng theo hash
             js_script = """
+            var hashes = new Set();
             var urls = [];
+
+            // Lấy từ carousel chính (picture.UkIsx8)
             document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
                 let src = img.src.split('@')[0];
                 if (src && src.includes('susercontent.com/file/')) {
-                    urls.push(src);
+                    // Extract hash từ URL
+                    let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                    if (match && !hashes.has(match[1])) {
+                        hashes.add(match[1]);
+                        urls.push(src);
+                    }
                 }
             });
+
+            // Nếu ít quá, lấy thêm từ thumbnails
+            if (urls.length < 3) {
+                document.querySelectorAll('div.ZDN4HL picture.OqFxyp img').forEach(img => {
+                    let src = img.src.split('@')[0];
+                    if (src && src.includes('susercontent.com/file/')) {
+                        let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                        if (match && !hashes.has(match[1])) {
+                            hashes.add(match[1]);
+                            urls.push(src);
+                        }
+                    }
+                });
+            }
+
             return urls;
             """
 
             image_urls = driver.execute_script(js_script)
-
-            # Lọc unique
-            image_urls = list(dict.fromkeys(image_urls))
-
             console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh sản phẩm[/]")
 
-            # Nếu không tìm thấy, thử các selector khác
+            # Nếu không tìm thấy, thử selector backup
             if not image_urls:
                 console.print(f"[dim]Thử selector backup...[/]")
 
                 backup_js = """
+                var hashes = new Set();
                 var urls = [];
                 document.querySelectorAll('img[src*="susercontent.com/file/"]').forEach(img => {
                     let src = img.src.split('@')[0];
-                    if (src && !urls.includes(src)) {
-                        urls.push(src);
+                    if (src) {
+                        let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                        if (match && !hashes.has(match[1])) {
+                            hashes.add(match[1]);
+                            urls.push(src);
+                        }
                     }
                 });
                 return urls;
                 """
                 image_urls = driver.execute_script(backup_js)
-                image_urls = list(dict.fromkeys(image_urls))
                 console.print(f"[dim]Backup: Tìm thấy {len(image_urls)} ảnh[/]")
 
             # Lấy tên sản phẩm
@@ -484,6 +637,7 @@ class ShopeeDownloader:
 
             driver.quit()
             driver = None
+            self.driver = None
 
             if image_urls:
                 # Extract hash từ URLs
@@ -517,6 +671,7 @@ class ShopeeDownloader:
                     driver.quit()
                 except Exception:
                     pass
+            self.driver = None
 
     def download_images(
         self,

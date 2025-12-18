@@ -369,11 +369,14 @@ class MainTab:
                 chrome_path = first_profile.get("chrome_path")
                 profile_path = first_profile.get("profile_path")
 
-            downloader = ShopeeDownloader(
+            # Tạo downloader và lưu reference để có thể show/hide browser
+            self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
-                profile_path=profile_path
+                profile_path=profile_path,
+                headless=True  # Chạy ẩn mặc định
             )
+            downloader = self.shopee_downloader
 
             downloaded = 0
             skipped = 0
@@ -497,10 +500,26 @@ class MainTab:
             self.add_log("⏹️ Đang dừng...", "warning")
 
     def show_browser(self):
-        """Show browser windows"""
+        """Toggle show/hide browser windows (cả Grok và Shopee)"""
+        shown = False
+
+        # Toggle Grok browser
         if hasattr(self, 'current_worker'):
             try:
                 self.current_worker.show_all_browsers()
-                self.add_log("👁️ Đã hiện browser", "info")
+                shown = True
             except Exception:
                 pass
+
+        # Toggle Shopee browser
+        if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
+            try:
+                self.shopee_downloader.toggle_browser_visibility()
+                shown = True
+            except Exception:
+                pass
+
+        if shown:
+            self.add_log("👁️ Đã toggle browser", "info")
+        else:
+            self.add_log("Không có browser nào đang chạy", "warning")

@@ -640,6 +640,13 @@ class GrokSeleniumAutomation:
                 self.log("1. Mở trang Grok Imagine...")
                 if not self.navigate_to_grok():
                     return GrokVideoResult(False, error="Không thể truy cập Grok")
+            else:
+                # Kiểm tra URL hiện tại - nếu không phải grok.com thì navigate
+                current_url = self.driver.current_url
+                if 'grok.com' not in current_url:
+                    self.log(f"1. URL sai ({current_url[:40]}...), navigate về Grok...")
+                    if not self.navigate_to_grok():
+                        return GrokVideoResult(False, error="Không thể truy cập Grok")
 
             # Input prompt
             if prompt:

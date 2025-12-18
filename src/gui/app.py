@@ -48,6 +48,9 @@ class AppConfig:
     auto_shopee: bool = True
     shopee_link_column: str = "B"
 
+    # Gemini API
+    gemini_api_key: str = ""
+
     # Browser profiles
     browser_profiles: List[Dict] = field(default_factory=list)
 
@@ -316,6 +319,13 @@ class VideoCreatorApp(ctk.CTk):
 
     def on_closing(self):
         """Handle window close"""
+        # Đóng tất cả browser trước khi thoát
+        try:
+            if hasattr(self, 'main_tab') and self.main_tab:
+                self.main_tab.cleanup_browsers()
+        except Exception as e:
+            print(f"⚠️ Lỗi cleanup: {e}")
+
         self.save_config()
         self.destroy()
 

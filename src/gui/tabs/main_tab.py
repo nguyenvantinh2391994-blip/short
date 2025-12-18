@@ -141,9 +141,9 @@ class MainTab:
         # Nút Tải ảnh - Orange/Amber
         self.shopee_btn = ctk.CTkButton(
             btn_frame,
-            text="Tải ảnh Shopee",
+            text="Tải ảnh",
             command=self.download_shopee_images,
-            width=130,
+            width=90,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
@@ -152,6 +152,36 @@ class MainTab:
             text_color="white"
         )
         self.shopee_btn.pack(side="left", padx=(0, 10))
+
+        # Nút Lọc ảnh - Pink (sau Tải ảnh)
+        self.filter_btn = ctk.CTkButton(
+            btn_frame,
+            text="Lọc ảnh",
+            command=self.filter_images,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#EC4899",  # Pink
+            hover_color="#DB2777",
+            text_color="white"
+        )
+        self.filter_btn.pack(side="left", padx=(0, 10))
+
+        # Nút Làm kịch bản - Purple
+        self.script_btn = ctk.CTkButton(
+            btn_frame,
+            text="Làm kịch bản",
+            command=self.create_scripts,
+            width=120,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#8B5CF6",  # Purple
+            hover_color="#7C3AED",
+            text_color="white"
+        )
+        self.script_btn.pack(side="left", padx=(0, 10))
 
         # Nút Tạo Video - Green/Success
         self.start_btn = ctk.CTkButton(
@@ -167,6 +197,36 @@ class MainTab:
             text_color="white"
         )
         self.start_btn.pack(side="left", padx=(0, 10))
+
+        # Nút Edit - Dark Cyan (trước Chạy Full)
+        self.edit_btn = ctk.CTkButton(
+            btn_frame,
+            text="Edit",
+            command=self.edit_videos,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#0D9488",  # Teal
+            hover_color="#0F766E",
+            text_color="white"
+        )
+        self.edit_btn.pack(side="left", padx=(0, 10))
+
+        # Nút Chạy Full - Cyan
+        self.full_btn = ctk.CTkButton(
+            btn_frame,
+            text="Chạy Full",
+            command=self.run_full_workflow,
+            width=100,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#0891B2",  # Cyan
+            hover_color="#0E7490",
+            text_color="white"
+        )
+        self.full_btn.pack(side="left", padx=(0, 10))
 
         # Nút Dừng - Red/Danger
         self.stop_btn = ctk.CTkButton(
@@ -282,15 +342,8 @@ class MainTab:
         )
         self.table_scroll.pack(fill="both", expand=True, padx=2, pady=2)
 
-        # Placeholder với style mới
-        self.placeholder_label = ctk.CTkLabel(
-            self.table_scroll,
-            text="Chưa có task nào\nNhấn 'Tải ảnh Shopee' hoặc 'Tạo Video' để bắt đầu",
-            font=ctk.CTkFont(family="Segoe UI", size=14),
-            text_color=self.COLORS["text_secondary"],
-            justify="center"
-        )
-        self.placeholder_label.pack(pady=60)
+        # Không cần placeholder - để trống cho tiến độ
+        self.placeholder_label = None
 
     def setup_log_area(self):
         """Log area - Modern terminal style"""
@@ -355,8 +408,9 @@ class MainTab:
 
     def add_task_row(self, task: TaskItem):
         """Thêm 1 row vào bảng - Modern style với alternating colors"""
-        if self.placeholder_label.winfo_exists():
+        if self.placeholder_label and self.placeholder_label.winfo_exists():
             self.placeholder_label.destroy()
+            self.placeholder_label = None
 
         # Alternating row colors
         self.row_count += 1
@@ -545,16 +599,7 @@ class MainTab:
         self.tasks.clear()
         self.row_count = 0  # Reset row counter
 
-        # Re-add placeholder với style mới
-        self.placeholder_label = ctk.CTkLabel(
-            self.table_scroll,
-            text="Chưa có task nào\nNhấn 'Tải ảnh Shopee' hoặc 'Tạo Video' để bắt đầu",
-            font=ctk.CTkFont(family="Segoe UI", size=14),
-            text_color=self.COLORS["text_secondary"],
-            justify="center"
-        )
-        self.placeholder_label.pack(pady=60)
-
+        # Không cần placeholder - để trống cho tiến độ
         self.total_progress.set(0)
         self.stats_label.configure(text="0/0")
 
@@ -724,7 +769,8 @@ class MainTab:
                     link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
 
                     if link and "shopee" in link.lower():
-                        images = self.shopee_downloader.download_from_url(
+                        # Dùng get_product_and_download để lấy cả thông tin sản phẩm
+                        product, images = self.shopee_downloader.get_product_and_download(
                             url=link.strip(),
                             folder_name=code,
                             skip_existing=True
@@ -733,6 +779,19 @@ class MainTab:
                         if images:
                             self.set_task_input_status(code, TaskItem.STATUS_DONE)
                             self.after_safe(lambda c=code, n=len(images): self.add_log(f"✓ {c}: {n} ảnh"))
+
+                            # Ghi tên và mô tả vào sheet
+                            if product:
+                                try:
+                                    sheet_row = item["row"]  # Row trong sheet (1-indexed)
+                                    if product.name:
+                                        reader.sheet.update_acell(f"C{sheet_row}", product.name)
+                                        self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi tên vào C{sheet_row}"))
+                                    if product.description:
+                                        reader.sheet.update_acell(f"D{sheet_row}", product.description)
+                                        self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi mô tả vào D{sheet_row}"))
+                                except Exception as e:
+                                    self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi sheet: {e}"))
                         else:
                             self.set_task_input_status(code, TaskItem.STATUS_ERROR)
                             self.after_safe(lambda c=code: self.add_log(f"❌ {c}: không tải được"))
@@ -933,7 +992,8 @@ class MainTab:
                 link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
 
                 if link and "shopee" in link.lower():
-                    images = self.shopee_downloader.download_from_url(
+                    # Dùng get_product_and_download để lấy cả thông tin sản phẩm
+                    product, images = self.shopee_downloader.get_product_and_download(
                         url=link.strip(),
                         folder_name=code,
                         skip_existing=True
@@ -942,6 +1002,17 @@ class MainTab:
                     if images:
                         self.set_task_input_status(code, TaskItem.STATUS_DONE)
                         self.after_safe(lambda c=code, n=len(images): self.add_log(f"✓ {c}: {n} ảnh"))
+
+                        # Ghi tên và mô tả vào sheet
+                        if product:
+                            try:
+                                sheet_row = item["row"]
+                                if product.name:
+                                    reader.sheet.update_acell(f"C{sheet_row}", product.name)
+                                if product.description:
+                                    reader.sheet.update_acell(f"D{sheet_row}", product.description)
+                            except Exception:
+                                pass
                     else:
                         self.set_task_input_status(code, TaskItem.STATUS_ERROR)
                 else:
@@ -957,7 +1028,11 @@ class MainTab:
         """Process complete"""
         self.is_running = False
         self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     def stop_process(self):
@@ -1001,3 +1076,1048 @@ class MainTab:
 
         if not toggled:
             self.add_log("Không có browser nào đang chạy")
+
+    def create_scripts(self):
+        """Tạo kịch bản và voice cho các sản phẩm"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        # Kiểm tra API key
+        if not self.app.config.gemini_api_key:
+            self.add_log("❌ Chưa có Gemini API key! Vào Settings để cấu hình.")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("📝 Bắt đầu tạo kịch bản và voice...")
+
+        thread = threading.Thread(target=self._run_script_creation, daemon=True)
+        thread.start()
+
+    def _run_script_creation(self):
+        """Background thread tạo kịch bản và voice"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...gemini_service import GeminiService
+
+            self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối!"))
+                return
+
+            self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
+
+            # Khởi tạo Gemini service
+            gemini = GeminiService(self.app.config.gemini_api_key)
+
+            # Lấy tất cả dữ liệu từ sheet
+            all_values = reader.sheet.get_all_values()
+            if not all_values:
+                self.after_safe(lambda: self.add_log("Sheet trống!"))
+                return
+
+            # Tạo thư mục voice
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
+            voice_folder.mkdir(parents=True, exist_ok=True)
+
+            # Column indexes
+            code_col = 0  # A
+            name_col = 2  # C
+            desc_col = 3  # D
+            script_col = 6  # G
+
+            # Đếm sản phẩm cần xử lý
+            data_rows = all_values[1:] if len(all_values) > 1 else []
+            pending = []
+
+            for row_idx, row in enumerate(data_rows, start=2):
+                code = row[code_col].strip() if len(row) > code_col else ""
+                name = row[name_col].strip() if len(row) > name_col else ""
+                existing_script = row[script_col].strip() if len(row) > script_col else ""
+
+                if not code or not name:
+                    continue
+
+                # Kiểm tra đã có voice chưa
+                voice_path = voice_folder / f"{code}.wav"
+                if voice_path.exists() and existing_script:
+                    continue  # Bỏ qua nếu đã có cả voice và script
+
+                pending.append({
+                    "code": code,
+                    "name": name,
+                    "description": row[desc_col].strip() if len(row) > desc_col else "",
+                    "row": row_idx,
+                    "has_script": bool(existing_script),
+                    "has_voice": voice_path.exists(),
+                    "script": existing_script,
+                })
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần xử lý"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"📋 Tìm thấy {n} sản phẩm cần xử lý"))
+
+            # Tạo tasks cho bảng tiến độ
+            for item in pending:
+                task = TaskItem(item["code"], item["row"])
+                self.tasks[item["code"]] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            success_count = 0
+            error_count = 0
+
+            # Xử lý từng sản phẩm
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                self.set_task_input_status(code, TaskItem.STATUS_RUNNING)
+                self.after_safe(lambda c=code: self.add_log(f"📝 Đang xử lý: {c}"))
+
+                try:
+                    script = item["script"]
+
+                    # Bước 1: Tạo kịch bản (nếu chưa có)
+                    if not item["has_script"]:
+                        self.after_safe(lambda c=code: self.add_log(f"  Tạo kịch bản..."))
+                        script_result = gemini.generate_script(
+                            product_name=item["name"],
+                            product_description=item["description"]
+                        )
+
+                        if script_result.success:
+                            script = script_result.script
+                            # Ghi vào sheet
+                            try:
+                                reader.sheet.update_acell(f"G{item['row']}", script)
+                                self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi kịch bản vào G{item['row']}"))
+                            except Exception as e:
+                                self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi sheet: {e}"))
+                        else:
+                            self.after_safe(lambda c=code, e=script_result.error: self.add_log(f"  ❌ Lỗi kịch bản: {e}"))
+                            self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                            error_count += 1
+                            continue
+
+                    self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
+
+                    # Bước 2: Tạo voice (nếu chưa có)
+                    if not item["has_voice"] and script:
+                        self.after_safe(lambda c=code: self.add_log(f"  Tạo voice..."))
+                        voice_path = voice_folder / f"{code}.wav"
+                        voice_result = gemini.generate_voice(
+                            text=script,
+                            output_path=str(voice_path),
+                            voice_name="Aoede"  # Giọng nữ tự nhiên
+                        )
+
+                        if voice_result.success:
+                            self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã tạo voice: {code}.wav"))
+                            self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                            self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                            success_count += 1
+                        else:
+                            self.after_safe(lambda c=code, e=voice_result.error: self.add_log(f"  ❌ Lỗi voice: {e}"))
+                            self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                            error_count += 1
+                    else:
+                        # Đã có voice hoặc không có script
+                        if item["has_voice"]:
+                            self.after_safe(lambda c=code: self.add_log(f"  ⏭️ Đã có voice"))
+                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                        success_count += 1
+
+                    self.set_task_input_status(code, TaskItem.STATUS_DONE)
+
+                    # Delay để tránh rate limit
+                    import time
+                    time.sleep(1)
+
+                except Exception as e:
+                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+                    self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                    error_count += 1
+
+            # Tổng kết
+            self.after_safe(lambda s=success_count, e=error_count: self.add_log(
+                f"✅ Hoàn thành! Thành công: {s}, Lỗi: {e}"
+            ))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_script_complete)
+
+    def _on_script_complete(self):
+        """Callback khi hoàn thành tạo kịch bản"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
+    # ===== FULL WORKFLOW =====
+
+    def run_full_workflow(self):
+        """Chạy full quy trình: Tải ảnh → Làm kịch bản → Tạo video"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        # Kiểm tra API key cho phần làm kịch bản
+        if not self.app.config.gemini_api_key:
+            self.add_log("⚠️ Chưa có Gemini API key! Sẽ bỏ qua bước làm kịch bản.")
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("🚀 Bắt đầu chạy FULL quy trình...")
+
+        thread = threading.Thread(target=self._run_full_workflow, daemon=True)
+        thread.start()
+
+    def _run_full_workflow(self):
+        """Background thread chạy full quy trình"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...shopee_downloader import ShopeeDownloader
+            from ...gemini_service import GeminiService
+            from ..workers.grok_worker import GrokWorker
+            import time
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            # === KẾT NỐI GOOGLE SHEETS ===
+            self.after_safe(lambda: self.add_log("📊 Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối Google Sheets!"))
+                return
+
+            self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
+
+            # Lấy danh sách sản phẩm pending
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần xử lý"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"📋 Tìm thấy {n} sản phẩm"))
+
+            # Tạo tasks cho bảng tiến độ
+            for item in pending:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # === BƯỚC 1: TẢI ẢNH SHOPEE ===
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda: self.add_log("📥 BƯỚC 1: TẢI ẢNH SHOPEE"))
+            self.after_safe(lambda: self.add_log("="*40))
+
+            all_values = reader.sheet.get_all_values()
+            shopee_link_column = getattr(self.app.config, 'shopee_link_column', 'B')
+            link_col_idx = ord(shopee_link_column.upper()) - ord('A')
+
+            # Browser profile
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            self.shopee_downloader = ShopeeDownloader(
+                output_dir=self.app.config.input_folder,
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                headless=True
+            )
+
+            input_folder = Path(self.app.config.input_folder)
+
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                row_idx = item["row"] - 1
+                code_folder = input_folder / code
+
+                self.set_task_input_status(code, TaskItem.STATUS_RUNNING)
+
+                # Check existing images
+                if code_folder.exists():
+                    existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png")) + list(code_folder.glob("*.webp"))
+                    if existing:
+                        self.set_task_input_status(code, TaskItem.STATUS_SKIP)
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có ảnh"))
+                        continue
+
+                # Get link and download
+                if row_idx < len(all_values):
+                    row_data = all_values[row_idx]
+                    link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
+
+                    if link and "shopee" in link.lower():
+                        product, images = self.shopee_downloader.get_product_and_download(
+                            url=link.strip(),
+                            folder_name=code,
+                            skip_existing=True
+                        )
+
+                        if images:
+                            self.set_task_input_status(code, TaskItem.STATUS_DONE)
+                            self.after_safe(lambda c=code, n=len(images): self.add_log(f"  ✓ {c}: {n} ảnh"))
+
+                            # Ghi tên và mô tả vào sheet
+                            if product:
+                                try:
+                                    sheet_row = item["row"]
+                                    if product.name:
+                                        reader.sheet.update_acell(f"C{sheet_row}", product.name)
+                                    if product.description:
+                                        reader.sheet.update_acell(f"D{sheet_row}", product.description)
+                                except Exception:
+                                    pass
+                        else:
+                            self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                            self.after_safe(lambda c=code: self.add_log(f"  ❌ {c}: không tải được"))
+                    else:
+                        self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                        self.after_safe(lambda c=code: self.add_log(f"  ❌ {c}: không có link Shopee"))
+
+            if self.stop_flag.is_set():
+                self.after_safe(lambda: self.add_log("⏹️ Đã dừng"))
+                return
+
+            # === BƯỚC 2: LỌC ẢNH ===
+            if self.app.config.gemini_api_key:
+                self.after_safe(lambda: self.add_log("\n" + "="*40))
+                self.after_safe(lambda: self.add_log("🔍 BƯỚC 2: LỌC ẢNH"))
+                self.after_safe(lambda: self.add_log("="*40))
+
+                try:
+                    from ...image_processor import ImageFilter
+                    img_filter = ImageFilter(self.app.config.gemini_api_key)
+
+                    total_kept = 0
+                    total_deleted = 0
+
+                    for item in pending:
+                        if self.stop_flag.is_set():
+                            break
+
+                        code = item["code"]
+                        code_folder = input_folder / code
+                        if not code_folder.exists():
+                            continue
+
+                        extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+                        images = [f for f in code_folder.iterdir() if f.suffix.lower() in extensions]
+
+                        if not images:
+                            continue
+
+                        self.after_safe(lambda c=code, n=len(images): self.add_log(f"  📁 {c}: {n} ảnh"))
+
+                        for img_path in images:
+                            if self.stop_flag.is_set():
+                                break
+
+                            try:
+                                analysis = img_filter.analyze_image(str(img_path))
+
+                                if analysis.should_keep:
+                                    total_kept += 1
+                                else:
+                                    total_deleted += 1
+                                    self.after_safe(lambda p=img_path.name: self.add_log(f"    ✗ Xóa: {p}"))
+                                    try:
+                                        img_path.unlink()
+                                    except:
+                                        pass
+
+                                time.sleep(0.3)  # Rate limit
+                            except Exception as e:
+                                pass  # Bỏ qua lỗi, giữ ảnh
+
+                    self.after_safe(lambda k=total_kept, d=total_deleted:
+                        self.add_log(f"  ✓ Giữ: {k}, Xóa: {d}"))
+
+                except Exception as e:
+                    self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi lọc ảnh: {e}"))
+            else:
+                self.after_safe(lambda: self.add_log("\n⚠️ Bỏ qua lọc ảnh - chưa có Gemini API key"))
+
+            if self.stop_flag.is_set():
+                self.after_safe(lambda: self.add_log("⏹️ Đã dừng"))
+                return
+
+            # === BƯỚC 3 & 4: CHẠY SONG SONG ===
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda: self.add_log("🚀 BƯỚC 3 & 4: CHẠY SONG SONG"))
+            self.after_safe(lambda: self.add_log("  • Thread 1: Làm kịch bản & voice"))
+            self.after_safe(lambda: self.add_log("  • Thread 2: Tạo video"))
+            self.after_safe(lambda: self.add_log("="*40))
+
+            output_folder = Path(self.app.config.output_folder)
+            output_folder.mkdir(parents=True, exist_ok=True)
+
+            # Lọc các mã có ảnh (sau khi đã lọc)
+            valid_items = []
+            for item in pending:
+                code = item["code"]
+                code_folder = input_folder / code
+                if code_folder.exists():
+                    images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png")) + list(code_folder.glob("*.webp"))
+                    if images:
+                        item["images"] = images
+                        valid_items.append(item)
+
+            if not valid_items:
+                self.after_safe(lambda: self.add_log("  Không có mã nào có ảnh để tạo video"))
+                return
+
+            # Track trạng thái hoàn thành
+            import threading as th
+            video_done = {}  # code -> True/False
+            voice_done = {}  # code -> True/False
+            edit_done = {}   # code -> True/False
+            status_lock = th.Lock()
+
+            # Khởi tạo trạng thái
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
+            voice_folder.mkdir(parents=True, exist_ok=True)
+            temp_folder = output_folder / "_temp_videos"
+            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
+
+            for item in valid_items:
+                code = item["code"]
+                video_done[code] = False
+                edit_done[code] = False
+                # Check voice đã có sẵn chưa
+                voice_mp3 = voice_folder / f"{code}.mp3"
+                voice_wav = voice_folder / f"{code}.wav"
+                voice_done[code] = voice_mp3.exists() or voice_wav.exists()
+
+            # Hàm Edit cho 1 mã (chạy khi cả video và voice xong)
+            def try_edit_item(code):
+                with status_lock:
+                    if edit_done.get(code):
+                        return  # Đã edit rồi
+                    if not video_done.get(code) or not voice_done.get(code):
+                        return  # Chưa đủ điều kiện
+                    edit_done[code] = True
+
+                self.after_safe(lambda c=code: self.add_log(f"  [Edit] 🎬 {c}: ghép video + voice..."))
+
+                try:
+                    from ...video_merger import VideoMerger
+                    import random
+
+                    merger = VideoMerger()
+
+                    # Tìm video trong temp folder
+                    code_temp = temp_folder / code
+                    if not code_temp.exists():
+                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ❌ {c}: không tìm thấy video"))
+                        return
+
+                    videos = list(code_temp.glob("*.mp4"))
+                    if not videos:
+                        return
+
+                    # Tìm voice
+                    voice_path = None
+                    for ext in ['.mp3', '.wav']:
+                        vp = voice_folder / f"{code}{ext}"
+                        if vp.exists():
+                            voice_path = str(vp)
+                            break
+
+                    # Tìm music ngẫu nhiên
+                    music_path = None
+                    if music_folder and music_folder.exists():
+                        music_files = list(music_folder.glob("*.mp3"))
+                        if music_files:
+                            music_path = str(random.choice(music_files))
+
+                    # Tìm ảnh từ INPUT
+                    image_paths = []
+                    code_input = input_folder / code
+                    if code_input.exists():
+                        for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
+                            image_paths.extend([str(p) for p in code_input.glob(ext)])
+                        image_paths.sort()
+
+                    # Output
+                    final_video = output_folder / f"{code}_final.mp4"
+                    music_vol = 0.5 if voice_path else 1.0
+
+                    success = merger.merge_videos_with_images(
+                        video_paths=[str(v) for v in videos],
+                        image_paths=image_paths,
+                        output_path=str(final_video),
+                        music_path=music_path,
+                        voice_path=voice_path,
+                        music_volume=music_vol,
+                        voice_volume=1.0,
+                        mute_original=True,
+                        image_duration=1.0,
+                        target_width=1080,
+                        target_height=1920
+                    )
+
+                    if success:
+                        self.tasks[code].output_path = final_video
+                        self.after_safe(lambda c=code: self.update_task_row(c))
+                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ✅ {c}: Hoàn thành final!"))
+                    else:
+                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ❌ {c}: lỗi ghép"))
+
+                except Exception as e:
+                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"  [Edit] ❌ {c}: {e}"))
+
+            # Định nghĩa hàm chạy song song cho kịch bản
+            def run_script_generation():
+                if not self.app.config.gemini_api_key:
+                    self.after_safe(lambda: self.add_log("  [Script] ⚠️ Bỏ qua - chưa có API key"))
+                    # Đánh dấu tất cả voice done để edit có thể chạy
+                    with status_lock:
+                        for code in voice_done:
+                            voice_done[code] = True
+                    return
+
+                gemini = GeminiService(self.app.config.gemini_api_key)
+
+                # Refresh data từ sheet
+                fresh_values = reader.sheet.get_all_values()
+
+                for item in valid_items:
+                    if self.stop_flag.is_set():
+                        break
+
+                    code = item["code"]
+                    row_idx = item["row"] - 1
+
+                    if row_idx >= len(fresh_values):
+                        continue
+
+                    row = fresh_values[row_idx]
+                    name = row[2].strip() if len(row) > 2 else ""  # C
+                    description = row[3].strip() if len(row) > 3 else ""  # D
+                    existing_script = row[6].strip() if len(row) > 6 else ""  # G
+
+                    if not name:
+                        with status_lock:
+                            voice_done[code] = True
+                        try_edit_item(code)
+                        continue
+
+                    # Check existing voice
+                    voice_path_mp3 = voice_folder / f"{code}.mp3"
+                    voice_path_wav = voice_folder / f"{code}.wav"
+                    has_voice = voice_path_mp3.exists() or voice_path_wav.exists()
+
+                    if has_voice:
+                        self.after_safe(lambda c=code: self.add_log(f"  [Script] ⏭️ {c}: đã có voice"))
+                        with status_lock:
+                            voice_done[code] = True
+                        try_edit_item(code)
+                        continue
+
+                    try:
+                        script = existing_script
+
+                        # Tạo kịch bản nếu chưa có
+                        if not existing_script:
+                            self.after_safe(lambda c=code: self.add_log(f"  [Script] 📝 {c}: tạo kịch bản..."))
+                            script_result = gemini.generate_script(name, description)
+
+                            if script_result.success:
+                                script = script_result.script
+                                reader.sheet.update_acell(f"G{item['row']}", script)
+                            else:
+                                self.after_safe(lambda c=code, e=script_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
+                                with status_lock:
+                                    voice_done[code] = True
+                                try_edit_item(code)
+                                continue
+
+                        # Tạo voice
+                        if script:
+                            self.after_safe(lambda c=code: self.add_log(f"  [Script] 🎤 {c}: tạo voice..."))
+                            voice_result = gemini.generate_voice(
+                                text=script,
+                                output_path=str(voice_folder / f"{code}.mp3"),
+                                output_format="mp3"
+                            )
+
+                            if voice_result.success:
+                                self.after_safe(lambda c=code: self.add_log(f"  [Script] ✓ {c}: xong voice"))
+                            else:
+                                self.after_safe(lambda c=code, e=voice_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
+
+                        # Đánh dấu voice done và thử edit
+                        with status_lock:
+                            voice_done[code] = True
+                        try_edit_item(code)
+
+                        time.sleep(1)  # Rate limit
+
+                    except Exception as e:
+                        self.after_safe(lambda c=code, e=str(e): self.add_log(f"  [Script] ❌ {c}: {e}"))
+                        with status_lock:
+                            voice_done[code] = True
+                        try_edit_item(code)
+
+            # Định nghĩa hàm chạy song song cho video
+            def run_video_creation():
+                worker = GrokWorker(
+                    input_folder=str(input_folder),
+                    output_folder=str(output_folder),
+                    music_folder=self.app.config.music_folder or "",
+                    voice_folder=self.app.config.voice_folder or "",
+                    config=self.app.config,
+                    browser_profiles=self.app.config.browser_profiles,
+                    stop_flag=self.stop_flag,
+                    on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(f"  [Video] {msg}")),
+                    on_progress=lambda cur, tot, msg: None,
+                    headless=True,
+                )
+
+                self.current_worker = worker
+
+                for item in valid_items:
+                    if self.stop_flag.is_set():
+                        break
+
+                    code = item["code"]
+                    self.set_task_render_status(code, TaskItem.STATUS_RUNNING)
+
+                    try:
+                        result = worker.process_single_item(item, reader)
+
+                        if result and result.success:
+                            self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                            self.after_safe(lambda c=code: self.add_log(f"  [Video] ✓ {c}: xong video"))
+
+                            # Đánh dấu video done và thử edit
+                            with status_lock:
+                                video_done[code] = True
+                            try_edit_item(code)
+                        else:
+                            self.set_task_render_status(code, TaskItem.STATUS_ERROR)
+                            error_msg = getattr(result, 'error', 'Lỗi') if result else 'Không có kết quả'
+                            self.after_safe(lambda c=code, err=error_msg: self.add_log(f"  [Video] ❌ {c}: {err}"))
+                            with status_lock:
+                                video_done[code] = True
+                            try_edit_item(code)
+
+                    except Exception as e:
+                        self.set_task_render_status(code, TaskItem.STATUS_ERROR)
+                        self.after_safe(lambda c=code, err=str(e): self.add_log(f"  [Video] ❌ {c}: {err}"))
+                        with status_lock:
+                            video_done[code] = True
+                        try_edit_item(code)
+
+            # Chạy song song 2 luồng
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [
+                    executor.submit(run_script_generation),
+                    executor.submit(run_video_creation)
+                ]
+                # Đợi tất cả hoàn thành
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as e:
+                        self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi thread: {e}"))
+
+            # === HOÀN THÀNH ===
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda: self.add_log("🎉 HOÀN THÀNH TOÀN BỘ QUY TRÌNH!"))
+            self.after_safe(lambda: self.add_log("="*40))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_full_workflow_complete)
+
+    def _on_full_workflow_complete(self):
+        """Callback khi hoàn thành full workflow"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
+    # ===== IMAGE FILTER =====
+
+    def filter_images(self):
+        """Lọc ảnh - xóa logo/banner, giữ ảnh sản phẩm"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        # Kiểm tra API key
+        if not self.app.config.gemini_api_key:
+            self.add_log("❌ Cần Gemini API key để lọc ảnh! Vào Settings.")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.add_log("🔍 Bắt đầu lọc ảnh...")
+
+        thread = threading.Thread(target=self._run_image_filter, daemon=True)
+        thread.start()
+
+    def _run_image_filter(self):
+        """Background thread lọc ảnh"""
+        try:
+            from ...image_processor import ImageFilter
+            import time
+
+            input_folder = Path(self.app.config.input_folder)
+            if not input_folder.exists():
+                self.after_safe(lambda: self.add_log(f"❌ Folder không tồn tại: {input_folder}"))
+                return
+
+            # Lấy tất cả subfolder
+            folders = [f for f in input_folder.iterdir() if f.is_dir()]
+
+            if not folders:
+                self.after_safe(lambda: self.add_log("Không có folder nào để lọc"))
+                return
+
+            self.after_safe(lambda n=len(folders): self.add_log(f"📁 Tìm thấy {n} folder"))
+
+            filter = ImageFilter(self.app.config.gemini_api_key)
+
+            total_kept = 0
+            total_deleted = 0
+
+            for folder in folders:
+                if self.stop_flag.is_set():
+                    break
+
+                # Đếm ảnh trong folder
+                extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+                images = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
+
+                if not images:
+                    continue
+
+                self.after_safe(lambda f=folder.name, n=len(images): self.add_log(f"\n📁 {f}: {n} ảnh"))
+
+                for img_path in images:
+                    if self.stop_flag.is_set():
+                        break
+
+                    try:
+                        analysis = filter.analyze_image(str(img_path))
+
+                        if analysis.should_keep:
+                            total_kept += 1
+                            self.after_safe(lambda p=img_path.name, d=analysis.description:
+                                self.add_log(f"  ✓ {p}: {d[:50]}"))
+                        else:
+                            total_deleted += 1
+                            self.after_safe(lambda p=img_path.name, d=analysis.description:
+                                self.add_log(f"  ✗ {p}: {d[:50]}"))
+
+                            # Xóa file
+                            try:
+                                img_path.unlink()
+                                self.after_safe(lambda: self.add_log("    → Đã xóa"))
+                            except Exception as e:
+                                self.after_safe(lambda e=e: self.add_log(f"    → Lỗi xóa: {e}"))
+
+                        # Rate limit
+                        time.sleep(0.5)
+
+                    except Exception as e:
+                        self.after_safe(lambda p=img_path.name, e=str(e): self.add_log(f"  ⚠️ {p}: {e}"))
+
+            # Tổng kết
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda k=total_kept, d=total_deleted:
+                self.add_log(f"✅ Hoàn thành! Giữ: {k}, Xóa: {d}"))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_filter_complete)
+
+    def _on_filter_complete(self):
+        """Callback khi hoàn thành lọc ảnh"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
+    # ===== EDIT VIDEOS =====
+
+    def edit_videos(self):
+        """Edit/merge video với music và voice"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("🎬 Bắt đầu edit video...")
+
+        thread = threading.Thread(target=self._run_edit_videos, daemon=True)
+        thread.start()
+
+    def _run_edit_videos(self):
+        """Background thread edit video"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ..workers.grok_worker import GrokWorker
+            from ...video_merger import VideoMerger
+            import random
+
+            self.after_safe(lambda: self.add_log("📊 Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối Google Sheets!"))
+                return
+
+            self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
+
+            # Lấy danh sách sản phẩm pending
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần xử lý"))
+                return
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+            output_folder.mkdir(parents=True, exist_ok=True)
+
+            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
+
+            # Lọc các mã có video từ Grok (trong OUTPUT/_temp_videos/{code}/)
+            temp_folder = output_folder / "_temp_videos"
+            valid_items = []
+            for item in pending:
+                code = item["code"]
+
+                # Tìm video trong OUTPUT/_temp_videos/{code}/
+                code_temp_folder = temp_folder / code
+                if code_temp_folder.exists():
+                    videos = list(code_temp_folder.glob("*.mp4"))
+                    if videos:
+                        item["videos"] = videos
+                        valid_items.append(item)
+                        self.after_safe(lambda c=code, n=len(videos): self.add_log(f"  📹 {c}: {n} video"))
+
+            if not valid_items:
+                self.after_safe(lambda: self.add_log("❌ Không có video nào để edit"))
+                self.after_safe(lambda tf=temp_folder: self.add_log(f"  Đã tìm trong: {tf}/[mã]/"))
+                self.after_safe(lambda: self.add_log("  💡 Chạy 'Tạo Video' trước để tạo video từ ảnh"))
+                return
+
+            self.after_safe(lambda n=len(valid_items): self.add_log(f"📋 Tìm thấy {n} sản phẩm có video"))
+
+            # Tạo tasks
+            for item in valid_items:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # Khởi tạo VideoMerger
+            merger = VideoMerger()
+
+            for item in valid_items:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                videos = item["videos"]
+
+                self.set_task_input_status(code, TaskItem.STATUS_DONE)
+                self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
+                self.after_safe(lambda c=code: self.add_log(f"🎬 Edit video: {c}"))
+
+                try:
+                    # Tìm voice
+                    voice_path = None
+                    if voice_folder:
+                        for ext in ['.mp3', '.wav']:
+                            vp = voice_folder / f"{code}{ext}"
+                            if vp.exists():
+                                voice_path = str(vp)
+                                break
+
+                    # Tìm music ngẫu nhiên
+                    music_path = None
+                    if music_folder and music_folder.exists():
+                        music_files = list(music_folder.glob("*.mp3"))
+                        if music_files:
+                            music_path = str(random.choice(music_files))
+
+                    # Tìm ảnh từ INPUT folder để thêm cuối video
+                    image_paths = []
+                    code_input_folder = input_folder / code
+                    if code_input_folder.exists():
+                        for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
+                            image_paths.extend([str(p) for p in code_input_folder.glob(ext)])
+                        image_paths.sort()  # Sắp xếp theo tên
+                        if image_paths:
+                            self.after_safe(lambda c=code, n=len(image_paths): self.add_log(f"  📷 Thêm {n} ảnh cuối video"))
+
+                    # Output path
+                    final_video = output_folder / f"{code}_final.mp4"
+
+                    # Merge videos với music/voice + ảnh cuối
+                    # Nếu có voice -> nhạc 0.5, không có voice -> nhạc full (1.0)
+                    music_vol = 0.5 if voice_path else 1.0
+
+                    success = merger.merge_videos_with_images(
+                        video_paths=[str(v) for v in videos],
+                        image_paths=image_paths,
+                        output_path=str(final_video),
+                        music_path=music_path,
+                        voice_path=voice_path,
+                        music_volume=music_vol,
+                        voice_volume=1.0,
+                        mute_original=True,
+                        image_duration=1.0,  # Mỗi ảnh 1 giây
+                        target_width=1080,
+                        target_height=1920
+                    )
+
+                    if success:
+                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                        self.tasks[code].output_path = final_video
+                        self.after_safe(lambda: self.update_task_row(code))
+                        self.after_safe(lambda c=code: self.add_log(f"✅ {c}: Hoàn thành!"))
+
+                        # Update status trong sheet
+                        try:
+                            status_col = self.app.config.status_column or "F"
+                            reader.sheet.update_acell(f"{status_col}{item['row']}", "DONE")
+                        except Exception:
+                            pass
+                    else:
+                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                        self.after_safe(lambda c=code: self.add_log(f"❌ {c}: Lỗi merge video"))
+
+                except Exception as e:
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"❌ {c}: {e}"))
+
+            self.after_safe(lambda: self.add_log("✅ Hoàn thành edit video!"))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_edit_complete)
+
+    def _on_edit_complete(self):
+        """Callback khi hoàn thành edit video"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
+    def cleanup_browsers(self):
+        """Đóng tất cả browser khi thoát ứng dụng"""
+        try:
+            # Đóng Shopee downloader browser
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
+                if hasattr(self.shopee_downloader, 'driver') and self.shopee_downloader.driver:
+                    try:
+                        self.shopee_downloader.driver.quit()
+                        self.shopee_downloader.driver = None
+                        print("✓ Đã đóng browser Shopee")
+                    except Exception as e:
+                        print(f"⚠️ Lỗi đóng browser Shopee: {e}")
+        except Exception as e:
+            print(f"⚠️ Lỗi cleanup browsers: {e}")

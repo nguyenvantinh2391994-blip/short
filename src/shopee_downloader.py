@@ -26,7 +26,8 @@ class ShopeeProduct:
     name: str = ""
     price: float = 0
     images: List[str] = None  # List of image hashes
-    description: str = ""
+    description: str = ""  # Mô tả sản phẩm
+    image_urls_json: str = ""  # JSON của direct image URLs (để download)
 
     def __post_init__(self):
         if self.images is None:
@@ -87,32 +88,47 @@ class ShopeeDownloader:
     def _hide_chrome_window(self):
         """Ẩn Chrome window của tool bằng cách đẩy ra ngoài màn hình"""
         if not self.driver:
-            return
+            console.print("[dim]Không có browser để ẩn[/]")
+            return False
         try:
             # Chỉ dùng Selenium - chỉ ảnh hưởng Chrome của tool
             self.driver.set_window_position(-2000, -2000)
             self._is_hidden = True
-        except Exception:
-            pass
+            console.print("[dim]Đã ẩn browser[/]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]Lỗi ẩn browser: {e}[/]")
+            return False
 
     def show_chrome_window(self):
         """Hiện Chrome window của tool"""
         if not self.driver:
-            return
+            console.print("[dim]Không có browser để hiện[/]")
+            return False
         try:
             # Đưa vào giữa màn hình
             self.driver.set_window_position(100, 100)
             self.driver.set_window_size(1200, 800)
             self._is_hidden = False
-        except Exception:
-            pass
+            console.print("[dim]Đã hiện browser[/]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]Lỗi hiện browser: {e}[/]")
+            return False
 
     def toggle_browser_visibility(self):
         """Toggle ẩn/hiện browser"""
-        if hasattr(self, '_is_hidden') and self._is_hidden:
-            self.show_chrome_window()
+        if not self.driver:
+            console.print("[yellow]Không có browser đang chạy[/]")
+            return False
+
+        is_hidden = getattr(self, '_is_hidden', False)
+        console.print(f"[dim]Toggle: _is_hidden = {is_hidden}[/]")
+
+        if is_hidden:
+            return self.show_chrome_window()
         else:
-            self._hide_chrome_window()
+            return self._hide_chrome_window()
 
     def parse_shopee_url(self, url: str) -> Tuple[Optional[int], Optional[int]]:
         """
@@ -155,7 +171,7 @@ class ShopeeDownloader:
 
         return None, None
 
-    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None) -> Optional[ShopeeProduct]:
+    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None, force_selenium: bool = False, min_images: int = 3) -> Optional[ShopeeProduct]:
         """
         Lấy thông tin sản phẩm từ Shopee API
 
@@ -163,10 +179,22 @@ class ShopeeDownloader:
             shop_id: Shop ID
             item_id: Item ID
             original_url: Link Shopee gốc (để dùng khi fallback sang Selenium)
+            force_selenium: Luôn dùng Selenium (default: False - thử API trước)
+            min_images: Số ảnh tối thiểu, nếu API trả về ít hơn sẽ dùng Selenium
 
         Returns:
             ShopeeProduct hoặc None nếu lỗi
         """
+        # Nếu force_selenium=True, bỏ qua API và dùng Selenium luôn
+        if force_selenium:
+            console.print(f"[dim]Dùng Selenium để lấy đầy đủ ảnh...[/]")
+            return self._get_product_selenium(
+                shop_id, item_id,
+                original_url=original_url,
+                chrome_path=self.chrome_path,
+                profile_path=self.profile_path
+            )
+
         params = {
             "itemid": item_id,
             "shopid": shop_id,
@@ -174,47 +202,48 @@ class ShopeeDownloader:
 
         try:
             # Thử gọi API v4
+            console.print(f"[dim]Thử API trước...[/]")
             response = self.session.get(
                 self.API_URL,
                 params=params,
                 timeout=30
             )
 
-            if response.status_code != 200:
-                console.print(f"[yellow]⚠️ API trả về status {response.status_code}[/]")
-                return self._get_product_fallback(shop_id, item_id, original_url)
+            if response.status_code == 200:
+                data = response.json()
+                if not data.get("error"):
+                    item_data = data.get("data", {})
+                    if item_data:
+                        images = item_data.get("images", [])
+                        # Lấy thêm ảnh từ tier_variations
+                        tier_variations = item_data.get("tier_variations", [])
+                        for variation in tier_variations:
+                            var_images = variation.get("images", [])
+                            for img in var_images:
+                                if img and img not in images:
+                                    images.append(img)
 
-            data = response.json()
+                        # Nếu đủ ảnh, trả về luôn
+                        if len(images) >= min_images:
+                            console.print(f"[green]✓ API trả về {len(images)} ảnh[/]")
+                            return ShopeeProduct(
+                                shop_id=shop_id,
+                                item_id=item_id,
+                                name=item_data.get("name", ""),
+                                price=item_data.get("price", 0) / 100000,
+                                images=images,
+                                description=item_data.get("description", ""),
+                            )
+                        else:
+                            console.print(f"[yellow]API chỉ trả về {len(images)} ảnh, thử Selenium...[/]")
 
-            # Check error
-            if data.get("error"):
-                error_msg = data.get("error_msg", "Unknown error")
-                console.print(f"[yellow]⚠️ API error: {error_msg}[/]")
-                return self._get_product_fallback(shop_id, item_id, original_url)
-
-            item_data = data.get("data", {})
-            if not item_data:
-                console.print("[yellow]⚠️ Không có dữ liệu sản phẩm[/]")
-                return self._get_product_fallback(shop_id, item_id, original_url)
-
-            # Parse images
-            images = item_data.get("images", [])
-
-            # Lấy thêm ảnh từ tier_variations (các biến thể màu sắc, size)
-            tier_variations = item_data.get("tier_variations", [])
-            for variation in tier_variations:
-                var_images = variation.get("images", [])
-                for img in var_images:
-                    if img and img not in images:
-                        images.append(img)
-
-            return ShopeeProduct(
-                shop_id=shop_id,
-                item_id=item_id,
-                name=item_data.get("name", ""),
-                price=item_data.get("price", 0) / 100000,  # Shopee lưu giá * 100000
-                images=images,
-                description=item_data.get("description", ""),
+            # API không đủ ảnh hoặc lỗi -> dùng Selenium
+            console.print(f"[yellow]API không đủ ảnh, thử Selenium...[/]")
+            return self._get_product_selenium(
+                shop_id, item_id,
+                original_url=original_url,
+                chrome_path=self.chrome_path,
+                profile_path=self.profile_path
             )
 
         except requests.RequestException as e:
@@ -351,6 +380,105 @@ class ShopeeDownloader:
             console.print(f"[yellow]⚠️ Không load được cookies: {e}[/]")
             return False
 
+    def _save_cookies_to_file(self, driver, cookie_file: str = "config/shopee_cookies.txt"):
+        """Lưu cookies từ browser ra file Netscape format"""
+        try:
+            cookie_path = Path(cookie_file)
+            cookie_path.parent.mkdir(parents=True, exist_ok=True)
+
+            cookies = driver.get_cookies()
+            with open(cookie_path, 'w') as f:
+                f.write("# Netscape HTTP Cookie File\n")
+                f.write("# Saved by ShopeeDownloader\n\n")
+                for cookie in cookies:
+                    domain = cookie.get('domain', '')
+                    # Chỉ lưu cookies của Shopee
+                    if 'shopee' not in domain:
+                        continue
+                    flag = "TRUE" if domain.startswith('.') else "FALSE"
+                    path = cookie.get('path', '/')
+                    secure = "TRUE" if cookie.get('secure', False) else "FALSE"
+                    expiry = str(int(cookie.get('expiry', 0)))
+                    name = cookie.get('name', '')
+                    value = cookie.get('value', '')
+                    f.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+
+            console.print(f"[green]✓ Đã lưu cookies vào {cookie_file}[/]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Không lưu được cookies: {e}[/]")
+            return False
+
+    def _check_and_handle_captcha(self, driver, timeout: int = 60):
+        """
+        Kiểm tra và xử lý captcha của Shopee
+        Nếu gặp captcha, hiện browser để user giải quyết
+
+        Returns:
+            True nếu không có captcha hoặc đã giải quyết xong
+        """
+        import time
+        from selenium.webdriver.common.by import By
+
+        # Các dấu hiệu của captcha
+        captcha_indicators = [
+            "verify",
+            "captcha",
+            "robot",
+            "security",
+            "xác minh",
+            "bảo mật"
+        ]
+
+        try:
+            page_source = driver.page_source.lower()
+            current_url = driver.current_url.lower()
+
+            # Kiểm tra có captcha không
+            has_captcha = any(indicator in page_source or indicator in current_url
+                            for indicator in captcha_indicators)
+
+            if has_captcha:
+                console.print("[yellow]⚠️ Phát hiện CAPTCHA! Đang hiện browser để bạn giải quyết...[/]")
+
+                # Hiện browser
+                self.show_chrome_window()
+
+                # Đợi user giải quyết captcha
+                console.print(f"[cyan]⏳ Vui lòng giải captcha trong browser. Đợi tối đa {timeout}s...[/]")
+
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    time.sleep(2)
+
+                    # Kiểm tra lại xem còn captcha không
+                    try:
+                        page_source = driver.page_source.lower()
+                        current_url = driver.current_url.lower()
+
+                        still_has_captcha = any(indicator in page_source or indicator in current_url
+                                               for indicator in captcha_indicators)
+
+                        if not still_has_captcha:
+                            console.print("[green]✓ Captcha đã được giải quyết![/]")
+                            # Lưu cookies sau khi vượt captcha thành công
+                            self._save_cookies_to_file(driver)
+                            # Ẩn browser lại
+                            if self.headless:
+                                self._hide_chrome_window()
+                            return True
+                    except:
+                        pass
+
+                console.print("[red]❌ Hết thời gian chờ captcha[/]")
+                return False
+
+            return True  # Không có captcha
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Lỗi kiểm tra captcha: {e}[/]")
+            return True  # Tiếp tục nếu không kiểm tra được
+
     def _get_product_selenium(
         self,
         shop_id: int,
@@ -391,6 +519,8 @@ class ShopeeDownloader:
 
         try:
             console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
+            console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
+            console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
 
             # Setup Chrome options
             options = Options()
@@ -398,10 +528,13 @@ class ShopeeDownloader:
             # Sử dụng browser profile có sẵn (đã đăng nhập Shopee)
             if profile_path:
                 profile = Path(profile_path)
+                console.print(f"[dim]DEBUG: profile.exists()={profile.exists()}[/]")
                 if profile.exists():
-                    console.print(f"[dim]Sử dụng profile: {profile.name}[/]")
-                    options.add_argument(f"--user-data-dir={profile.parent}")
-                    options.add_argument(f"--profile-directory={profile.name}")
+                    console.print(f"[cyan]Sử dụng profile: {profile}[/]")
+                    # profile_path là thư mục user-data-dir (chứa Default, Profile 1, ...)
+                    options.add_argument(f"--user-data-dir={profile}")
+                else:
+                    console.print(f"[yellow]⚠️ Profile không tồn tại: {profile}[/]")
 
             # Đường dẫn Chrome
             if chrome_path and Path(chrome_path).exists():
@@ -462,100 +595,37 @@ class ShopeeDownloader:
                 driver.refresh()
                 time.sleep(2)
 
-            # Giờ vào trang sản phẩm
+            # Vào trang sản phẩm
             console.print(f"[dim]Đang mở: {url}[/]")
             driver.get(url)
 
-            # Chờ trang load - dùng explicit wait
-            try:
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "picture.UkIsx8 img"))
-                )
-                console.print(f"[dim]Đã tìm thấy ảnh sản phẩm[/]")
-            except Exception:
-                console.print(f"[dim]Chờ thêm để ảnh load...[/]")
-                time.sleep(8)
+            # Chờ trang load
+            console.print(f"[dim]Chờ trang load...[/]")
+            time.sleep(8)
 
-            # Chờ thêm để ảnh load hoàn toàn
-            time.sleep(3)
+            # Debug: Đếm số img
+            debug_count = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
+            console.print(f"[dim]Số img trong picture.UkIsx8: {debug_count}[/]")
 
-            # Scroll page để trigger lazy loading
-            driver.execute_script("window.scrollTo(0, 300);")
-            time.sleep(1)
-            driver.execute_script("window.scrollTo(0, 0);")
-            time.sleep(1)
-
-            # Tìm và scroll trong thumbnail container (nếu có)
-            console.print(f"[dim]Đang scroll thumbnail container...[/]")
-            try:
-                driver.execute_script("""
-                    // Tìm thumbnail container và scroll
-                    var containers = document.querySelectorAll('[class*="flex"][class*="overflow"]');
-                    containers.forEach(c => {
-                        if (c.querySelector('picture.UkIsx8')) {
-                            c.scrollLeft = c.scrollWidth;
+            # Lấy tất cả URLs - chạy script giống hệt như thủ công
+            image_urls = driver.execute_script("""
+                var hashes = new Set();
+                var urls = [];
+                document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
+                    var src = img.src;
+                    if (!src) return;
+                    src = src.split('@')[0];
+                    if (src.includes('susercontent.com/file/')) {
+                        var match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                        if (match && match[1] && !hashes.has(match[1])) {
+                            hashes.add(match[1]);
+                            urls.push(src);
                         }
-                    });
-                """)
-                time.sleep(1)
-            except Exception:
-                pass
-
-            # Click vào từng thumbnail để load ảnh (Shopee dùng lazy loading)
-            console.print(f"[dim]Đang click qua các thumbnail để load ảnh...[/]")
-            try:
-                # Tìm tất cả thumbnail images
-                thumbnails = driver.find_elements(By.CSS_SELECTOR, "picture.UkIsx8")
-                console.print(f"[dim]Tìm thấy {len(thumbnails)} thumbnail[/]")
-
-                # Click từng thumbnail
-                for i, thumb in enumerate(thumbnails):
-                    try:
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", thumb)
-                        time.sleep(0.2)
-                        driver.execute_script("arguments[0].click();", thumb)
-                        time.sleep(0.5)  # Chờ ảnh load
-                    except Exception:
-                        pass
-
-                # Chờ thêm sau khi click hết
-                time.sleep(2)
-            except Exception as e:
-                console.print(f"[dim]Lỗi click thumbnail: {e}[/]")
-
-            # Debug: In số lượng img tìm thấy
-            total_imgs = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
-            console.print(f"[dim]Debug: Tổng img trong picture.UkIsx8: {total_imgs}[/]")
-
-            # LẤY ẢNH - Dùng CÙNG script như user test thủ công
-            js_script = """
-            var hashes = new Set();
-            var urls = [];
-
-            // Dùng selector picture.UkIsx8 img - giống hệt script test thủ công
-            document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
-                var src = img.src;
-                if (!src) return;
-
-                // Bỏ resize param (@...)
-                src = src.split('@')[0];
-
-                if (src.includes('susercontent.com/file/')) {
-                    var match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
-                    if (match && match[1] && !hashes.has(match[1])) {
-                        hashes.add(match[1]);
-                        urls.push(src);
                     }
-                }
-            });
+                });
+                return urls;
+            """)
 
-            console.log("Tổng img:", document.querySelectorAll('picture.UkIsx8 img').length);
-            console.log("Unique URLs:", urls.length);
-
-            return urls;
-            """
-
-            image_urls = driver.execute_script(js_script)
             console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh (unique)[/]")
 
             # Nếu không tìm thấy, thử selector backup
@@ -580,16 +650,45 @@ class ShopeeDownloader:
                 image_urls = driver.execute_script(backup_js)
                 console.print(f"[dim]Backup: Tìm thấy {len(image_urls)} ảnh[/]")
 
-            # Lấy tên sản phẩm
+            # Lấy tên sản phẩm - thử nhiều selector
             name = ""
             try:
-                title_elem = driver.find_element(By.CSS_SELECTOR, "div.HLQqkk span")
-                name = title_elem.text
+                # Selector mới: h1.vR6K3w trong div.WBVL_7
+                title_elem = driver.find_element(By.CSS_SELECTOR, "div.WBVL_7 h1.vR6K3w")
+                name = title_elem.text.strip()
+                console.print(f"[dim]Tên SP (h1.vR6K3w): {name[:50]}...[/]" if len(name) > 50 else f"[dim]Tên SP: {name}[/]")
             except Exception:
                 try:
-                    name = driver.title.replace(" | Shopee Việt Nam", "")
+                    # Selector cũ
+                    title_elem = driver.find_element(By.CSS_SELECTOR, "div.HLQqkk span")
+                    name = title_elem.text.strip()
                 except Exception:
-                    pass
+                    try:
+                        name = driver.title.replace(" | Shopee Việt Nam", "").strip()
+                    except Exception:
+                        pass
+
+            # Lấy mô tả sản phẩm - dùng JavaScript để lấy chính xác
+            description = ""
+            try:
+                description = driver.execute_script("""
+                    var descParts = [];
+                    document.querySelectorAll('div.e8lZp3 p.QN2lPu').forEach(function(p) {
+                        var text = p.innerText.trim();
+                        if (text) descParts.push(text);
+                    });
+                    return descParts.join('\\n');
+                """)
+                if description:
+                    console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
+                else:
+                    console.print(f"[dim]Không tìm thấy mô tả[/]")
+            except Exception as e:
+                console.print(f"[dim]Không lấy được mô tả: {e}[/]")
+
+            # Lưu cookies sau khi load thành công (để lần sau không bị captcha)
+            if image_urls:
+                self._save_cookies_to_file(driver)
 
             driver.quit()
             driver = None
@@ -607,10 +706,10 @@ class ShopeeDownloader:
                     shop_id=shop_id,
                     item_id=item_id,
                     name=name,
+                    description=description,
                     images=images,
+                    image_urls_json=json.dumps(image_urls),  # Lưu direct URLs để download
                 )
-                # Lưu direct URLs để download (đã bỏ resize param)
-                product.description = json.dumps(image_urls)
 
                 return product
 
@@ -648,9 +747,9 @@ class ShopeeDownloader:
         """
         # Kiểm tra xem có direct URLs không (từ Selenium method)
         direct_urls = []
-        if product.description:
+        if product.image_urls_json:
             try:
-                direct_urls = json.loads(product.description)
+                direct_urls = json.loads(product.image_urls_json)
                 if not isinstance(direct_urls, list):
                     direct_urls = []
             except json.JSONDecodeError:
@@ -768,6 +867,17 @@ class ShopeeDownloader:
         if downloaded:
             console.print(f"[green]✅ Đã tải {len(downloaded)} ảnh vào {folder}[/]")
 
+            # Crop ảnh về 9:16
+            try:
+                from .image_processor import crop_folder_to_9_16
+                cropped = crop_folder_to_9_16(str(folder))
+                if cropped > 0:
+                    console.print(f"[green]✂️ Đã crop {cropped} ảnh về 9:16[/]")
+            except ImportError:
+                pass  # Module chưa có
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Lỗi crop: {e}[/]")
+
         return downloaded
 
     def download_from_url(
@@ -809,6 +919,46 @@ class ShopeeDownloader:
         # Download ảnh
         return self.download_images(product, folder_name, skip_existing)
 
+    def get_product_and_download(
+        self,
+        url: str,
+        folder_name: str,
+        skip_existing: bool = True
+    ) -> Tuple[Optional[ShopeeProduct], List[str]]:
+        """
+        Lấy thông tin sản phẩm và download ảnh từ link Shopee
+
+        Args:
+            url: Link sản phẩm Shopee
+            folder_name: Tên thư mục lưu
+            skip_existing: Bỏ qua nếu đã có ảnh
+
+        Returns:
+            Tuple (ShopeeProduct, List đường dẫn ảnh)
+        """
+        # Parse URL
+        shop_id, item_id = self.parse_shopee_url(url)
+
+        if not shop_id or not item_id:
+            console.print(f"[red]❌ Không thể parse link: {url}[/]")
+            return None, []
+
+        console.print(f"[dim]Shop ID: {shop_id}, Item ID: {item_id}[/]")
+
+        # Lấy thông tin sản phẩm - truyền link gốc để dùng khi fallback
+        product = self.get_product_info(shop_id, item_id, original_url=url)
+
+        if not product:
+            console.print(f"[red]❌ Không lấy được thông tin sản phẩm[/]")
+            return None, []
+
+        if product.name:
+            console.print(f"[cyan]📦 {product.name}[/]")
+
+        # Download ảnh
+        images = self.download_images(product, folder_name, skip_existing)
+        return product, images
+
 
 class ShopeeSheetProcessor:
     """Xử lý Google Sheet để tải ảnh Shopee"""
@@ -818,22 +968,29 @@ class ShopeeSheetProcessor:
         downloader: ShopeeDownloader,
         code_column: str = "A",
         link_column: str = "B",
+        name_column: str = "C",
+        description_column: str = "D",
     ):
         """
         Args:
             downloader: ShopeeDownloader instance
             code_column: Cột chứa mã sản phẩm (default: A)
             link_column: Cột chứa link Shopee (default: B)
+            name_column: Cột để ghi tên sản phẩm (default: C)
+            description_column: Cột để ghi mô tả (default: D)
         """
         self.downloader = downloader
         self.code_column = code_column
         self.link_column = link_column
+        self.name_column = name_column
+        self.description_column = description_column
 
     def process_sheet(
         self,
         sheet,  # gspread.Worksheet
         skip_existing: bool = True,
         delay_between: float = 1.0,
+        update_sheet: bool = True,  # Có cập nhật tên/mô tả vào sheet không
     ) -> Dict[str, List[str]]:
         """
         Xử lý toàn bộ sheet, tải ảnh cho từng dòng
@@ -842,6 +999,7 @@ class ShopeeSheetProcessor:
             sheet: gspread Worksheet object
             skip_existing: Bỏ qua thư mục đã có ảnh
             delay_between: Delay giữa các request (giây)
+            update_sheet: Cập nhật tên và mô tả vào cột C, D
 
         Returns:
             Dict mapping mã -> list ảnh đã tải
@@ -859,6 +1017,8 @@ class ShopeeSheetProcessor:
             # Tìm index cột
             code_col_idx = ord(self.code_column.upper()) - ord('A')
             link_col_idx = ord(self.link_column.upper()) - ord('A')
+            name_col_idx = ord(self.name_column.upper()) - ord('A')
+            desc_col_idx = ord(self.description_column.upper()) - ord('A')
 
             # Bỏ qua header row
             data_rows = all_values[1:] if len(all_values) > 1 else []
@@ -881,15 +1041,38 @@ class ShopeeSheetProcessor:
                     console.print(f"[dim]⏭️ Bỏ qua {code} (không phải link Shopee)[/]")
                     continue
 
+                # Kiểm tra xem đã có tên chưa (skip nếu đã có)
+                existing_name = row[name_col_idx] if len(row) > name_col_idx else ""
+                if skip_existing and existing_name.strip():
+                    console.print(f"[dim]⏭️ Bỏ qua {code} (đã có tên: {existing_name[:30]}...)[/]")
+                    continue
+
                 console.print(f"\n[bold]📦 [{row_idx}] {code}[/]")
                 console.print(f"[dim]{link}[/]")
 
-                # Download ảnh
-                images = self.downloader.download_from_url(
+                # Lấy thông tin sản phẩm và download ảnh
+                product, images = self.downloader.get_product_and_download(
                     url=link,
                     folder_name=code,
                     skip_existing=skip_existing
                 )
+
+                # Cập nhật tên và mô tả vào sheet
+                if update_sheet and product:
+                    try:
+                        # Ghi tên vào cột C
+                        if product.name:
+                            cell_name = f"{self.name_column}{row_idx}"
+                            sheet.update_acell(cell_name, product.name)
+                            console.print(f"[green]✓ Đã ghi tên vào {cell_name}[/]")
+
+                        # Ghi mô tả vào cột D
+                        if product.description:
+                            cell_desc = f"{self.description_column}{row_idx}"
+                            sheet.update_acell(cell_desc, product.description)
+                            console.print(f"[green]✓ Đã ghi mô tả vào {cell_desc}[/]")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️ Lỗi ghi sheet: {e}[/]")
 
                 results[code] = images
 
@@ -908,6 +1091,7 @@ class ShopeeSheetProcessor:
         sheets_reader,  # SheetsReader instance
         skip_existing: bool = True,
         delay_between: float = 1.0,
+        update_sheet: bool = True,
     ) -> Dict[str, List[str]]:
         """
         Xử lý từ SheetsReader đã kết nối
@@ -916,6 +1100,7 @@ class ShopeeSheetProcessor:
             sheets_reader: SheetsReader instance đã connect
             skip_existing: Bỏ qua thư mục đã có ảnh
             delay_between: Delay giữa các request
+            update_sheet: Cập nhật tên/mô tả vào sheet
 
         Returns:
             Dict mapping mã -> list ảnh
@@ -928,7 +1113,8 @@ class ShopeeSheetProcessor:
         return self.process_sheet(
             sheet=sheets_reader.sheet,
             skip_existing=skip_existing,
-            delay_between=delay_between
+            delay_between=delay_between,
+            update_sheet=update_sheet,
         )
 
 
@@ -961,8 +1147,11 @@ def batch_download_from_sheet(
     output_dir: str = "INPUT",
     code_column: str = "A",
     link_column: str = "B",
+    name_column: str = "C",
+    description_column: str = "D",
     skip_existing: bool = True,
     delay_between: float = 1.0,
+    update_sheet: bool = True,
 ) -> Dict[str, List[str]]:
     """
     Utility function để tải ảnh từ Google Sheet
@@ -974,8 +1163,11 @@ def batch_download_from_sheet(
         output_dir: Thư mục output
         code_column: Cột mã (A, B, C...)
         link_column: Cột link
+        name_column: Cột ghi tên sản phẩm (default: C)
+        description_column: Cột ghi mô tả (default: D)
         skip_existing: Bỏ qua thư mục đã có ảnh
         delay_between: Delay giữa các request
+        update_sheet: Cập nhật tên/mô tả vào sheet
 
     Returns:
         Dict mapping mã -> list ảnh
@@ -996,10 +1188,13 @@ def batch_download_from_sheet(
         downloader=downloader,
         code_column=code_column,
         link_column=link_column,
+        name_column=name_column,
+        description_column=description_column,
     )
 
     return processor.process_from_reader(
         sheets_reader=reader,
         skip_existing=skip_existing,
         delay_between=delay_between,
+        update_sheet=update_sheet,
     )

@@ -1783,37 +1783,27 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Folder chứa video tạm từ Grok
-            temp_folder = output_folder / "_temp_videos"
-
             music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
             voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
 
-            # Lọc các mã có video từ Grok
+            # Lọc các mã có video từ Grok (trong OUTPUT/_temp_videos/{code}/)
+            temp_folder = output_folder / "_temp_videos"
             valid_items = []
             for item in pending:
                 code = item["code"]
 
-                # Tìm video trong _temp_videos/{code}/
-                temp_code_folder = temp_folder / code
-                if temp_code_folder.exists():
-                    videos = list(temp_code_folder.glob("*.mp4"))
+                # Tìm video trong OUTPUT/_temp_videos/{code}/
+                code_temp_folder = temp_folder / code
+                if code_temp_folder.exists():
+                    videos = list(code_temp_folder.glob("*.mp4"))
                     if videos:
                         item["videos"] = videos
                         valid_items.append(item)
-                        continue
-
-                # Nếu không có trong temp, tìm trong INPUT/{code}/
-                code_folder = input_folder / code
-                if code_folder.exists():
-                    videos = list(code_folder.glob("*.mp4"))
-                    if videos:
-                        item["videos"] = videos
-                        valid_items.append(item)
+                        self.after_safe(lambda c=code, n=len(videos): self.add_log(f"  📹 {c}: {n} video"))
 
             if not valid_items:
                 self.after_safe(lambda: self.add_log("❌ Không có video nào để edit"))
-                self.after_safe(lambda: self.add_log(f"  Đã tìm trong: {temp_folder}"))
+                self.after_safe(lambda tf=temp_folder: self.add_log(f"  Đã tìm trong: {tf}/[mã]/"))
                 self.after_safe(lambda: self.add_log("  💡 Chạy 'Tạo Video' trước để tạo video từ ảnh"))
                 return
 

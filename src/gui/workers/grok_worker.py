@@ -102,9 +102,48 @@ class GrokWorker:
             images.extend(folder.glob(f"*{ext.upper()}"))
         return sorted(images)
 
-    def process_single_item(self, item: Dict, profile: Dict, reader: Any, merger: Any) -> bool:
-        """Alias cho process_single_product (backwards compatibility)"""
-        return self.process_single_product(item, profile, reader, merger)
+    def process_single_item(self, item: Dict, reader: Any = None) -> Any:
+        """
+        Simplified method cho main_tab.py
+        Tự động chọn profile và tạo merger
+
+        Args:
+            item: Dict chứa code, row, images
+            reader: SheetsReader (optional)
+
+        Returns:
+            Object với success và output_path
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class Result:
+            success: bool = False
+            output_path: str = ""
+            error: str = ""
+
+        # Lấy profile đầu tiên
+        if not self.browser_profiles:
+            return Result(success=False, error="Không có browser profile")
+
+        profile = self.browser_profiles[0]
+
+        # Tạo merger
+        from ...video_merger import VideoMerger
+        merger = VideoMerger(
+            transition_type=self.transition_type,
+            transition_duration=0.5,
+            on_log=self.log
+        )
+
+        # Gọi process_single_product
+        try:
+            success = self.process_single_product(item, profile, reader, merger)
+            code = item.get("code", "")
+            output_path = str(self.output_folder / f"{code}.mp4") if success else ""
+            return Result(success=success, output_path=output_path)
+        except Exception as e:
+            return Result(success=False, error=str(e))
 
     def process_single_product(
         self,

@@ -85,94 +85,25 @@ class ShopeeDownloader:
         self.session.headers.update(self.DEFAULT_HEADERS)
 
     def _hide_chrome_window(self):
-        """Ẩn Chrome window khỏi taskbar (Windows) hoặc đẩy ra ngoài màn hình"""
+        """Ẩn Chrome window của tool bằng cách đẩy ra ngoài màn hình"""
         if not self.driver:
             return
         try:
-            import platform
-            if platform.system() == 'Windows':
-                import ctypes
-                from ctypes import wintypes
-
-                GWL_EXSTYLE = -20
-                WS_EX_TOOLWINDOW = 0x00000080
-                WS_EX_APPWINDOW = 0x00040000
-                SWP_NOSIZE = 0x0001
-
-                user32 = ctypes.windll.user32
-                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-
-                chrome_windows = []
-
-                def enum_callback(hwnd, lparam):
-                    if user32.IsWindowVisible(hwnd):
-                        length = user32.GetWindowTextLengthW(hwnd)
-                        if length > 0:
-                            buff = ctypes.create_unicode_buffer(length + 1)
-                            user32.GetWindowTextW(hwnd, buff, length + 1)
-                            title = buff.value.lower()
-                            if 'shopee' in title or 'chrome' in title:
-                                chrome_windows.append(hwnd)
-                    return True
-
-                user32.EnumWindows(WNDENUMPROC(enum_callback), 0)
-
-                for hwnd in chrome_windows:
-                    style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-                    new_style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
-                    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
-                    user32.SetWindowPos(hwnd, 0, -2000, -2000, 0, 0, SWP_NOSIZE)
-
-                if chrome_windows:
-                    self._chrome_hwnds = chrome_windows
-                    self._is_hidden = True
-            else:
-                self.driver.set_window_position(-2000, -2000)
-                self._is_hidden = True
+            # Chỉ dùng Selenium - chỉ ảnh hưởng Chrome của tool
+            self.driver.set_window_position(-2000, -2000)
+            self._is_hidden = True
         except Exception:
             pass
 
     def show_chrome_window(self):
-        """Hiện Chrome window trên taskbar và đưa vào màn hình"""
+        """Hiện Chrome window của tool"""
         if not self.driver:
             return
         try:
-            import platform
-            if platform.system() == 'Windows':
-                import ctypes
-                from ctypes import wintypes
-
-                GWL_EXSTYLE = -20
-                WS_EX_APPWINDOW = 0x00040000
-                WS_EX_TOOLWINDOW = 0x00000080
-                SW_RESTORE = 9
-                HWND_TOP = 0
-                SWP_SHOWWINDOW = 0x0040
-
-                user32 = ctypes.windll.user32
-
-                screen_w = user32.GetSystemMetrics(0)
-                screen_h = user32.GetSystemMetrics(1)
-                win_w, win_h = 1200, 800
-                x = (screen_w - win_w) // 2
-                y = (screen_h - win_h) // 2
-
-                if hasattr(self, '_chrome_hwnds') and self._chrome_hwnds:
-                    for hwnd in self._chrome_hwnds:
-                        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-                        new_style = (style | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
-                        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
-                        user32.ShowWindow(hwnd, SW_RESTORE)
-                        user32.SetWindowPos(hwnd, HWND_TOP, x, y, win_w, win_h, SWP_SHOWWINDOW)
-                        user32.SetForegroundWindow(hwnd)
-                    self._is_hidden = False
-                else:
-                    self.driver.set_window_position(x, y)
-                    self.driver.set_window_size(win_w, win_h)
-                    self._is_hidden = False
-            else:
-                self.driver.set_window_position(100, 100)
-                self._is_hidden = False
+            # Đưa vào giữa màn hình
+            self.driver.set_window_position(100, 100)
+            self.driver.set_window_size(1200, 800)
+            self._is_hidden = False
         except Exception:
             pass
 

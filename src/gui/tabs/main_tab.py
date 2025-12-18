@@ -1798,6 +1798,9 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
+            # Folder chứa video tạm từ Grok
+            temp_folder = output_folder / "_temp_videos"
+
             music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
             voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
 
@@ -1805,9 +1808,18 @@ class MainTab:
             valid_items = []
             for item in pending:
                 code = item["code"]
-                code_folder = input_folder / code
 
-                # Tìm video từ Grok (file .mp4)
+                # Tìm video trong _temp_videos/{code}/
+                temp_code_folder = temp_folder / code
+                if temp_code_folder.exists():
+                    videos = list(temp_code_folder.glob("*.mp4"))
+                    if videos:
+                        item["videos"] = videos
+                        valid_items.append(item)
+                        continue
+
+                # Nếu không có trong temp, tìm trong INPUT/{code}/
+                code_folder = input_folder / code
                 if code_folder.exists():
                     videos = list(code_folder.glob("*.mp4"))
                     if videos:
@@ -1815,7 +1827,9 @@ class MainTab:
                         valid_items.append(item)
 
             if not valid_items:
-                self.after_safe(lambda: self.add_log("Không có video nào để edit"))
+                self.after_safe(lambda: self.add_log("❌ Không có video nào để edit"))
+                self.after_safe(lambda: self.add_log(f"  Đã tìm trong: {temp_folder}"))
+                self.after_safe(lambda: self.add_log("  💡 Chạy 'Tạo Video' trước để tạo video từ ảnh"))
                 return
 
             self.after_safe(lambda n=len(valid_items): self.add_log(f"📋 Tìm thấy {n} sản phẩm có video"))

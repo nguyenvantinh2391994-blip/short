@@ -968,23 +968,36 @@ class MainTab:
 
     def show_browser(self):
         """Toggle show/hide browser windows"""
-        shown = False
+        toggled = False
 
+        # Toggle GrokWorker browsers
         if hasattr(self, 'current_worker'):
             try:
-                self.current_worker.show_all_browsers()
-                shown = True
-            except Exception:
-                pass
+                # Check trạng thái và toggle
+                if hasattr(self.current_worker, '_browser_hidden') and self.current_worker._browser_hidden:
+                    self.current_worker.show_all_browsers()
+                    self.current_worker._browser_hidden = False
+                    self.add_log("👁️ Đã hiện browser (Grok)")
+                else:
+                    self.current_worker.hide_all_browsers()
+                    self.current_worker._browser_hidden = True
+                    self.add_log("🙈 Đã ẩn browser (Grok)")
+                toggled = True
+            except Exception as e:
+                self.add_log(f"⚠️ Lỗi toggle Grok browser: {e}")
 
+        # Toggle Shopee browser
         if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
             try:
                 self.shopee_downloader.toggle_browser_visibility()
-                shown = True
-            except Exception:
-                pass
+                is_hidden = getattr(self.shopee_downloader, '_is_hidden', False)
+                if is_hidden:
+                    self.add_log("🙈 Đã ẩn browser (Shopee)")
+                else:
+                    self.add_log("👁️ Đã hiện browser (Shopee)")
+                toggled = True
+            except Exception as e:
+                self.add_log(f"⚠️ Lỗi toggle Shopee browser: {e}")
 
-        if shown:
-            self.add_log("👁️ Đã toggle browser")
-        else:
+        if not toggled:
             self.add_log("Không có browser nào đang chạy")

@@ -85,82 +85,24 @@ class ShopeeDownloader:
         self.session.headers.update(self.DEFAULT_HEADERS)
 
     def _hide_chrome_window(self):
-        """Ẩn Chrome window khỏi taskbar (Windows)"""
+        """Ẩn Chrome window bằng cách đẩy ra ngoài màn hình"""
         if not self.driver:
             return
         try:
-            import platform
-            if platform.system() != "Windows":
-                return
-
-            import ctypes
-            from ctypes import wintypes
-
-            # Lấy PID của Chrome
-            service = getattr(self.driver, 'service', None)
-            if not service:
-                return
-            pid = service.process.pid
-
-            # Dùng EnumWindows để tìm window của Chrome
-            user32 = ctypes.windll.user32
-            EnumWindows = user32.EnumWindows
-            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-            GetWindowThreadProcessId = user32.GetWindowThreadProcessId
-
-            SW_HIDE = 0
-
-            def callback(hwnd, lparam):
-                process_id = ctypes.c_ulong()
-                GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-                if process_id.value == pid:
-                    user32.ShowWindow(hwnd, SW_HIDE)
-                return True
-
-            EnumWindows(EnumWindowsProc(callback), 0)
+            # Di chuyển window ra ngoài màn hình (cross-platform)
+            self.driver.set_window_position(-2000, -2000)
+            self._is_hidden = True
         except Exception:
             pass
 
     def show_chrome_window(self):
-        """Hiện Chrome window"""
+        """Hiện Chrome window bằng cách đưa vào màn hình"""
         if not self.driver:
             return
         try:
-            import platform
-            if platform.system() != "Windows":
-                # Linux/Mac: di chuyển window vào màn hình
-                self.driver.set_window_position(100, 100)
-                return
-
-            import ctypes
-            from ctypes import wintypes
-
-            service = getattr(self.driver, 'service', None)
-            if not service:
-                return
-            pid = service.process.pid
-
-            user32 = ctypes.windll.user32
-            EnumWindows = user32.EnumWindows
-            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-            GetWindowThreadProcessId = user32.GetWindowThreadProcessId
-
-            SW_SHOW = 5
-            SW_RESTORE = 9
-
-            def callback(hwnd, lparam):
-                process_id = ctypes.c_ulong()
-                GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-                if process_id.value == pid:
-                    user32.ShowWindow(hwnd, SW_RESTORE)
-                    user32.ShowWindow(hwnd, SW_SHOW)
-                    user32.SetForegroundWindow(hwnd)
-                return True
-
-            EnumWindows(EnumWindowsProc(callback), 0)
-
-            # Di chuyển vào giữa màn hình
+            # Di chuyển window vào giữa màn hình (cross-platform)
             self.driver.set_window_position(100, 100)
+            self._is_hidden = False
         except Exception:
             pass
 

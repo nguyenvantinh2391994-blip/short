@@ -1428,9 +1428,72 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("⏹️ Đã dừng"))
                 return
 
-            # === BƯỚC 2 & 3: CHẠY SONG SONG ===
+            # === BƯỚC 2: LỌC ẢNH ===
+            if self.app.config.gemini_api_key:
+                self.after_safe(lambda: self.add_log("\n" + "="*40))
+                self.after_safe(lambda: self.add_log("🔍 BƯỚC 2: LỌC ẢNH"))
+                self.after_safe(lambda: self.add_log("="*40))
+
+                try:
+                    from ...image_processor import ImageFilter
+                    img_filter = ImageFilter(self.app.config.gemini_api_key)
+
+                    total_kept = 0
+                    total_deleted = 0
+
+                    for item in pending:
+                        if self.stop_flag.is_set():
+                            break
+
+                        code = item["code"]
+                        code_folder = input_folder / code
+                        if not code_folder.exists():
+                            continue
+
+                        extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+                        images = [f for f in code_folder.iterdir() if f.suffix.lower() in extensions]
+
+                        if not images:
+                            continue
+
+                        self.after_safe(lambda c=code, n=len(images): self.add_log(f"  📁 {c}: {n} ảnh"))
+
+                        for img_path in images:
+                            if self.stop_flag.is_set():
+                                break
+
+                            try:
+                                analysis = img_filter.analyze_image(str(img_path))
+
+                                if analysis.should_keep:
+                                    total_kept += 1
+                                else:
+                                    total_deleted += 1
+                                    self.after_safe(lambda p=img_path.name: self.add_log(f"    ✗ Xóa: {p}"))
+                                    try:
+                                        img_path.unlink()
+                                    except:
+                                        pass
+
+                                time.sleep(0.3)  # Rate limit
+                            except Exception as e:
+                                pass  # Bỏ qua lỗi, giữ ảnh
+
+                    self.after_safe(lambda k=total_kept, d=total_deleted:
+                        self.add_log(f"  ✓ Giữ: {k}, Xóa: {d}"))
+
+                except Exception as e:
+                    self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi lọc ảnh: {e}"))
+            else:
+                self.after_safe(lambda: self.add_log("\n⚠️ Bỏ qua lọc ảnh - chưa có Gemini API key"))
+
+            if self.stop_flag.is_set():
+                self.after_safe(lambda: self.add_log("⏹️ Đã dừng"))
+                return
+
+            # === BƯỚC 3 & 4: CHẠY SONG SONG ===
             self.after_safe(lambda: self.add_log("\n" + "="*40))
-            self.after_safe(lambda: self.add_log("🚀 BƯỚC 2 & 3: CHẠY SONG SONG"))
+            self.after_safe(lambda: self.add_log("🚀 BƯỚC 3 & 4: CHẠY SONG SONG"))
             self.after_safe(lambda: self.add_log("  • Thread 1: Làm kịch bản & voice"))
             self.after_safe(lambda: self.add_log("  • Thread 2: Tạo video"))
             self.after_safe(lambda: self.add_log("="*40))
@@ -1438,7 +1501,7 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Lọc các mã có ảnh
+            # Lọc các mã có ảnh (sau khi đã lọc)
             valid_items = []
             for item in pending:
                 code = item["code"]

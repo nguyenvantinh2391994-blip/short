@@ -55,13 +55,44 @@ class TaskItem:
 class MainTab:
     """Main workspace - Tiến độ chi tiết từng mã"""
 
-    # Status icons
+    # Color scheme - Modern & Professional
+    COLORS = {
+        # Primary colors
+        "primary": "#3B82F6",        # Blue
+        "primary_hover": "#2563EB",
+        "success": "#10B981",        # Green
+        "success_hover": "#059669",
+        "warning": "#F59E0B",        # Orange/Amber
+        "warning_hover": "#D97706",
+        "danger": "#EF4444",         # Red
+        "danger_hover": "#DC2626",
+
+        # Background colors
+        "bg_dark": "#1F2937",        # Dark gray
+        "bg_card": "#374151",        # Card background
+        "bg_header": "#111827",      # Header dark
+        "bg_light": "#F3F4F6",       # Light mode bg
+
+        # Text colors
+        "text_primary": "#F9FAFB",   # White text
+        "text_secondary": "#9CA3AF", # Gray text
+        "text_dark": "#1F2937",      # Dark text for light mode
+
+        # Status colors
+        "status_pending": "#6B7280",
+        "status_running": "#3B82F6",
+        "status_done": "#10B981",
+        "status_error": "#EF4444",
+        "status_skip": "#8B5CF6",    # Purple
+    }
+
+    # Status icons với màu
     ICONS = {
-        TaskItem.STATUS_PENDING: "⬜",
-        TaskItem.STATUS_RUNNING: "🔄",
-        TaskItem.STATUS_DONE: "✅",
-        TaskItem.STATUS_ERROR: "❌",
-        TaskItem.STATUS_SKIP: "⏭️",
+        TaskItem.STATUS_PENDING: ("○", "status_pending"),
+        TaskItem.STATUS_RUNNING: ("◉", "status_running"),
+        TaskItem.STATUS_DONE: ("✓", "status_done"),
+        TaskItem.STATUS_ERROR: ("✗", "status_error"),
+        TaskItem.STATUS_SKIP: ("⊘", "status_skip"),
     }
 
     def __init__(self, parent, app):
@@ -74,6 +105,9 @@ class MainTab:
         # Task tracking
         self.tasks: Dict[str, TaskItem] = {}
         self.task_widgets: Dict[str, dict] = {}
+
+        # Row counter for alternating colors
+        self.row_count = 0
 
         self.setup_ui()
 
@@ -92,245 +126,347 @@ class MainTab:
         self.setup_log_area()
 
     def setup_action_bar(self):
-        """Action bar - nút bấm nằm ngang"""
-        action_frame = ctk.CTkFrame(self.main_frame, fg_color=("gray90", "gray17"))
-        action_frame.pack(fill="x", pady=(0, 10))
+        """Action bar - Modern style với gradient feel"""
+        action_frame = ctk.CTkFrame(
+            self.main_frame,
+            fg_color=(self.COLORS["bg_light"], self.COLORS["bg_card"]),
+            corner_radius=12
+        )
+        action_frame.pack(fill="x", pady=(0, 12))
 
         # Left: buttons
         btn_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
-        btn_frame.pack(side="left", padx=10, pady=10)
+        btn_frame.pack(side="left", padx=15, pady=12)
 
-        # Nút Tải ảnh
+        # Nút Tải ảnh - Orange/Amber
         self.shopee_btn = ctk.CTkButton(
             btn_frame,
-            text="🛒 Tải ảnh",
+            text="Tải ảnh Shopee",
             command=self.download_shopee_images,
-            width=100,
-            height=36,
-            font=ctk.CTkFont(size=13),
-            fg_color="#E65100",
-            hover_color="#BF360C"
+            width=130,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=self.COLORS["warning"],
+            hover_color=self.COLORS["warning_hover"],
+            text_color="white"
         )
-        self.shopee_btn.pack(side="left", padx=(0, 8))
+        self.shopee_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Tạo Video
+        # Nút Tạo Video - Green/Success
         self.start_btn = ctk.CTkButton(
             btn_frame,
-            text="▶️ Tạo Video",
+            text="Tạo Video",
             command=self.start_process,
-            width=110,
-            height=36,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#2E7D32",
-            hover_color="#1B5E20"
+            width=120,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=self.COLORS["success"],
+            hover_color=self.COLORS["success_hover"],
+            text_color="white"
         )
-        self.start_btn.pack(side="left", padx=(0, 8))
+        self.start_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Dừng
+        # Nút Dừng - Red/Danger
         self.stop_btn = ctk.CTkButton(
             btn_frame,
-            text="⏹️ Dừng",
+            text="Dừng",
             command=self.stop_process,
             width=80,
-            height=36,
-            font=ctk.CTkFont(size=13),
-            fg_color="#C62828",
-            hover_color="#B71C1C",
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=self.COLORS["danger"],
+            hover_color=self.COLORS["danger_hover"],
+            text_color="white",
             state="disabled"
         )
-        self.stop_btn.pack(side="left", padx=(0, 8))
+        self.stop_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Browser
+        # Nút Browser - Outline style
         self.show_btn = ctk.CTkButton(
             btn_frame,
-            text="👁️",
+            text="Browser",
             command=self.show_browser,
-            width=36,
-            height=36,
-            font=ctk.CTkFont(size=14),
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
             fg_color="transparent",
-            border_width=1,
-            text_color=("gray20", "gray80"),
-            hover_color=("gray85", "gray25")
+            border_width=2,
+            border_color=self.COLORS["primary"],
+            text_color=(self.COLORS["text_dark"], self.COLORS["text_primary"]),
+            hover_color=(self.COLORS["bg_light"], self.COLORS["bg_dark"])
         )
         self.show_btn.pack(side="left")
 
-        # Right: stats
+        # Right: stats với style đẹp hơn
         stats_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
-        stats_frame.pack(side="right", padx=10, pady=10)
+        stats_frame.pack(side="right", padx=15, pady=12)
 
-        # Progress tổng
-        self.total_progress = ctk.CTkProgressBar(stats_frame, width=150, height=12)
-        self.total_progress.pack(side="left", padx=(0, 10))
+        # Label "Tiến độ:"
+        progress_label = ctk.CTkLabel(
+            stats_frame,
+            text="Tiến độ:",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color=(self.COLORS["text_dark"], self.COLORS["text_secondary"])
+        )
+        progress_label.pack(side="left", padx=(0, 8))
+
+        # Progress bar với màu đẹp
+        self.total_progress = ctk.CTkProgressBar(
+            stats_frame,
+            width=160,
+            height=14,
+            corner_radius=7,
+            progress_color=self.COLORS["success"],
+            fg_color=(self.COLORS["bg_light"], self.COLORS["bg_dark"])
+        )
+        self.total_progress.pack(side="left", padx=(0, 12))
         self.total_progress.set(0)
 
         self.stats_label = ctk.CTkLabel(
             stats_frame,
             text="0/0",
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            text_color=(self.COLORS["text_dark"], self.COLORS["success"])
         )
         self.stats_label.pack(side="left")
 
     def setup_progress_table(self):
-        """Bảng tiến độ chi tiết"""
-        table_frame = ctk.CTkFrame(self.main_frame)
-        table_frame.pack(fill="both", expand=True, pady=(0, 10))
+        """Bảng tiến độ chi tiết - Modern card style"""
+        table_frame = ctk.CTkFrame(
+            self.main_frame,
+            fg_color=(self.COLORS["bg_light"], self.COLORS["bg_dark"]),
+            corner_radius=12
+        )
+        table_frame.pack(fill="both", expand=True, pady=(0, 12))
 
-        # Header
-        header_frame = ctk.CTkFrame(table_frame, fg_color=("gray85", "gray20"), height=35)
-        header_frame.pack(fill="x")
+        # Header với màu tối hơn
+        header_frame = ctk.CTkFrame(
+            table_frame,
+            fg_color=(self.COLORS["text_dark"], self.COLORS["bg_header"]),
+            height=42,
+            corner_radius=0
+        )
+        header_frame.pack(fill="x", padx=2, pady=(2, 0))
         header_frame.pack_propagate(False)
 
+        # Headers với style mới
         headers = [
-            ("Mã", 100),
-            ("Ảnh", 60),
-            ("Video", 60),
-            ("Render", 60),
-            ("Tiến độ", 100),
-            ("", 80),  # Actions
+            ("Mã sản phẩm", 130),
+            ("Tải ảnh", 70),
+            ("Video", 70),
+            ("Render", 70),
+            ("Tiến độ", 120),
+            ("Mở file", 80),
         ]
 
         for text, width in headers:
             lbl = ctk.CTkLabel(
                 header_frame,
                 text=text,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                width=width
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                width=width,
+                text_color="white"
             )
-            lbl.pack(side="left", padx=5, pady=5)
+            lbl.pack(side="left", padx=8, pady=10)
 
-        # Scrollable content
-        self.table_scroll = ctk.CTkScrollableFrame(table_frame, fg_color="transparent")
-        self.table_scroll.pack(fill="both", expand=True)
+        # Scrollable content với background
+        self.table_scroll = ctk.CTkScrollableFrame(
+            table_frame,
+            fg_color="transparent",
+            scrollbar_button_color=self.COLORS["primary"],
+            scrollbar_button_hover_color=self.COLORS["primary_hover"]
+        )
+        self.table_scroll.pack(fill="both", expand=True, padx=2, pady=2)
 
-        # Placeholder khi chưa có task
+        # Placeholder với style mới
         self.placeholder_label = ctk.CTkLabel(
             self.table_scroll,
-            text="📋 Nhấn 'Tải ảnh' hoặc 'Tạo Video' để bắt đầu",
-            font=ctk.CTkFont(size=13),
-            text_color="gray"
+            text="Chưa có task nào\nNhấn 'Tải ảnh Shopee' hoặc 'Tạo Video' để bắt đầu",
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+            text_color=self.COLORS["text_secondary"],
+            justify="center"
         )
-        self.placeholder_label.pack(pady=50)
+        self.placeholder_label.pack(pady=60)
 
     def setup_log_area(self):
-        """Log area nhỏ gọn"""
-        log_frame = ctk.CTkFrame(self.main_frame, height=120)
+        """Log area - Modern terminal style"""
+        log_frame = ctk.CTkFrame(
+            self.main_frame,
+            height=130,
+            fg_color=(self.COLORS["bg_light"], self.COLORS["bg_card"]),
+            corner_radius=12
+        )
         log_frame.pack(fill="x")
         log_frame.pack_propagate(False)
 
-        # Header
-        header = ctk.CTkFrame(log_frame, fg_color="transparent", height=25)
-        header.pack(fill="x", padx=10, pady=(5, 0))
+        # Header với style terminal
+        header = ctk.CTkFrame(log_frame, fg_color="transparent", height=30)
+        header.pack(fill="x", padx=12, pady=(8, 0))
         header.pack_propagate(False)
 
         ctk.CTkLabel(
             header,
-            text="📝 Log",
-            font=ctk.CTkFont(size=11, weight="bold")
+            text="Console Output",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=(self.COLORS["text_dark"], self.COLORS["text_primary"])
         ).pack(side="left")
 
         ctk.CTkButton(
             header,
-            text="Xóa",
+            text="Xóa log",
             command=self.clear_log,
-            width=40,
-            height=20,
-            font=ctk.CTkFont(size=10),
+            width=60,
+            height=24,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
             fg_color="transparent",
-            text_color="gray",
-            hover_color=("gray85", "gray25")
+            border_width=1,
+            border_color=self.COLORS["text_secondary"],
+            text_color=self.COLORS["text_secondary"],
+            hover_color=(self.COLORS["bg_light"], self.COLORS["bg_dark"])
         ).pack(side="right")
 
-        # Log text
+        # Log text với style terminal
         self.log_text = ctk.CTkTextbox(
             log_frame,
             font=ctk.CTkFont(family="Consolas", size=11),
-            height=80,
-            wrap="word"
+            height=85,
+            wrap="word",
+            fg_color=(self.COLORS["bg_light"], self.COLORS["bg_dark"]),
+            text_color=(self.COLORS["text_dark"], "#A3E635"),  # Lime green for dark mode
+            corner_radius=8
         )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 5))
+        self.log_text.pack(fill="both", expand=True, padx=12, pady=(5, 10))
         self.log_text.configure(state="disabled")
-        self.add_log("Sẵn sàng!")
+        self.add_log("Sẵn sàng! Chọn một hành động để bắt đầu.")
 
     # ===== TABLE MANAGEMENT =====
 
+    def _get_status_icon_and_color(self, status: str):
+        """Lấy icon và màu cho status"""
+        icon_data = self.ICONS.get(status, ("?", "status_pending"))
+        icon, color_key = icon_data
+        color = self.COLORS.get(color_key, "#6B7280")
+        return icon, color
+
     def add_task_row(self, task: TaskItem):
-        """Thêm 1 row vào bảng"""
+        """Thêm 1 row vào bảng - Modern style với alternating colors"""
         if self.placeholder_label.winfo_exists():
             self.placeholder_label.destroy()
 
-        row_frame = ctk.CTkFrame(self.table_scroll, fg_color="transparent", height=40)
-        row_frame.pack(fill="x", pady=2)
+        # Alternating row colors
+        self.row_count += 1
+        is_even = self.row_count % 2 == 0
+        row_bg = ("#E5E7EB", "#2D3748") if is_even else ("#F3F4F6", "#374151")
+
+        row_frame = ctk.CTkFrame(
+            self.table_scroll,
+            fg_color=row_bg,
+            height=44,
+            corner_radius=6
+        )
+        row_frame.pack(fill="x", pady=2, padx=4)
         row_frame.pack_propagate(False)
 
-        # Mã
+        # Mã sản phẩm - Bold và dễ nhìn
         code_lbl = ctk.CTkLabel(
             row_frame,
             text=task.code,
-            font=ctk.CTkFont(size=12),
-            width=100,
-            anchor="w"
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=130,
+            anchor="w",
+            text_color=(self.COLORS["text_dark"], self.COLORS["text_primary"])
         )
-        code_lbl.pack(side="left", padx=5)
+        code_lbl.pack(side="left", padx=8)
 
-        # Input status
+        # Input status với màu
+        input_icon, input_color = self._get_status_icon_and_color(task.input_status)
         input_lbl = ctk.CTkLabel(
             row_frame,
-            text=self.ICONS[task.input_status],
-            font=ctk.CTkFont(size=14),
-            width=60
+            text=input_icon,
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            width=70,
+            text_color=input_color
         )
         input_lbl.pack(side="left", padx=5)
 
-        # Video status
+        # Video status với màu
+        video_icon, video_color = self._get_status_icon_and_color(task.video_status)
         video_lbl = ctk.CTkLabel(
             row_frame,
-            text=self.ICONS[task.video_status],
-            font=ctk.CTkFont(size=14),
-            width=60
+            text=video_icon,
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            width=70,
+            text_color=video_color
         )
         video_lbl.pack(side="left", padx=5)
 
-        # Render status
+        # Render status với màu
+        render_icon, render_color = self._get_status_icon_and_color(task.render_status)
         render_lbl = ctk.CTkLabel(
             row_frame,
-            text=self.ICONS[task.render_status],
-            font=ctk.CTkFont(size=14),
-            width=60
+            text=render_icon,
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            width=70,
+            text_color=render_color
         )
         render_lbl.pack(side="left", padx=5)
 
-        # Progress bar
-        progress_frame = ctk.CTkFrame(row_frame, fg_color="transparent", width=100)
+        # Progress bar với style mới
+        progress_frame = ctk.CTkFrame(row_frame, fg_color="transparent", width=120)
         progress_frame.pack(side="left", padx=5)
         progress_frame.pack_propagate(False)
 
-        progress_bar = ctk.CTkProgressBar(progress_frame, width=80, height=10)
-        progress_bar.pack(pady=5)
-        progress_bar.set(task.overall_progress / 100)
+        # Determine progress color based on value
+        progress_val = task.overall_progress
+        if progress_val >= 100:
+            prog_color = self.COLORS["success"]
+        elif progress_val > 50:
+            prog_color = self.COLORS["primary"]
+        elif progress_val > 0:
+            prog_color = self.COLORS["warning"]
+        else:
+            prog_color = self.COLORS["status_pending"]
+
+        progress_bar = ctk.CTkProgressBar(
+            progress_frame,
+            width=90,
+            height=12,
+            corner_radius=6,
+            progress_color=prog_color,
+            fg_color=("#D1D5DB", "#4B5563")
+        )
+        progress_bar.pack(pady=8)
+        progress_bar.set(progress_val / 100)
 
         progress_pct = ctk.CTkLabel(
             progress_frame,
-            text=f"{task.overall_progress}%",
-            font=ctk.CTkFont(size=10),
-            width=40
+            text=f"{progress_val}%",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            width=40,
+            text_color=prog_color
         )
         progress_pct.pack()
 
-        # Actions
+        # Actions - Mở file button
         action_frame = ctk.CTkFrame(row_frame, fg_color="transparent", width=80)
         action_frame.pack(side="left", padx=5)
 
         open_btn = ctk.CTkButton(
             action_frame,
-            text="📂",
+            text="Mở",
             command=lambda c=task.code: self.open_output(c),
-            width=30,
-            height=25,
-            font=ctk.CTkFont(size=12),
-            fg_color="transparent",
-            text_color=("gray40", "gray60"),
-            hover_color=("gray85", "gray25"),
+            width=50,
+            height=28,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color=self.COLORS["primary"],
+            hover_color=self.COLORS["primary_hover"],
+            text_color="white",
             state="disabled"
         )
         open_btn.pack(side="left", padx=2)
@@ -347,28 +483,44 @@ class MainTab:
         }
 
     def update_task_row(self, code: str):
-        """Cập nhật UI của 1 task"""
+        """Cập nhật UI của 1 task với màu sắc phù hợp"""
         if code not in self.tasks or code not in self.task_widgets:
             return
 
         task = self.tasks[code]
         widgets = self.task_widgets[code]
 
-        # Update icons
-        widgets["input"].configure(text=self.ICONS[task.input_status])
-        widgets["video"].configure(text=self.ICONS[task.video_status])
-        widgets["render"].configure(text=self.ICONS[task.render_status])
+        # Update icons với màu
+        input_icon, input_color = self._get_status_icon_and_color(task.input_status)
+        widgets["input"].configure(text=input_icon, text_color=input_color)
 
-        # Update progress
+        video_icon, video_color = self._get_status_icon_and_color(task.video_status)
+        widgets["video"].configure(text=video_icon, text_color=video_color)
+
+        render_icon, render_color = self._get_status_icon_and_color(task.render_status)
+        widgets["render"].configure(text=render_icon, text_color=render_color)
+
+        # Update progress với màu động
         progress = task.overall_progress
+        if progress >= 100:
+            prog_color = self.COLORS["success"]
+        elif progress > 50:
+            prog_color = self.COLORS["primary"]
+        elif progress > 0:
+            prog_color = self.COLORS["warning"]
+        else:
+            prog_color = self.COLORS["status_pending"]
+
+        widgets["progress_bar"].configure(progress_color=prog_color)
         widgets["progress_bar"].set(progress / 100)
-        widgets["progress_pct"].configure(text=f"{progress}%")
+        widgets["progress_pct"].configure(text=f"{progress}%", text_color=prog_color)
 
         # Enable open button if complete
         if task.is_complete and task.output_path and task.output_path.exists():
             widgets["open_btn"].configure(
                 state="normal",
-                text_color=("#2E7D32", "#4CAF50")
+                fg_color=self.COLORS["success"],
+                hover_color=self.COLORS["success_hover"]
             )
 
         # Update total stats
@@ -391,15 +543,17 @@ class MainTab:
                 self.task_widgets[code]["frame"].destroy()
         self.task_widgets.clear()
         self.tasks.clear()
+        self.row_count = 0  # Reset row counter
 
-        # Re-add placeholder
+        # Re-add placeholder với style mới
         self.placeholder_label = ctk.CTkLabel(
             self.table_scroll,
-            text="📋 Nhấn 'Tải ảnh' hoặc 'Tạo Video' để bắt đầu",
-            font=ctk.CTkFont(size=13),
-            text_color="gray"
+            text="Chưa có task nào\nNhấn 'Tải ảnh Shopee' hoặc 'Tạo Video' để bắt đầu",
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+            text_color=self.COLORS["text_secondary"],
+            justify="center"
         )
-        self.placeholder_label.pack(pady=50)
+        self.placeholder_label.pack(pady=60)
 
         self.total_progress.set(0)
         self.stats_label.configure(text="0/0")

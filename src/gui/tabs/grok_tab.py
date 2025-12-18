@@ -220,8 +220,28 @@ class GrokTab:
             variable=self.auto_update_var,
             font=ctk.CTkFont(size=13)
         )
-        self.auto_update_check.pack(anchor="w", padx=15, pady=(0, 10))
+        self.auto_update_check.pack(anchor="w", padx=15, pady=(0, 5))
         self.auto_update_check.select()  # Mặc định chọn
+
+        # Auto-download Shopee images checkbox - MẶC ĐỊNH BẬT
+        self.auto_shopee_var = ctk.BooleanVar(value=True)
+        self.auto_shopee_check = ctk.CTkCheckBox(
+            options_frame,
+            text="🛒 Tự động tải ảnh từ Shopee (nếu chưa có)",
+            variable=self.auto_shopee_var,
+            font=ctk.CTkFont(size=13)
+        )
+        self.auto_shopee_check.pack(anchor="w", padx=15, pady=(0, 5))
+        self.auto_shopee_check.select()  # Mặc định chọn
+
+        # Shopee link column
+        shopee_col_row = ctk.CTkFrame(options_frame, fg_color="transparent")
+        shopee_col_row.pack(fill="x", padx=15, pady=(0, 10))
+
+        ctk.CTkLabel(shopee_col_row, text="Cột link Shopee:").pack(side="left")
+        self.shopee_col_entry = ctk.CTkEntry(shopee_col_row, width=50)
+        self.shopee_col_entry.pack(side="left", padx=10)
+        self.shopee_col_entry.insert(0, getattr(self.app.config, 'shopee_link_column', 'B'))
 
         # Action buttons
         btn_frame = ctk.CTkFrame(controls_frame, fg_color="transparent")
@@ -383,12 +403,16 @@ class GrokTab:
         music_folder = self.music_entry.get()
         voice_folder = self.voice_entry.get()
         transition_type = self.transition_var.get()
+        auto_shopee = self.auto_shopee_var.get()
+        shopee_link_column = self.shopee_col_entry.get() or "B"
 
         # Save to config
         self.app.config.input_folder = input_folder
         self.app.config.output_folder = output_folder
         self.app.config.music_folder = music_folder
         self.app.config.voice_folder = voice_folder
+        self.app.config.auto_shopee = auto_shopee
+        self.app.config.shopee_link_column = shopee_link_column
         self.app.save_config()
 
         # Start thread - truyền tất cả profiles để chạy song song

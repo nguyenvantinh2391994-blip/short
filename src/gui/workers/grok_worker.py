@@ -300,6 +300,52 @@ class GrokWorker:
 
             self.log(f"Tìm thấy {len(pending)} mã cần xử lý", "info")
 
+            # ===== AUTO DOWNLOAD ẢNH TỪ SHOPEE =====
+            auto_shopee = getattr(self.config, 'auto_shopee', True)
+            shopee_link_column = getattr(self.config, 'shopee_link_column', 'B')
+
+            if auto_shopee:
+                self.log("🛒 Kiểm tra và tải ảnh từ Shopee...", "progress")
+                try:
+                    from ...shopee_downloader import ShopeeDownloader
+
+                    # Lấy dữ liệu cột link Shopee
+                    all_values = reader.sheet.get_all_values()
+                    link_col_idx = ord(shopee_link_column.upper()) - ord('A')
+
+                    downloader = ShopeeDownloader(output_dir=str(self.input_folder))
+
+                    for item in pending:
+                        code = item["code"]
+                        row_idx = item["row"] - 1  # Row trong sheet bắt đầu từ 1
+                        code_folder = self.input_folder / code
+
+                        # Kiểm tra đã có ảnh chưa
+                        if code_folder.exists():
+                            existing = self.get_images_in_folder(code_folder)
+                            if existing:
+                                continue  # Đã có ảnh, bỏ qua
+
+                        # Lấy link Shopee từ sheet
+                        if row_idx < len(all_values):
+                            row_data = all_values[row_idx]
+                            shopee_link = row_data[link_col_idx] if len(row_data) > link_col_idx else ""
+
+                            if shopee_link and "shopee" in shopee_link.lower():
+                                self.log(f"  🛒 Tải ảnh cho {code}...", "progress")
+                                images = downloader.download_from_url(
+                                    url=shopee_link.strip(),
+                                    folder_name=code,
+                                    skip_existing=True
+                                )
+                                if images:
+                                    self.log(f"  ✅ Đã tải {len(images)} ảnh cho {code}", "success")
+                                else:
+                                    self.log(f"  ⚠️ Không tải được ảnh cho {code}", "warning")
+
+                except Exception as e:
+                    self.log(f"⚠️ Lỗi tải ảnh Shopee: {e}", "warning")
+
             # Kiểm tra thư mục con
             valid_items = []
             for item in pending:

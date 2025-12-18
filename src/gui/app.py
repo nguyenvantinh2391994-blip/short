@@ -36,6 +36,8 @@ class AppConfig:
     # Thư mục
     input_folder: str = "input"
     output_folder: str = "outputs"
+    music_folder: str = ""
+    voice_folder: str = ""
 
     # Google Sheets
     spreadsheet_id: str = ""
@@ -43,6 +45,10 @@ class AppConfig:
     credentials_file: str = "config/credentials.json"
     status_column: str = "E"
     prompt_column: str = "F"
+
+    # Shopee settings
+    auto_shopee: bool = True
+    shopee_link_column: str = "B"
 
     # Browser profiles
     browser_profiles: List[Dict] = field(default_factory=list)

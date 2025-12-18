@@ -569,14 +569,21 @@ class ShopeeDownloader:
                     except Exception:
                         pass
 
-            # Lấy mô tả sản phẩm - từ các thẻ p.QN2lPu
+            # Lấy mô tả sản phẩm - dùng JavaScript để lấy chính xác
             description = ""
             try:
-                desc_elements = driver.find_elements(By.CSS_SELECTOR, "p.QN2lPu")
-                if desc_elements:
-                    desc_parts = [elem.text.strip() for elem in desc_elements if elem.text.strip()]
-                    description = "\n".join(desc_parts)
+                description = driver.execute_script("""
+                    var descParts = [];
+                    document.querySelectorAll('div.e8lZp3 p.QN2lPu').forEach(function(p) {
+                        var text = p.innerText.trim();
+                        if (text) descParts.push(text);
+                    });
+                    return descParts.join('\\n');
+                """)
+                if description:
                     console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
+                else:
+                    console.print(f"[dim]Không tìm thấy mô tả[/]")
             except Exception as e:
                 console.print(f"[dim]Không lấy được mô tả: {e}[/]")
 

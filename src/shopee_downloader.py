@@ -318,26 +318,35 @@ class ShopeeDownloader:
         try:
             console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
 
-            # Setup Chrome options - KHÔNG headless để đảm bảo page render đầy đủ
-            options = Options()
-
-            if headless:
-                options.add_argument("--headless=new")
-
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920,1080")
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
-            options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-
-            # Thử dùng undetected-chromedriver nếu có
+            # Thử dùng undetected-chromedriver trước (tốt hơn cho Shopee)
+            use_uc = False
             try:
                 import undetected_chromedriver as uc
-                driver = uc.Chrome(options=options, headless=headless)
+                use_uc = True
             except ImportError:
+                pass
+
+            if use_uc:
+                # undetected_chromedriver tự xử lý anti-detection, không cần thêm options
+                console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
+                driver = uc.Chrome(headless=headless)
+            else:
+                # Dùng selenium thường với các options anti-detection
+                console.print(f"[dim]Sử dụng Selenium thường...[/]")
+                options = Options()
+
+                if headless:
+                    options.add_argument("--headless=new")
+
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
+                options.add_argument("--window-size=1920,1080")
+                options.add_argument("--disable-blink-features=AutomationControlled")
+                options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                options.add_experimental_option('useAutomationExtension', False)
+                options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
                 driver = webdriver.Chrome(options=options)
 
             # Đầu tiên vào trang chủ Shopee để set cookies

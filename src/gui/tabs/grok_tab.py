@@ -382,7 +382,6 @@ class GrokTab:
         output_folder = self.output_entry.get()
         music_folder = self.music_entry.get()
         voice_folder = self.voice_entry.get()
-        profile_name = self.profile_var.get()
         transition_type = self.transition_var.get()
 
         # Save to config
@@ -392,16 +391,17 @@ class GrokTab:
         self.app.config.voice_folder = voice_folder
         self.app.save_config()
 
-        # Start thread
+        # Start thread - truyền tất cả profiles để chạy song song
         self.current_thread = threading.Thread(
             target=self.run_grok_process,
-            args=(input_folder, output_folder, music_folder, voice_folder, profile_name, transition_type),
+            args=(input_folder, output_folder, music_folder, voice_folder, transition_type),
             daemon=True
         )
         self.current_thread.start()
 
-        self.app.log("Bắt đầu tạo video Grok")
-        self.add_task_log("Bắt đầu quá trình tạo video...", "progress")
+        num_profiles = len(self.app.config.browser_profiles)
+        self.app.log(f"Bắt đầu tạo video Grok với {num_profiles} profile")
+        self.add_task_log(f"Bắt đầu quá trình tạo video ({num_profiles} profile song song)...", "progress")
 
     def stop_process(self):
         """Stop video creation process"""
@@ -415,10 +415,9 @@ class GrokTab:
         output_folder: str,
         music_folder: str,
         voice_folder: str,
-        profile_name: str,
         transition_type: str
     ):
-        """Run Grok video creation (in background thread)"""
+        """Run Grok video creation (in background thread) - chạy song song với nhiều profile"""
         try:
             # Auto-update nếu được bật
             if self.auto_update_var.get():
@@ -435,24 +434,24 @@ class GrokTab:
             # Import here to avoid circular imports
             from ..workers.grok_worker import GrokWorker
 
-            # Get browser profile
-            profile = None
-            for p in self.app.config.browser_profiles:
-                if p.get("name") == profile_name:
-                    profile = p
-                    break
+            # Get ALL browser profiles để chạy song song
+            browser_profiles = self.app.config.browser_profiles or []
+
+            if not browser_profiles:
+                self.after_safe(lambda: self.add_task_log("Chưa có profile nào! Vào Cài đặt để tạo profile.", "error"))
+                return
 
             # Get headless setting
             headless = self.hidden_var.get()
 
-            # Create worker
+            # Create worker với TẤT CẢ profiles
             worker = GrokWorker(
                 input_folder=input_folder,
                 output_folder=output_folder,
                 music_folder=music_folder,
                 voice_folder=voice_folder,
                 transition_type=transition_type,
-                browser_profile=profile,
+                browser_profiles=browser_profiles,  # Truyền tất cả profiles
                 config=self.app.config,
                 stop_flag=self.stop_flag,
                 on_progress=self.on_worker_progress,

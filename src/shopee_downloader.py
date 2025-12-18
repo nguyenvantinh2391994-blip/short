@@ -538,57 +538,41 @@ class ShopeeDownloader:
             # Chờ thêm để ảnh load hoàn toàn
             time.sleep(3)
 
-            # Click qua từng thumbnail để load tất cả ảnh vào carousel
-            # Shopee chỉ load ảnh khi user click vào thumbnail
-            js_click_thumbnails = """
-            var thumbnails = document.querySelectorAll('div.ZDN4HL picture.OqFxyp img');
-            var count = thumbnails.length;
-
-            // Click từng thumbnail với delay
-            for (var i = 0; i < count; i++) {
-                (function(index) {
-                    setTimeout(function() {
-                        thumbnails[index].click();
-                    }, index * 300);  // 300ms giữa mỗi click
-                })(i);
-            }
-
-            return count;
-            """
-
-            thumbnail_count = driver.execute_script(js_click_thumbnails)
-            if thumbnail_count and thumbnail_count > 0:
-                console.print(f"[dim]Đang load {thumbnail_count} ảnh từ thumbnails...[/]")
-                # Chờ tất cả clicks hoàn thành + thời gian load ảnh
-                wait_time = (thumbnail_count * 0.3) + 2
-                time.sleep(wait_time)
-
-            # Lấy ảnh từ carousel chính (ảnh lớn đang hiển thị)
-            # Dùng Set để tự động loại trùng theo hash
+            # LẤY ẢNH TỪ THUMBNAILS TRƯỚC (mỗi thumbnail = 1 ảnh duy nhất)
+            # Carousel có nhiều DOM elements trùng nhau nên không đáng tin cậy
             js_script = """
             var hashes = new Set();
             var urls = [];
 
-            // Lấy từ carousel chính (picture.UkIsx8)
-            document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
-                let src = img.src.split('@')[0];
-                if (src && src.includes('susercontent.com/file/')) {
+            // 1. LẤY TỪ THUMBNAILS TRƯỚC (đây là nguồn chính xác nhất)
+            // Mỗi thumbnail đại diện 1 ảnh sản phẩm duy nhất
+            document.querySelectorAll('div.ZDN4HL picture.OqFxyp img').forEach(img => {
+                let src = img.src;
+                if (!src) return;
+
+                // Bỏ resize param
+                src = src.split('@')[0];
+
+                if (src.includes('susercontent.com/file/')) {
                     // Extract hash từ URL
                     let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
-                    if (match && !hashes.has(match[1])) {
+                    if (match && match[1] && !hashes.has(match[1])) {
                         hashes.add(match[1]);
                         urls.push(src);
                     }
                 }
             });
 
-            // Nếu ít quá, lấy thêm từ thumbnails
-            if (urls.length < 3) {
-                document.querySelectorAll('div.ZDN4HL picture.OqFxyp img').forEach(img => {
-                    let src = img.src.split('@')[0];
-                    if (src && src.includes('susercontent.com/file/')) {
+            // 2. NẾU KHÔNG CÓ THUMBNAILS, thử lấy từ carousel chính
+            if (urls.length === 0) {
+                document.querySelectorAll('picture.UkIsx8 img').forEach(img => {
+                    let src = img.src;
+                    if (!src) return;
+                    src = src.split('@')[0];
+
+                    if (src.includes('susercontent.com/file/')) {
                         let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
-                        if (match && !hashes.has(match[1])) {
+                        if (match && match[1] && !hashes.has(match[1])) {
                             hashes.add(match[1]);
                             urls.push(src);
                         }
@@ -600,7 +584,7 @@ class ShopeeDownloader:
             """
 
             image_urls = driver.execute_script(js_script)
-            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh sản phẩm[/]")
+            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh từ thumbnails[/]")
 
             # Nếu không tìm thấy, thử selector backup
             if not image_urls:

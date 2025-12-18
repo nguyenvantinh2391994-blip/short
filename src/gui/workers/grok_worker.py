@@ -62,10 +62,32 @@ class GrokWorker:
         self._lock = threading.Lock()
         self._music_index = 0
 
+        # Lưu tất cả automation instances để có thể ẩn/hiện
+        self._automations = []
+        self._automations_lock = threading.Lock()
+
     def log(self, message: str, status: str = "info"):
         """Log message (thread-safe)"""
         if self.on_log:
             self.on_log(message, status)
+
+    def show_all_browsers(self):
+        """Hiện tất cả browser windows"""
+        with self._automations_lock:
+            for automation in self._automations:
+                try:
+                    automation.show_chrome_window()
+                except:
+                    pass
+
+    def hide_all_browsers(self):
+        """Ẩn tất cả browser windows"""
+        with self._automations_lock:
+            for automation in self._automations:
+                try:
+                    automation._hide_chrome_window()
+                except:
+                    pass
 
     def progress(self, current: int, total: int, task: str = ""):
         """Update progress"""
@@ -109,6 +131,13 @@ class GrokWorker:
             headless=self.headless,
             on_log=lambda msg, s="info": self.log(f"[{profile_name}] {msg}", s)
         )
+
+        # Lưu automation để có thể ẩn/hiện
+        with self._automations_lock:
+            self._automations.append(automation)
+            # Gọi callback để GUI biết có automation mới
+            if self.on_automation_created:
+                self.on_automation_created(self)  # Truyền worker thay vì single automation
 
         try:
             # Thư mục tạm cho mã này
@@ -212,6 +241,10 @@ class GrokWorker:
             return False
 
         finally:
+            # Remove từ list trước khi đóng
+            with self._automations_lock:
+                if automation in self._automations:
+                    self._automations.remove(automation)
             automation.close_driver()
 
     def run(self):

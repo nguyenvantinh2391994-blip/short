@@ -264,7 +264,7 @@ class GrokTab:
         self.show_btn.pack(side="left", padx=5)
 
         # Biến lưu automation object để có thể ẩn/hiện
-        self.current_automation = None
+        self.current_worker = None
         self._browser_visible = False
 
     def setup_progress(self):
@@ -487,37 +487,33 @@ class GrokTab:
         self.current_task_label.configure(text="Hoàn thành")
         self.app.set_status("Hoàn thành tạo video")
         self.add_task_log("Hoàn thành!", "success")
-        self.current_automation = None
+        self.current_worker = None
 
     def toggle_browser_visibility(self):
-        """Toggle ẩn/hiện browser"""
-        if self.current_automation:
+        """Toggle ẩn/hiện tất cả browser"""
+        if self.current_worker:
             try:
                 if self._browser_visible:
-                    self.current_automation._hide_chrome_window()
+                    self.current_worker.hide_all_browsers()
                     self.show_btn.configure(text="👁️ Hiện Browser")
                     self._browser_visible = False
-                    self.add_task_log("Đã ẩn browser", "info")
+                    self.add_task_log("Đã ẩn tất cả browser", "info")
                 else:
-                    self.current_automation.show_chrome_window()
+                    self.current_worker.show_all_browsers()
                     self.show_btn.configure(text="🙈 Ẩn Browser")
                     self._browser_visible = True
-                    self.add_task_log("Đã hiện browser", "info")
+                    self.add_task_log("Đã hiện tất cả browser", "info")
             except Exception as e:
                 self.add_task_log(f"Lỗi toggle browser: {e}", "error")
 
-    def set_automation(self, automation):
-        """Lưu reference đến automation object để có thể ẩn/hiện"""
-        self.current_automation = automation
+    def set_automation(self, worker):
+        """Lưu reference đến worker để có thể ẩn/hiện browsers"""
+        self.current_worker = worker
         # Kích hoạt nút ẩn/hiện
         self.after_safe(lambda: self.show_btn.configure(state="normal"))
-        # Cập nhật trạng thái nút
-        if hasattr(automation, '_is_hidden') and automation._is_hidden:
-            self._browser_visible = False
-            self.after_safe(lambda: self.show_btn.configure(text="👁️ Hiện Browser"))
-        else:
-            self._browser_visible = True
-            self.after_safe(lambda: self.show_btn.configure(text="🙈 Ẩn Browser"))
+        # Mặc định là ẩn (headless)
+        self._browser_visible = False
+        self.after_safe(lambda: self.show_btn.configure(text="👁️ Hiện Browser"))
 
     def after_safe(self, func):
         """Safely call function on main thread"""

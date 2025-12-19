@@ -198,29 +198,42 @@ class GrokSeleniumAutomation:
     def check_rate_limit(self) -> bool:
         """
         Kiểm tra xem có bị rate limit không
+        Toast rate limit có dạng: <li data-sonner-toast data-type="error">...Rate limit reached...</li>
         Returns: True nếu bị rate limit
         """
         if not self.driver:
             return False
 
         try:
-            # Tìm toast error với text "Rate limit"
-            page_source = self.driver.page_source.lower()
-            if "rate limit" in page_source:
-                self.log_warn("⚠️ Phát hiện Rate Limit!")
+            # Dùng JavaScript để tìm chính xác toast rate limit
+            js_check = '''
+            // Tìm toast error của sonner
+            var toasts = document.querySelectorAll('[data-sonner-toast][data-type="error"]');
+            for (var toast of toasts) {
+                var text = toast.textContent || toast.innerText || '';
+                if (text.toLowerCase().includes('rate limit')) {
+                    return 'RATE_LIMIT:' + text.substring(0, 100);
+                }
+            }
+
+            // Backup: tìm bất kỳ element nào có text "rate limit reached"
+            var body = document.body.innerText || '';
+            if (body.toLowerCase().includes('rate limit reached')) {
+                return 'RATE_LIMIT_TEXT';
+            }
+
+            return '';
+            '''
+
+            result = self.driver.execute_script(js_check)
+
+            if result and result.startswith('RATE_LIMIT'):
+                self.log_warn(f"⚠️ Phát hiện Rate Limit! ({result})")
                 return True
 
-            # Hoặc tìm element toast error
-            try:
-                toast = self.driver.find_element(By.CSS_SELECTOR, '[data-type="error"]')
-                if toast and "rate limit" in toast.text.lower():
-                    self.log_warn("⚠️ Phát hiện Rate Limit (toast)!")
-                    return True
-            except:
-                pass
-
             return False
-        except:
+        except Exception as e:
+            self.log(f"   Lỗi check rate limit: {e}")
             return False
 
     def navigate_to_grok(self) -> bool:
@@ -412,12 +425,19 @@ class GrokSeleniumAutomation:
             self.log_err(f"Lỗi upload ảnh: {e}")
             return False
 
-    def submit_and_wait(self, timeout: int = 90) -> bool:
+    def submit_and_wait(self, timeout: int = 90) -> str:
         """Submit và chờ video tạo xong
         Logic:
         1. Nếu thấy % (0%-100%) = đang tạo video
         2. Nếu không thấy % và thấy icon film = video xong
         3. Chờ thêm 10s sau khi xong để đảm bảo
+        4. Nếu thấy rate limit toast = dừng ngay
+
+        Returns:
+            "OK" nếu video tạo xong
+            "RATE_LIMIT" nếu bị rate limit
+            "TIMEOUT" nếu hết thời gian
+            "ERROR" nếu có lỗi
         """
         try:
             self.log("Đang chờ video được tạo (tối đa 90s)...")
@@ -428,8 +448,17 @@ class GrokSeleniumAutomation:
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check tiến độ và icon film
+                # Check tiến độ, icon film VÀ rate limit
                 js_check = '''
+                // 0. Check rate limit TRƯỚC
+                var toasts = document.querySelectorAll('[data-sonner-toast][data-type="error"]');
+                for (var toast of toasts) {
+                    var text = toast.textContent || toast.innerText || '';
+                    if (text.toLowerCase().includes('rate limit')) {
+                        return 'rate_limit|' + text.substring(0, 50);
+                    }
+                }
+
                 // 1. Check xem có đang hiện % không (đang tạo video)
                 var progressDiv = document.querySelector('div.tabular-nums');
                 if (progressDiv) {
@@ -466,19 +495,24 @@ class GrokSeleniumAutomation:
                         if elapsed % 5 == 0:
                             if status == 'progress':
                                 self.log(f"   [{elapsed}s] Đang tạo: {data}")
-                            else:
+                            elif status != 'waiting':
                                 self.log(f"   [{elapsed}s] {status}")
+
+                        # Rate limit - dừng ngay
+                        if status == 'rate_limit':
+                            self.log_warn(f"⚠️ Rate Limit detected! ({data})")
+                            return "RATE_LIMIT"
 
                         if status == 'film_ready':
                             self.log_ok(f"Thấy icon film - Video đã xong! ({elapsed}s)")
                             self.log("   Chờ thêm 10s để video load hoàn toàn...")
                             time.sleep(10)
-                            return True
+                            return "OK"
                         elif status == 'video_src':
                             self.log_ok(f"Thấy video src! ({elapsed}s)")
                             self._captured_video_url = data
                             time.sleep(5)
-                            return True
+                            return "OK"
                         # progress hoặc waiting -> tiếp tục chờ
                     else:
                         if elapsed % 10 == 0:
@@ -491,11 +525,14 @@ class GrokSeleniumAutomation:
                 time.sleep(2)
 
             self.log_warn(f"Timeout sau {timeout}s")
-            return False
+            # Khi timeout, kiểm tra lại rate limit một lần nữa
+            if self.check_rate_limit():
+                return "RATE_LIMIT"
+            return "TIMEOUT"
 
         except Exception as e:
             self.log_err(f"Lỗi chờ video: {e}")
-            return False
+            return "ERROR"
 
     def download_video(self, output_path: str) -> bool:
         """Download video bằng cách click nút Download, thử lại nếu không có file"""
@@ -688,15 +725,15 @@ class GrokSeleniumAutomation:
 
             # Submit and wait (90s timeout)
             self.log("4. Chờ video (tối đa 90s)...")
-            if not self.submit_and_wait(timeout=90):
-                # Kiểm tra rate limit
+            wait_result = self.submit_and_wait(timeout=90)
+
+            if wait_result == "RATE_LIMIT":
+                return GrokVideoResult(False, error="RATE_LIMIT")
+            elif wait_result != "OK":
+                # TIMEOUT hoặc ERROR - kiểm tra lại rate limit
                 if self.check_rate_limit():
                     return GrokVideoResult(False, error="RATE_LIMIT")
-                return GrokVideoResult(False, error="Timeout chờ video")
-
-            # Kiểm tra rate limit sau khi submit
-            if self.check_rate_limit():
-                return GrokVideoResult(False, error="RATE_LIMIT")
+                return GrokVideoResult(False, error=f"Lỗi chờ video: {wait_result}")
 
             # Wait thêm 5s để video load hoàn toàn
             time.sleep(5)

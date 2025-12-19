@@ -239,15 +239,20 @@ class GrokWorker:
                     created_videos.append(str(video_path))
                     self.log(f"[{profile_name}] ✓ Tạo xong: {video_name}", "success")
                 else:
+                    self.log(f"[{profile_name}] Video thất bại - error: {result.error}", "warning")
+
                     # Kiểm tra rate limit
                     if result.error == "RATE_LIMIT":
-                        self.log(f"[{profile_name}] ⚠️ Rate limit! Chuyển Chrome profile...", "warning")
-                        # Đóng automation hiện tại
-                        automation.close_driver()
+                        self.log(f"[{profile_name}] 🚫 RATE LIMIT DETECTED!", "error")
+                        self.log(f"[{profile_name}] → Đóng Chrome profile này...", "warning")
                         # Đánh dấu profile này bị rate limit
                         profile["rate_limited"] = True
+                        # Đóng automation hiện tại
+                        automation.close_driver()
                         # Return đặc biệt để chuyển profile
-                        return ProcessResult(False, error="RATE_LIMIT", remaining_images=images[j:])
+                        remaining = images[j:]
+                        self.log(f"[{profile_name}] → Return với {len(remaining)} ảnh còn lại", "info")
+                        return ProcessResult(False, error="RATE_LIMIT", remaining_images=remaining)
 
                     self.log(f"[{profile_name}] ✗ Thất bại: {result.error}", "error")
 
@@ -496,20 +501,24 @@ class GrokWorker:
             self.log(f"\n{'='*40}", "info")
             self.log(f"Bắt đầu xử lý với {num_profiles} profile (có rate limit handling)...", "progress")
 
+            # Hiển thị danh sách profiles
+            for i, p in enumerate(self.browser_profiles):
+                self.log(f"   Profile {i+1}: {p.get('name', 'Unknown')} - {p.get('profile_path', 'N/A')}", "info")
+
             # Đánh dấu profile nào bị rate limit
             for profile in self.browser_profiles:
                 profile["rate_limited"] = False
 
             # Hàm lấy profile khả dụng tiếp theo
             def get_available_profile():
-                for p in self.browser_profiles:
-                    if not p.get("rate_limited", False):
-                        return p
+                available = [p for p in self.browser_profiles if not p.get("rate_limited", False)]
+                self.log(f"   📊 Profiles khả dụng: {len(available)}/{len(self.browser_profiles)}", "info")
+                if available:
+                    return available[0]
                 return None
 
             # Queue các item cần xử lý
             pending_queue = list(still_pending)
-            profile_idx = 0
 
             while pending_queue and not self.stop_flag.is_set():
                 # Lấy profile khả dụng
@@ -517,7 +526,8 @@ class GrokWorker:
 
                 if not profile:
                     self.log("⚠️ Tất cả profile đều bị rate limit!", "error")
-                    self.log("   Vui lòng thêm profile mới hoặc chờ reset.", "warning")
+                    self.log("   Vui lòng thêm thêm profile Chrome trong Settings.", "warning")
+                    self.log(f"   Còn {len(pending_queue)} mã chưa xử lý.", "warning")
                     break
 
                 item = pending_queue.pop(0)
@@ -532,17 +542,25 @@ class GrokWorker:
                         if result.error == "RATE_LIMIT":
                             # Đánh dấu profile bị rate limit
                             profile["rate_limited"] = True
-                            self.log(f"⚠️ Profile '{profile.get('name')}' bị rate limit!", "warning")
+                            self.log(f"🚫 Profile '{profile.get('name')}' bị RATE LIMIT!", "warning")
+
+                            # Kiểm tra còn profile nào không
+                            remaining_profiles = [p for p in self.browser_profiles if not p.get("rate_limited", False)]
+                            if remaining_profiles:
+                                self.log(f"   ↪ Chuyển sang profile: {remaining_profiles[0].get('name')}", "info")
+                            else:
+                                self.log(f"   ❌ Không còn profile nào khả dụng!", "error")
 
                             # Nếu còn ảnh chưa xử lý, tạo item mới với ảnh còn lại
                             if result.remaining_images:
                                 new_item = item.copy()
                                 new_item["images"] = result.remaining_images
                                 pending_queue.insert(0, new_item)  # Thêm vào đầu queue
-                                self.log(f"   Còn {len(result.remaining_images)} ảnh, chuyển sang profile khác...", "info")
+                                self.log(f"   📷 Còn {len(result.remaining_images)} ảnh chưa xử lý", "info")
                             else:
                                 # Thêm lại item vào đầu queue để thử với profile khác
                                 pending_queue.insert(0, item)
+                                self.log(f"   📷 Thêm lại {code} vào queue", "info")
 
                         elif not result.success:
                             self.log(f"✗ Lỗi xử lý {code}: {result.error}", "error")
@@ -550,6 +568,8 @@ class GrokWorker:
 
                 except Exception as e:
                     self.log(f"Lỗi xử lý {code}: {e}", "error")
+                    import traceback
+                    self.log(traceback.format_exc(), "error")
 
             # Hoàn thành
             self.progress(self._total_count, self._total_count, "Hoàn thành")

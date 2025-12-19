@@ -195,6 +195,34 @@ class GrokSeleniumAutomation:
                 pass
             self.driver = None
 
+    def check_rate_limit(self) -> bool:
+        """
+        Kiểm tra xem có bị rate limit không
+        Returns: True nếu bị rate limit
+        """
+        if not self.driver:
+            return False
+
+        try:
+            # Tìm toast error với text "Rate limit"
+            page_source = self.driver.page_source.lower()
+            if "rate limit" in page_source:
+                self.log_warn("⚠️ Phát hiện Rate Limit!")
+                return True
+
+            # Hoặc tìm element toast error
+            try:
+                toast = self.driver.find_element(By.CSS_SELECTOR, '[data-type="error"]')
+                if toast and "rate limit" in toast.text.lower():
+                    self.log_warn("⚠️ Phát hiện Rate Limit (toast)!")
+                    return True
+            except:
+                pass
+
+            return False
+        except:
+            return False
+
     def navigate_to_grok(self) -> bool:
         """Navigate to Grok Imagine"""
         try:
@@ -661,7 +689,14 @@ class GrokSeleniumAutomation:
             # Submit and wait (90s timeout)
             self.log("4. Chờ video (tối đa 90s)...")
             if not self.submit_and_wait(timeout=90):
+                # Kiểm tra rate limit
+                if self.check_rate_limit():
+                    return GrokVideoResult(False, error="RATE_LIMIT")
                 return GrokVideoResult(False, error="Timeout chờ video")
+
+            # Kiểm tra rate limit sau khi submit
+            if self.check_rate_limit():
+                return GrokVideoResult(False, error="RATE_LIMIT")
 
             # Wait thêm 5s để video load hoàn toàn
             time.sleep(5)

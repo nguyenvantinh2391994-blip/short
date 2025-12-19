@@ -138,6 +138,21 @@ class MainTab:
         btn_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
         btn_frame.pack(side="left", padx=15, pady=12)
 
+        # Nút Login Shopee - để đăng nhập và lưu cookies
+        self.login_btn = ctk.CTkButton(
+            btn_frame,
+            text="Login",
+            command=self.login_shopee,
+            width=60,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#6B7280",  # Gray
+            hover_color="#4B5563",
+            text_color="white"
+        )
+        self.login_btn.pack(side="left", padx=(0, 5))
+
         # Nút Tải ảnh - Orange/Amber
         self.shopee_btn = ctk.CTkButton(
             btn_frame,
@@ -671,6 +686,97 @@ class MainTab:
             self.add_log(f"Lỗi mở file: {e}")
 
     # ===== ACTIONS =====
+
+    def login_shopee(self):
+        """Mở browser để đăng nhập Shopee và lưu cookies"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.add_log("🔐 Mở Shopee để đăng nhập...")
+        self.add_log("   1. Đăng nhập tài khoản Shopee")
+        self.add_log("   2. Giải captcha nếu có")
+        self.add_log("   3. Bấm 'Lưu Cookies' khi xong")
+
+        thread = threading.Thread(target=self._run_login_shopee, daemon=True)
+        thread.start()
+
+    def _run_login_shopee(self):
+        """Background thread mở browser để login"""
+        try:
+            from ...shopee_downloader import ShopeeDownloader
+
+            # Browser profile
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            # Tạo downloader với browser HIỆN (không headless)
+            self.shopee_downloader = ShopeeDownloader(
+                output_dir=self.app.config.input_folder,
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                headless=False  # Hiện browser để user đăng nhập
+            )
+
+            # Mở Shopee
+            try:
+                import undetected_chromedriver as uc
+                self.shopee_downloader.driver = uc.Chrome(headless=False)
+            except ImportError:
+                from selenium import webdriver
+                from selenium.webdriver.chrome.options import Options
+                options = Options()
+                self.shopee_downloader.driver = webdriver.Chrome(options=options)
+
+            driver = self.shopee_downloader.driver
+            driver.set_window_size(1200, 800)
+            driver.set_window_position(100, 100)
+
+            # Vào trang Shopee
+            driver.get("https://shopee.vn")
+            self.after_safe(lambda: self.add_log("✓ Đã mở Shopee"))
+            self.after_safe(lambda: self.add_log("📌 Hãy đăng nhập và giải captcha nếu có"))
+
+            # Đổi nút Login thành Lưu Cookies
+            self.after_safe(lambda: self.login_btn.configure(
+                text="Lưu",
+                fg_color="#10B981",
+                hover_color="#059669",
+                command=self._save_shopee_cookies
+            ))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+
+    def _save_shopee_cookies(self):
+        """Lưu cookies và đóng browser"""
+        try:
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader and self.shopee_downloader.driver:
+                # Lưu cookies
+                self.shopee_downloader._save_cookies_to_file(self.shopee_downloader.driver)
+                self.add_log("✓ Đã lưu cookies vào config/shopee_cookies.txt")
+
+                # Đóng browser
+                self.shopee_downloader.driver.quit()
+                self.shopee_downloader.driver = None
+                self.add_log("✓ Đã đóng browser")
+
+            # Reset nút Login
+            self.login_btn.configure(
+                text="Login",
+                fg_color="#6B7280",
+                hover_color="#4B5563",
+                command=self.login_shopee
+            )
+
+        except Exception as e:
+            self.add_log(f"❌ Lỗi lưu cookies: {e}")
 
     def download_shopee_images(self):
         """Tải ảnh từ Shopee"""

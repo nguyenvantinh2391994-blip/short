@@ -69,32 +69,28 @@ class GeminiService:
     # API endpoints
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    # Prompt template cho kịch bản bán hàng vui tươi, nhanh
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là MC bán hàng livestream TOP 1, SIÊU VUI VẺ và NĂNG ĐỘNG trên TikTok/Shopee.
+    # Prompt template cho kịch bản bán hàng vui tươi (20-30s)
+    SCRIPT_PROMPT_TEMPLATE = """Bạn là MC bán hàng livestream VUI VẺ, NĂNG ĐỘNG trên TikTok/Shopee.
 
-THÔNG TIN SẢN PHẨM:
+SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
-YÊU CẦU:
-Viết kịch bản voice-over bán hàng NHANH, VUI TƯƠI, HÀO HỨNG cho video 20-30 giây.
+YÊU CẦU: Viết kịch bản VUI TƯƠI, HÀO HỨNG cho video 20-30 giây.
 
-QUY TẮC BẮT BUỘC:
-1. Độ dài: 60-100 từ (đọc NHANH VUI trong 20-30 giây)
-2. Giọng điệu: VUI VẺ, PHẤN KHÍCH như đang chia sẻ deal HOT cho bạn thân
-3. Bắt đầu bằng câu hook hấp dẫn: "Ôi trời ơi!", "Mọi người ơi siêu HOT nè!", "Không mua là phí lắm!"
-4. Dùng NHIỀU từ cảm thán: quá đỉnh, siêu xịn, đỉnh của chóp, cực phẩm, xịn sò, mê xỉu, quá trời đẹp
-5. Nêu 2-3 ưu điểm nổi bật với sự HÀO HỨNG
-6. Tạo cảm giác FOMO: số lượng có hạn, deal cháy hàng, mua ngay kẻo hết
-7. Kết thúc mạnh mẽ: "Mua ngay!", "Đặt liền nha!", "Bấm vô giỏ hàng đi mọi người!"
+QUY TẮC:
+1. Độ dài: 55-80 từ (đọc nhanh trong 20-30 giây)
+2. Giọng điệu: VUI VẺ, PHẤN KHÍCH như chia sẻ deal HOT cho bạn thân
+3. Bắt đầu: "Ôi trời ơi!", "Mọi người ơi!", "Siêu HOT nè!"
+4. Dùng từ: siêu xịn, đỉnh của chóp, cực phẩm, xịn sò, mê xỉu
+5. Nêu 2-3 ưu điểm nổi bật
+6. Tạo FOMO: hàng có hạn, mua ngay kẻo hết
+7. Kết: "Mua ngay!", "Đặt liền nha!"
 
-VÍ DỤ GIỌNG ĐIỆU VUI TƯƠI:
-"Ôi trời ơi mọi người ơi! Em vừa tìm được món đồ siêu xịn sò nè! Mọi người nhìn đi, chất lượng đỉnh của chóp mà giá thì mềm xèo không tưởng luôn á! Ai mua rồi ai cũng khen nức nở! Hàng về có hạn lắm, shop chỉ còn ít thôi, mua ngay kẻo hết nha mọi người! Bấm vô giỏ hàng liền đi!"
+VÍ DỤ:
+"Ôi trời ơi mọi người ơi! Món này siêu xịn sò nè! Chất lượng đỉnh của chóp mà giá mềm xèo luôn! Ai mua rồi cũng khen nức nở! Hàng có hạn lắm, mua ngay kẻo hết nha mọi người!"
 
-ĐỊNH DẠNG OUTPUT:
-Chỉ trả về nội dung kịch bản thuần text, KHÔNG có tiêu đề, KHÔNG có giải thích.
-
-BÂY GIỜ HÃY VIẾT KỊCH BẢN VUI TƯƠI:"""
+CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """

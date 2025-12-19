@@ -69,32 +69,32 @@ class GeminiService:
     # API endpoints
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    # Prompt template cho kịch bản bán hàng 15 giây
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là chuyên gia viết kịch bản quảng cáo bán hàng trên TikTok/Shopee.
+    # Prompt template cho kịch bản bán hàng vui tươi, nhanh
+    SCRIPT_PROMPT_TEMPLATE = """Bạn là MC bán hàng livestream TOP 1, SIÊU VUI VẺ và NĂNG ĐỘNG trên TikTok/Shopee.
 
 THÔNG TIN SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
 YÊU CẦU:
-Viết kịch bản voice-over bán hàng NGẮN GỌN, TÁC ĐỘNG MẠNH cho video 15 giây.
+Viết kịch bản voice-over bán hàng NHANH, VUI TƯƠI, HÀO HỨNG cho video 20-30 giây.
 
 QUY TẮC BẮT BUỘC:
-1. Độ dài: 40-60 từ (đọc trong 12-15 giây)
-2. Bắt đầu bằng câu hook gây chú ý (hỏi/than/shock)
-3. Nêu 1-2 điểm nổi bật nhất của sản phẩm
-4. Kết thúc bằng call-to-action mạnh mẽ
-5. Giọng điệu: thân thiện, năng động, tự tin
-6. Dùng từ ngữ đơn giản, dễ hiểu
-7. Tạo cảm giác khan hiếm/cấp bách
+1. Độ dài: 60-100 từ (đọc NHANH VUI trong 20-30 giây)
+2. Giọng điệu: VUI VẺ, PHẤN KHÍCH như đang chia sẻ deal HOT cho bạn thân
+3. Bắt đầu bằng câu hook hấp dẫn: "Ôi trời ơi!", "Mọi người ơi siêu HOT nè!", "Không mua là phí lắm!"
+4. Dùng NHIỀU từ cảm thán: quá đỉnh, siêu xịn, đỉnh của chóp, cực phẩm, xịn sò, mê xỉu, quá trời đẹp
+5. Nêu 2-3 ưu điểm nổi bật với sự HÀO HỨNG
+6. Tạo cảm giác FOMO: số lượng có hạn, deal cháy hàng, mua ngay kẻo hết
+7. Kết thúc mạnh mẽ: "Mua ngay!", "Đặt liền nha!", "Bấm vô giỏ hàng đi mọi người!"
+
+VÍ DỤ GIỌNG ĐIỆU VUI TƯƠI:
+"Ôi trời ơi mọi người ơi! Em vừa tìm được món đồ siêu xịn sò nè! Mọi người nhìn đi, chất lượng đỉnh của chóp mà giá thì mềm xèo không tưởng luôn á! Ai mua rồi ai cũng khen nức nở! Hàng về có hạn lắm, shop chỉ còn ít thôi, mua ngay kẻo hết nha mọi người! Bấm vô giỏ hàng liền đi!"
 
 ĐỊNH DẠNG OUTPUT:
-Chỉ trả về nội dung kịch bản, KHÔNG có tiêu đề, KHÔNG có giải thích, KHÔNG có dấu ngoặc.
+Chỉ trả về nội dung kịch bản thuần text, KHÔNG có tiêu đề, KHÔNG có giải thích.
 
-VÍ DỤ MẪU:
-"Mẹ ơi, bé nhà mình đẹp xuất sắc với bộ áo dài này! Chất gấm lụa cao cấp, mềm mại, bé mặc thoải mái suốt ngày. Đủ size từ 8 đến 45 ký. Tết này bé xinh như công chúa nhé! Đặt ngay kẻo hết mẹ ơi!"
-
-BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
+BÂY GIỜ HÃY VIẾT KỊCH BẢN VUI TƯƠI:"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """
@@ -222,7 +222,7 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
         self,
         text: str,
         output_path: str,
-        voice_name: str = "Aoede",
+        voice_name: str = "Kore",
         output_format: str = "mp3"
     ) -> VoiceResult:
         """
@@ -232,6 +232,9 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
             text: Nội dung cần đọc
             output_path: Đường dẫn file output (.mp3 hoặc .wav)
             voice_name: Tên giọng đọc (Aoede, Charon, Fenrir, Kore, Puck)
+                        - Kore: Giọng nữ vui tươi, năng động (mặc định)
+                        - Puck: Giọng vui vẻ, linh hoạt
+                        - Aoede: Giọng nữ trầm ấm
             output_format: Format output (mp3 hoặc wav)
 
         Returns:

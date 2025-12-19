@@ -1516,114 +1516,14 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("  Không có mã nào có ảnh để tạo video"))
                 return
 
-            # Track trạng thái hoàn thành
-            import threading as th
-            video_done = {}  # code -> True/False
-            voice_done = {}  # code -> True/False
-            edit_done = {}   # code -> True/False
-            status_lock = th.Lock()
-
             # Khởi tạo trạng thái
             voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
             voice_folder.mkdir(parents=True, exist_ok=True)
-            temp_folder = output_folder / "_temp_videos"
-            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
-
-            for item in valid_items:
-                code = item["code"]
-                video_done[code] = False
-                edit_done[code] = False
-                # Check voice đã có sẵn chưa
-                voice_mp3 = voice_folder / f"{code}.mp3"
-                voice_wav = voice_folder / f"{code}.wav"
-                voice_done[code] = voice_mp3.exists() or voice_wav.exists()
-
-            # Hàm Edit cho 1 mã (chạy khi cả video và voice xong)
-            def try_edit_item(code):
-                with status_lock:
-                    if edit_done.get(code):
-                        return  # Đã edit rồi
-                    if not video_done.get(code) or not voice_done.get(code):
-                        return  # Chưa đủ điều kiện
-                    edit_done[code] = True
-
-                self.after_safe(lambda c=code: self.add_log(f"  [Edit] 🎬 {c}: ghép video + voice..."))
-
-                try:
-                    from ...video_merger import VideoMerger
-                    import random
-
-                    merger = VideoMerger()
-
-                    # Tìm video trong temp folder
-                    code_temp = temp_folder / code
-                    if not code_temp.exists():
-                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ❌ {c}: không tìm thấy video"))
-                        return
-
-                    videos = list(code_temp.glob("*.mp4"))
-                    if not videos:
-                        return
-
-                    # Tìm voice
-                    voice_path = None
-                    for ext in ['.mp3', '.wav']:
-                        vp = voice_folder / f"{code}{ext}"
-                        if vp.exists():
-                            voice_path = str(vp)
-                            break
-
-                    # Tìm music ngẫu nhiên
-                    music_path = None
-                    if music_folder and music_folder.exists():
-                        music_files = list(music_folder.glob("*.mp3"))
-                        if music_files:
-                            music_path = str(random.choice(music_files))
-
-                    # Tìm ảnh từ INPUT
-                    image_paths = []
-                    code_input = input_folder / code
-                    if code_input.exists():
-                        for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
-                            image_paths.extend([str(p) for p in code_input.glob(ext)])
-                        image_paths.sort()
-
-                    # Output
-                    final_video = output_folder / f"{code}_final.mp4"
-                    music_vol = 0.5 if voice_path else 1.0
-
-                    success = merger.merge_videos_with_images(
-                        video_paths=[str(v) for v in videos],
-                        image_paths=image_paths,
-                        output_path=str(final_video),
-                        music_path=music_path,
-                        voice_path=voice_path,
-                        music_volume=music_vol,
-                        voice_volume=1.0,
-                        mute_original=True,
-                        image_duration=1.0,
-                        target_width=1080,
-                        target_height=1920
-                    )
-
-                    if success:
-                        self.tasks[code].output_path = final_video
-                        self.after_safe(lambda c=code: self.update_task_row(c))
-                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ✅ {c}: Hoàn thành final!"))
-                    else:
-                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ❌ {c}: lỗi ghép"))
-
-                except Exception as e:
-                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"  [Edit] ❌ {c}: {e}"))
 
             # Định nghĩa hàm chạy song song cho kịch bản
             def run_script_generation():
                 if not self.app.config.gemini_api_key:
                     self.after_safe(lambda: self.add_log("  [Script] ⚠️ Bỏ qua - chưa có API key"))
-                    # Đánh dấu tất cả voice done để edit có thể chạy
-                    with status_lock:
-                        for code in voice_done:
-                            voice_done[code] = True
                     return
 
                 gemini = GeminiService(self.app.config.gemini_api_key)
@@ -1647,9 +1547,6 @@ class MainTab:
                     existing_script = row[6].strip() if len(row) > 6 else ""  # G
 
                     if not name:
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
                         continue
 
                     # Check existing voice
@@ -1659,9 +1556,6 @@ class MainTab:
 
                     if has_voice:
                         self.after_safe(lambda c=code: self.add_log(f"  [Script] ⏭️ {c}: đã có voice"))
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
                         continue
 
                     try:
@@ -1677,9 +1571,6 @@ class MainTab:
                                 reader.sheet.update_acell(f"G{item['row']}", script)
                             else:
                                 self.after_safe(lambda c=code, e=script_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
-                                with status_lock:
-                                    voice_done[code] = True
-                                try_edit_item(code)
                                 continue
 
                         # Tạo voice
@@ -1696,18 +1587,10 @@ class MainTab:
                             else:
                                 self.after_safe(lambda c=code, e=voice_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
 
-                        # Đánh dấu voice done và thử edit
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
-
                         time.sleep(1)  # Rate limit
 
                     except Exception as e:
                         self.after_safe(lambda c=code, e=str(e): self.add_log(f"  [Script] ❌ {c}: {e}"))
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
 
             # Định nghĩa hàm chạy song song cho video
             def run_video_creation():
@@ -1738,26 +1621,18 @@ class MainTab:
 
                         if result and result.success:
                             self.set_task_render_status(code, TaskItem.STATUS_DONE)
-                            self.after_safe(lambda c=code: self.add_log(f"  [Video] ✓ {c}: xong video"))
-
-                            # Đánh dấu video done và thử edit
-                            with status_lock:
-                                video_done[code] = True
-                            try_edit_item(code)
+                            if result.output_path:
+                                self.tasks[code].output_path = Path(result.output_path)
+                                self.after_safe(lambda c=code: self.update_task_row(c))
+                            self.after_safe(lambda c=code: self.add_log(f"  [Video] ✅ {c}: Hoàn thành!"))
                         else:
                             self.set_task_render_status(code, TaskItem.STATUS_ERROR)
                             error_msg = getattr(result, 'error', 'Lỗi') if result else 'Không có kết quả'
                             self.after_safe(lambda c=code, err=error_msg: self.add_log(f"  [Video] ❌ {c}: {err}"))
-                            with status_lock:
-                                video_done[code] = True
-                            try_edit_item(code)
 
                     except Exception as e:
                         self.set_task_render_status(code, TaskItem.STATUS_ERROR)
                         self.after_safe(lambda c=code, err=str(e): self.add_log(f"  [Video] ❌ {c}: {err}"))
-                        with status_lock:
-                            video_done[code] = True
-                        try_edit_item(code)
 
             # Chạy song song 2 luồng
             with ThreadPoolExecutor(max_workers=2) as executor:

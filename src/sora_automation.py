@@ -82,12 +82,38 @@ class SoraAutomation:
     def log_warn(self, msg: str):
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
+    def focus_sora_window(self) -> bool:
+        """Focus vào cửa sổ Chrome có SORA"""
+        try:
+            import pygetwindow as gw
+            # Tìm cửa sổ có "Sora" hoặc "ChatGPT" trong title
+            windows = gw.getWindowsWithTitle('Sora')
+            if not windows:
+                windows = gw.getWindowsWithTitle('ChatGPT')
+            if not windows:
+                windows = gw.getWindowsWithTitle('Chrome')
+
+            if windows:
+                win = windows[0]
+                if win.isMinimized:
+                    win.restore()
+                win.activate()
+                time.sleep(0.3)
+                return True
+            return False
+        except Exception as e:
+            self.log_warn(f"Không focus được cửa sổ: {e}")
+            return False
+
     def run_js(self, js: str, close_devtools: bool = True) -> bool:
         """Chạy JS qua DevTools Console (không lấy kết quả)"""
         if not pag or not pyperclip:
             return False
 
         try:
+            # Focus vào cửa sổ SORA trước
+            self.focus_sora_window()
+
             # Mở DevTools Console
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
@@ -115,6 +141,9 @@ class SoraAutomation:
             return None
 
         try:
+            # Focus vào cửa sổ SORA trước
+            self.focus_sora_window()
+
             # Mở DevTools
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
@@ -176,6 +205,9 @@ class SoraAutomation:
         """Mở tab SORA trong browser đang có (Ctrl+T rồi navigate)"""
         try:
             self.log("🌐 Mở tab SORA trong browser hiện tại...")
+
+            # Focus vào Chrome trước
+            self.focus_sora_window()
 
             # Mở tab mới
             pag.hotkey("ctrl", "t")

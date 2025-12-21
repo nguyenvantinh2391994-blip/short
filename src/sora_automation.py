@@ -194,6 +194,23 @@ class SoraAutomation:
             self.log_err(f"Lỗi mở tab SORA: {e}")
             return False
 
+    def _is_chrome_running(self) -> bool:
+        """Kiểm tra có Chrome đang chạy không"""
+        try:
+            import psutil
+            for proc in psutil.process_iter(['name']):
+                if proc.info['name'] and 'chrome' in proc.info['name'].lower():
+                    return True
+            return False
+        except:
+            # Fallback: thử tìm cửa sổ Chrome
+            try:
+                import pygetwindow as gw
+                windows = gw.getWindowsWithTitle('Chrome')
+                return len(windows) > 0
+            except:
+                return False
+
     def start(self) -> bool:
         """Khởi động SORA (dùng browser đang mở hoặc mở Chrome mới)"""
         if not HAS_PAG:
@@ -205,14 +222,20 @@ class SoraAutomation:
             return False
 
         try:
-            if self.use_existing_browser:
+            # Kiểm tra có Chrome đang chạy không
+            chrome_running = self._is_chrome_running()
+
+            if self.use_existing_browser and chrome_running:
                 # Dùng browser đang mở (từ Grok) - chỉ mở tab mới
                 self.log("🚀 Dùng browser đang mở...")
                 if not self.navigate_to_sora():
                     return False
             else:
-                # Mở Chrome mới
-                self.log("🚀 Mở Chrome cho SORA...")
+                # Mở Chrome mới (hoặc fallback khi không có browser)
+                if self.use_existing_browser:
+                    self.log("⚠️ Không tìm thấy Chrome đang chạy, mở Chrome mới...")
+                else:
+                    self.log("🚀 Mở Chrome cho SORA...")
                 if not self.open_chrome(self.SORA_URL):
                     return False
                 time.sleep(5)

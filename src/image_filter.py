@@ -1,7 +1,7 @@
 """
 Image Filter - Lọc ảnh sản phẩm
 - Chỉ giữ ảnh có người (thật)
-- Loại bỏ ảnh ghép/collage
+- Loại bỏ ảnh ghép/collage (ảnh nhiều ảnh nhỏ ghép lại)
 """
 
 import cv2
@@ -32,28 +32,19 @@ class ImageFilterResult:
 
 
 class ImageFilter:
-    """Bộ lọc ảnh sản phẩm"""
+    """Bộ lọc ảnh sản phẩm - ĐƠN GIẢN VÀ CHÍNH XÁC"""
 
     def __init__(
         self,
         require_person: bool = True,
         reject_collage: bool = True,
         min_person_confidence: float = 0.5,
-        collage_threshold: float = 0.25,  # Giảm threshold để nhạy hơn
     ):
-        """
-        Args:
-            require_person: Yêu cầu ảnh phải có người
-            reject_collage: Loại bỏ ảnh ghép
-            min_person_confidence: Độ tin cậy tối thiểu để nhận diện người
-            collage_threshold: Ngưỡng để coi là ảnh ghép (lower = stricter)
-        """
         self.require_person = require_person
         self.reject_collage = reject_collage
         self.min_person_confidence = min_person_confidence
-        self.collage_threshold = collage_threshold
 
-        # Khởi tạo mediapipe pose detector (nhận diện người)
+        # Khởi tạo mediapipe pose detector
         self._pose = None
         self._face_cascade = None
 
@@ -76,30 +67,22 @@ class ImageFilter:
             console.print(f"[yellow]Không load được face cascade: {e}[/]")
 
     def detect_person(self, image: np.ndarray) -> Tuple[bool, float]:
-        """
-        Phát hiện người trong ảnh
-
-        Returns:
-            Tuple (có_người, độ_tin_cậy)
-        """
+        """Phát hiện người trong ảnh"""
         if image is None:
             return False, 0.0
 
-        # Thử MediaPipe Pose trước (nhận diện toàn thân)
+        # Thử MediaPipe Pose trước
         if self._pose is not None:
             try:
-                # Convert BGR to RGB
                 rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 results = self._pose.process(rgb_image)
 
                 if results.pose_landmarks:
-                    # Có pose landmarks -> có người
-                    # Tính confidence dựa trên visibility của các điểm
                     visibilities = [lm.visibility for lm in results.pose_landmarks.landmark]
                     avg_visibility = sum(visibilities) / len(visibilities)
                     return True, avg_visibility
-            except Exception as e:
-                console.print(f"[dim]MediaPipe error: {e}[/]")
+            except Exception:
+                pass
 
         # Fallback: OpenCV face detection
         if self._face_cascade is not None:
@@ -113,288 +96,149 @@ class ImageFilter:
                 )
 
                 if len(faces) > 0:
-                    # Có ít nhất 1 khuôn mặt
-                    # Confidence dựa trên kích thước face so với ảnh
                     max_area = max(w * h for (x, y, w, h) in faces)
                     img_area = image.shape[0] * image.shape[1]
-                    confidence = min(max_area / img_area * 10, 1.0)  # Scale up, max 1.0
+                    confidence = min(max_area / img_area * 10, 1.0)
                     return True, confidence
-            except Exception as e:
-                console.print(f"[dim]Face detection error: {e}[/]")
+            except Exception:
+                pass
 
         return False, 0.0
 
     def detect_collage(self, image: np.ndarray) -> Tuple[bool, float]:
         """
-        Phát hiện ảnh ghép/collage
-
-        Ảnh ghép thường có:
-        - Đường biên thẳng rõ ràng chia ảnh (viền màu)
-        - Nhiều vùng có histogram khác nhau rõ rệt
-        - Grid pattern (chia đều thành 2, 3, 4... phần)
-        - Sự thay đổi đột ngột của màu sắc theo chiều dọc/ngang
-
-        Returns:
-            Tuple (là_ảnh_ghép, độ_tin_cậy)
+        Phát hiện ảnh ghép/collage - CHỈ phát hiện các trường hợp RÕ RÀNG:
+        1. Có đường viền/border rõ ràng chia ảnh
+        2. Có >= 3 khuôn mặt xếp thành hàng đều
         """
         if image is None:
             return False, 0.0
 
         try:
             h, w = image.shape[:2]
-            scores = []
 
-            # 1. Phát hiện đường biên dọc (viền màu giữa các ảnh)
-            vertical_score = self._detect_color_borders_vertical(image)
-            scores.append(("vertical_border", vertical_score))
+            # === 1. Phát hiện ĐƯỜNG VIỀN THẲNG chia ảnh ===
+            # Chỉ check các vị trí chia đều: 1/2, 1/3, 2/3
+            border_score = self._detect_clear_border(image)
+            if border_score > 0.7:
+                return True, border_score
 
-            # 2. Phát hiện sự thay đổi đột ngột của histogram theo chiều dọc
-            histogram_score = self._detect_histogram_jumps(image)
-            scores.append(("histogram_jump", histogram_score))
+            # === 2. Phát hiện NHIỀU MẶT xếp hàng đều ===
+            face_grid_score = self._detect_face_grid_strict(image)
+            if face_grid_score > 0.7:
+                return True, face_grid_score
 
-            # 3. Kiểm tra nhiều khuôn mặt cách đều nhau (grid pattern)
-            face_grid_score = self._detect_face_grid(image)
-            scores.append(("face_grid", face_grid_score))
-
-            # 4. Phát hiện viền màu (colored border)
-            border_score = self._detect_colored_border(image)
-            scores.append(("colored_border", border_score))
-
-            # 5. Kiểm tra region khác nhau
-            region_score = self._detect_region_differences(image)
-            scores.append(("region_diff", region_score))
-
-            # Tổng hợp - lấy max của các scores
-            max_score = max(s[1] for s in scores)
-
-            # Nếu có bất kỳ score nào cao -> là collage
-            is_collage = max_score >= self.collage_threshold
-
-            # Debug
-            if max_score > 0.1:
-                reason = ", ".join([f"{name}={val:.2f}" for name, val in scores if val > 0.1])
-                console.print(f"[dim]Collage scores: {reason}[/]")
-
-            return is_collage, max_score
+            return False, 0.0
 
         except Exception as e:
             console.print(f"[dim]Collage detection error: {e}[/]")
             return False, 0.0
 
-    def _detect_color_borders_vertical(self, image: np.ndarray) -> float:
+    def _detect_clear_border(self, image: np.ndarray) -> float:
         """
-        Phát hiện đường biên dọc có màu (viền giữa các ảnh ghép)
+        Phát hiện đường viền RÕ RÀNG chia ảnh
+        - Viền phải là đường thẳng dọc, màu đồng nhất
+        - Viền phải chia ảnh thành các phần có nội dung khác nhau
         """
         h, w = image.shape[:2]
 
-        # Các vị trí có thể có đường chia (1/2, 1/3, 2/3, 1/4, 3/4)
-        check_positions = [w // 2, w // 3, 2 * w // 3, w // 4, 3 * w // 4]
-
-        max_score = 0.0
+        # Chỉ check các vị trí chia đều
+        check_positions = [w // 2, w // 3, 2 * w // 3]
 
         for pos in check_positions:
-            if pos <= 20 or pos >= w - 20:
+            if pos <= 30 or pos >= w - 30:
                 continue
 
-            # Lấy cột pixel tại vị trí này (rộng 10px)
-            col_strip = image[:, pos-5:pos+5]
+            # Lấy strip dọc tại vị trí này (rộng 6px)
+            strip = image[:, pos-3:pos+3]
 
-            # Tính độ đồng nhất của màu trong strip này
-            # Nếu strip có màu đồng nhất (viền) -> là collage
-            std_per_channel = np.std(col_strip, axis=(0, 1))
-            avg_std = np.mean(std_per_channel)
+            # Kiểm tra strip có màu đồng nhất không (std thấp)
+            strip_std = np.std(strip, axis=(0, 1))
+            avg_strip_std = np.mean(strip_std)
 
-            # So sánh với vùng bên cạnh
-            left_strip = image[:, pos-30:pos-10] if pos > 30 else None
-            right_strip = image[:, pos+10:pos+30] if pos < w - 30 else None
+            # Viền phải có màu đồng nhất (std < 25)
+            if avg_strip_std > 25:
+                continue
 
-            if left_strip is not None and right_strip is not None:
-                left_std = np.mean(np.std(left_strip, axis=(0, 1)))
-                right_std = np.mean(np.std(right_strip, axis=(0, 1)))
+            # Lấy 2 vùng bên cạnh
+            left_region = image[:, max(0, pos-50):pos-10]
+            right_region = image[:, pos+10:min(w, pos+50)]
 
-                # Nếu strip giữa đồng nhất hơn 2 bên -> có viền
-                if avg_std < min(left_std, right_std) * 0.5:
-                    max_score = max(max_score, 0.8)
-                    continue
+            if left_region.size == 0 or right_region.size == 0:
+                continue
 
-            # Kiểm tra sự khác biệt màu giữa 2 bên
-            if left_strip is not None and right_strip is not None:
-                left_mean = np.mean(left_strip, axis=(0, 1))
-                right_mean = np.mean(right_strip, axis=(0, 1))
-                color_diff = np.linalg.norm(left_mean - right_mean)
+            # So sánh màu trung bình của viền với 2 bên
+            strip_mean = np.mean(strip, axis=(0, 1))
+            left_mean = np.mean(left_region, axis=(0, 1))
+            right_mean = np.mean(right_region, axis=(0, 1))
 
-                # Nếu 2 bên khác màu nhiều -> có thể là collage
-                if color_diff > 50:  # Threshold cho sự khác biệt màu
-                    score = min(color_diff / 100, 1.0)
-                    max_score = max(max_score, score * 0.6)
+            # Viền phải khác màu với cả 2 bên
+            diff_left = np.linalg.norm(strip_mean - left_mean)
+            diff_right = np.linalg.norm(strip_mean - right_mean)
 
-        return max_score
+            # VÀ 2 bên phải khác nhau
+            diff_sides = np.linalg.norm(left_mean - right_mean)
 
-    def _detect_histogram_jumps(self, image: np.ndarray) -> float:
-        """
-        Phát hiện sự thay đổi đột ngột của histogram theo chiều dọc
-        (ảnh ghép thường có sự thay đổi đột ngột tại đường nối)
-        """
-        h, w = image.shape[:2]
-
-        # Chia ảnh thành các cột và tính histogram mỗi cột
-        num_strips = 6
-        strip_width = w // num_strips
-        histograms = []
-
-        for i in range(num_strips):
-            start = i * strip_width
-            end = start + strip_width
-            strip = image[:, start:end]
-
-            hist = cv2.calcHist([strip], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-            hist = cv2.normalize(hist, hist).flatten()
-            histograms.append(hist)
-
-        # So sánh histogram giữa các cột liền kề
-        max_diff = 0.0
-        for i in range(len(histograms) - 1):
-            diff = cv2.compareHist(histograms[i], histograms[i + 1], cv2.HISTCMP_BHATTACHARYYA)
-            max_diff = max(max_diff, diff)
-
-        # Nếu có sự khác biệt lớn -> có thể là collage
-        # Bhattacharyya distance > 0.5 là khá khác nhau
-        if max_diff > 0.4:
-            return min((max_diff - 0.3) / 0.4, 1.0)
+            # Điều kiện: viền khác 2 bên (> 30) VÀ 2 bên khác nhau (> 40)
+            if diff_left > 30 and diff_right > 30 and diff_sides > 40:
+                console.print(f"[dim]Found border at x={pos}: strip_std={avg_strip_std:.1f}, diff_sides={diff_sides:.1f}[/]")
+                return 0.9
 
         return 0.0
 
-    def _detect_face_grid(self, image: np.ndarray) -> float:
+    def _detect_face_grid_strict(self, image: np.ndarray) -> float:
         """
-        Phát hiện nhiều khuôn mặt cách đều nhau (dấu hiệu của ảnh ghép)
+        Phát hiện >= 3 khuôn mặt xếp thành hàng đều
+        Đây là dấu hiệu RÕ RÀNG của ảnh ghép (nhiều outfit của 1 model)
         """
         if self._face_cascade is None:
             return 0.0
 
         try:
+            h, w = image.shape[:2]
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
             faces = self._face_cascade.detectMultiScale(
                 gray,
                 scaleFactor=1.1,
-                minNeighbors=3,  # Giảm để detect nhiều hơn
-                minSize=(20, 20)
+                minNeighbors=4,
+                minSize=(25, 25)
             )
 
-            if len(faces) < 2:
+            # Cần ít nhất 3 mặt
+            if len(faces) < 3:
                 return 0.0
 
-            # Nếu có >= 2 faces với khoảng cách x tương tự -> grid
-            h, w = image.shape[:2]
+            # Lấy tâm X của các mặt
             face_centers_x = sorted([(x + fw // 2) for x, y, fw, fh in faces])
 
-            if len(face_centers_x) >= 2:
-                # Tính khoảng cách giữa các face
-                gaps = []
-                for i in range(len(face_centers_x) - 1):
-                    gaps.append(face_centers_x[i + 1] - face_centers_x[i])
+            # Tính khoảng cách giữa các mặt liền kề
+            gaps = []
+            for i in range(len(face_centers_x) - 1):
+                gaps.append(face_centers_x[i + 1] - face_centers_x[i])
 
-                # Nếu khoảng cách gần bằng nhau -> grid pattern
-                if len(gaps) >= 1:
-                    avg_gap = sum(gaps) / len(gaps)
-                    expected_gap = w / (len(face_centers_x))
+            if len(gaps) < 2:
+                return 0.0
 
-                    # Nếu gap gần với chia đều -> collage
-                    if abs(avg_gap - expected_gap) < expected_gap * 0.3:
-                        return 0.7
+            # Kiểm tra các gap có gần bằng nhau không
+            avg_gap = sum(gaps) / len(gaps)
+            max_deviation = max(abs(g - avg_gap) for g in gaps)
 
-            # Nếu có >= 3 faces -> khả năng cao là collage
-            if len(faces) >= 3:
-                return 0.5
+            # Nếu gap đều nhau (deviation < 20% của avg)
+            if max_deviation < avg_gap * 0.25:
+                # Và gap gần với chia đều ảnh
+                expected_gap = w / (len(faces) + 1)
+                if abs(avg_gap - expected_gap) < expected_gap * 0.4:
+                    console.print(f"[dim]Found face grid: {len(faces)} faces, gaps={gaps}[/]")
+                    return 0.9
 
             return 0.0
 
         except Exception:
             return 0.0
 
-    def _detect_colored_border(self, image: np.ndarray) -> float:
-        """
-        Phát hiện viền màu (border) xung quanh hoặc ở giữa ảnh
-        """
-        h, w = image.shape[:2]
-
-        # Kiểm tra viền trái
-        left_border = image[:, 0:min(20, w//10)]
-        left_std = np.std(left_border, axis=(0, 1))
-
-        # Kiểm tra viền phải
-        right_border = image[:, max(0, w - 20):]
-        right_std = np.std(right_border, axis=(0, 1))
-
-        # Nếu viền có màu đồng nhất (std thấp) và khác với phần còn lại
-        score = 0.0
-
-        # Viền đồng nhất = std thấp
-        if np.mean(left_std) < 30:
-            # Kiểm tra màu viền có khác với phần trong không
-            inner = image[:, 30:w//3]
-            inner_mean = np.mean(inner, axis=(0, 1))
-            border_mean = np.mean(left_border, axis=(0, 1))
-            diff = np.linalg.norm(inner_mean - border_mean)
-            if diff > 40:
-                score = max(score, 0.6)
-
-        if np.mean(right_std) < 30:
-            inner = image[:, 2*w//3:w-30]
-            inner_mean = np.mean(inner, axis=(0, 1))
-            border_mean = np.mean(right_border, axis=(0, 1))
-            diff = np.linalg.norm(inner_mean - border_mean)
-            if diff > 40:
-                score = max(score, 0.6)
-
-        return score
-
-    def _detect_region_differences(self, image: np.ndarray) -> float:
-        """Phát hiện sự khác biệt giữa các vùng trong ảnh (chia theo chiều dọc)"""
-        h, w = image.shape[:2]
-
-        # Chia thành 3 phần theo chiều dọc (cho ảnh ghép 3 cột)
-        third_w = w // 3
-        regions = [
-            image[:, 0:third_w],           # Left
-            image[:, third_w:2*third_w],   # Middle
-            image[:, 2*third_w:w],         # Right
-        ]
-
-        # Tính histogram cho mỗi vùng
-        histograms = []
-        for region in regions:
-            if region.size == 0:
-                continue
-            hist = cv2.calcHist([region], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-            hist = cv2.normalize(hist, hist).flatten()
-            histograms.append(hist)
-
-        if len(histograms) < 3:
-            return 0.0
-
-        # So sánh histogram giữa các vùng liền kề
-        diff_01 = cv2.compareHist(histograms[0], histograms[1], cv2.HISTCMP_BHATTACHARYYA)
-        diff_12 = cv2.compareHist(histograms[1], histograms[2], cv2.HISTCMP_BHATTACHARYYA)
-        diff_02 = cv2.compareHist(histograms[0], histograms[2], cv2.HISTCMP_BHATTACHARYYA)
-
-        # Nếu cả 3 vùng đều khác nhau -> collage
-        avg_diff = (diff_01 + diff_12 + diff_02) / 3
-
-        if avg_diff > 0.35:
-            return min((avg_diff - 0.2) / 0.4, 1.0)
-
-        return 0.0
-
     def filter_image(self, image_path: str) -> ImageFilterResult:
-        """
-        Lọc một ảnh
-
-        Args:
-            image_path: Đường dẫn ảnh
-
-        Returns:
-            ImageFilterResult
-        """
+        """Lọc một ảnh"""
         path = Path(image_path)
 
         if not path.exists():
@@ -406,7 +250,6 @@ class ImageFilter:
                 reason="File không tồn tại"
             )
 
-        # Đọc ảnh
         image = cv2.imread(str(path))
         if image is None:
             return ImageFilterResult(
@@ -420,15 +263,22 @@ class ImageFilter:
         # Detect person
         has_person, person_conf = self.detect_person(image)
 
-        # Detect collage
-        is_collage, collage_conf = self.detect_collage(image)
+        # Detect collage (chỉ khi reject_collage = True)
+        is_collage = False
+        collage_conf = 0.0
+        if self.reject_collage:
+            is_collage, collage_conf = self.detect_collage(image)
 
         # Quyết định giữ hay bỏ
         should_keep = True
         reason = ""
 
-        # Ưu tiên check collage trước
-        if self.reject_collage and is_collage:
+        # Logic đơn giản:
+        # 1. Nếu là collage -> BỎ
+        # 2. Nếu không có người VÀ require_person -> BỎ
+        # 3. Còn lại -> GIỮ
+
+        if is_collage:
             should_keep = False
             reason = f"Ảnh ghép (conf: {collage_conf:.2f})"
         elif self.require_person and not has_person:
@@ -437,7 +287,9 @@ class ImageFilter:
         elif has_person:
             reason = f"Có người (conf: {person_conf:.2f})"
         else:
-            reason = "Không phát hiện đặc điểm đặc biệt"
+            # Không require person, không phải collage -> giữ
+            should_keep = True
+            reason = "OK"
 
         return ImageFilterResult(
             path=str(path),
@@ -454,18 +306,7 @@ class ImageFilter:
         move_rejected: bool = False,
         on_progress: callable = None
     ) -> Tuple[List[ImageFilterResult], List[ImageFilterResult]]:
-        """
-        Lọc tất cả ảnh trong thư mục
-
-        Args:
-            folder_path: Thư mục chứa ảnh
-            output_folder: Thư mục output (nếu muốn copy ảnh tốt)
-            move_rejected: Di chuyển ảnh bị loại vào thư mục _rejected
-            on_progress: Callback (current, total, image_name)
-
-        Returns:
-            Tuple (ảnh_giữ, ảnh_loại)
-        """
+        """Lọc tất cả ảnh trong thư mục"""
         folder = Path(folder_path)
         if not folder.exists():
             return [], []
@@ -497,7 +338,6 @@ class ImageFilter:
             else:
                 rejected.append(result)
 
-                # Di chuyển ảnh bị loại nếu cần
                 if move_rejected:
                     rejected_folder = folder / "_rejected"
                     rejected_folder.mkdir(exist_ok=True)

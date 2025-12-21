@@ -743,8 +743,8 @@ def create_videos_from_sheets(
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Lấy danh sách sản phẩm chưa làm (cột E trống, lấy prompt từ cột F)
-    pending = sheets_reader.get_pending_products(status_column="E", prompt_column="F")
+    # Lấy danh sách sản phẩm chưa làm (cột F trống, lấy prompt từ cột G)
+    pending = sheets_reader.get_pending_products(status_column="F", prompt_column="G")
     if not pending:
         console.print("[yellow]Không có sản phẩm nào cần làm video[/]")
         return []

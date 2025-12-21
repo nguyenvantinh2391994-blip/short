@@ -41,8 +41,8 @@ class AppConfig:
     spreadsheet_id: str = ""
     sheet_name: str = "NGUON"
     credentials_file: str = "config/credentials.json"
-    status_column: str = "E"
-    prompt_column: str = "F"
+    status_column: str = "F"
+    prompt_column: str = "G"
 
     # Shopee settings
     auto_shopee: bool = True

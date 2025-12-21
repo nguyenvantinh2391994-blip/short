@@ -2017,8 +2017,7 @@ class MainTab:
             # Khởi tạo filter (không cần API key)
             img_filter = ImageFilter(
                 require_person=True,
-                reject_collage=True,
-                collage_threshold=0.25  # Nhạy hơn với ảnh ghép
+                reject_collage=True
             )
 
             total_kept = 0

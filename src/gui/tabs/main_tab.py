@@ -198,12 +198,12 @@ class MainTab:
         )
         self.script_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Tạo Video - Green/Success
+        # Nút Tạo Video (Grok) - Green/Success
         self.start_btn = ctk.CTkButton(
             btn_frame,
-            text="Tạo Video",
+            text="Grok",
             command=self.start_process,
-            width=120,
+            width=80,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
@@ -211,7 +211,22 @@ class MainTab:
             hover_color=self.COLORS["success_hover"],
             text_color="white"
         )
-        self.start_btn.pack(side="left", padx=(0, 10))
+        self.start_btn.pack(side="left", padx=(0, 5))
+
+        # Nút Tạo Video SORA - Gradient Purple/Blue
+        self.sora_btn = ctk.CTkButton(
+            btn_frame,
+            text="SORA",
+            command=self.start_sora_process,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#7C3AED",  # Purple
+            hover_color="#6D28D9",
+            text_color="white"
+        )
+        self.sora_btn.pack(side="left", padx=(0, 10))
 
         # Nút Edit - Dark Cyan (trước Chạy Full)
         self.edit_btn = ctk.CTkButton(
@@ -1158,10 +1173,152 @@ class MainTab:
         self.shopee_btn.configure(state="normal")
         self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
+        self.sora_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
         self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+
+    # ===== SORA VIDEO CREATION =====
+
+    def start_sora_process(self):
+        """Bắt đầu tạo video bằng SORA"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.sora_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("🎬 Bắt đầu tạo video SORA...")
+
+        thread = threading.Thread(target=self._run_sora_creation, daemon=True)
+        thread.start()
+
+    def _run_sora_creation(self):
+        """Background thread tạo video SORA"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...sora_automation import SoraAutomation
+
+            self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối Google Sheets!"))
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần tạo video"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"📋 Tìm thấy {n} sản phẩm"))
+
+            # Tạo tasks
+            for item in pending:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # Lấy browser profile
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            # Khởi tạo SORA automation
+            output_folder = Path(self.app.config.output_folder)
+            output_folder.mkdir(parents=True, exist_ok=True)
+
+            sora = SoraAutomation(
+                output_folder=str(output_folder),
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                headless=False
+            )
+
+            try:
+                self.after_safe(lambda: self.add_log("🌐 Khởi động SORA..."))
+
+                if not sora.start():
+                    self.after_safe(lambda: self.add_log("❌ Không thể khởi động SORA!"))
+                    return
+
+                # Xử lý từng sản phẩm
+                for item in pending:
+                    if self.stop_flag.is_set():
+                        break
+
+                    code = item["code"]
+                    prompt = item.get("prompt", "")
+
+                    if not prompt:
+                        self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt"))
+                        self.set_task_grok_status(code, TaskItem.STATUS_ERROR)
+                        continue
+
+                    self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
+                    self.set_task_grok_status(code, TaskItem.STATUS_PROCESSING)
+
+                    # Tạo video
+                    result = sora.generate_video(
+                        prompt=prompt,
+                        output_name=code
+                    )
+
+                    if result and result.get("success"):
+                        video_path = result.get("video_path")
+                        self.after_safe(lambda c=code, p=video_path:
+                            self.add_log(f"  ✓ {c}: Video đã tạo - {Path(p).name}"))
+                        self.set_task_grok_status(code, TaskItem.STATUS_DONE)
+                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
+
+                        # Cập nhật Google Sheets
+                        try:
+                            reader.update_status(item["row"], "DONE", self.app.config.status_column)
+                        except Exception:
+                            pass
+                    else:
+                        error = result.get("error", "Lỗi không xác định") if result else "Timeout"
+                        self.after_safe(lambda c=code, e=error:
+                            self.add_log(f"  ✗ {c}: {e}"))
+                        self.set_task_grok_status(code, TaskItem.STATUS_ERROR)
+
+                self.after_safe(lambda: self.add_log("\n✅ Hoàn thành SORA!"))
+
+            finally:
+                sora.close()
+
+        except ImportError as e:
+            self.after_safe(lambda: self.add_log(f"❌ Chưa có module SORA: {e}"))
+            self.after_safe(lambda: self.add_log("💡 Module sora_automation.py chưa được tạo"))
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_process_complete)
 
     def stop_process(self):
         """Stop current process"""

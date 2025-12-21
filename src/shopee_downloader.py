@@ -878,28 +878,6 @@ class ShopeeDownloader:
             except Exception as e:
                 console.print(f"[yellow]⚠️ Lỗi crop: {e}[/]")
 
-            # Lọc ảnh: chỉ giữ ảnh có người, loại ảnh ghép
-            try:
-                from .image_filter import filter_product_images
-                kept, rejected = filter_product_images(
-                    folder_path=str(folder),
-                    require_person=True,
-                    reject_collage=True,
-                    move_rejected=True,
-                    on_log=lambda msg: console.print(msg)
-                )
-                if rejected > 0:
-                    console.print(f"[yellow]🔍 Đã lọc: giữ {kept}, loại {rejected} ảnh[/]")
-                    # Cập nhật lại danh sách downloaded
-                    downloaded = [
-                        str(p) for p in folder.glob("*.jpg")
-                        if not str(p).startswith(str(folder / "_rejected"))
-                    ]
-            except ImportError:
-                console.print(f"[dim]Bỏ qua lọc ảnh (chưa cài mediapipe/opencv)[/]")
-            except Exception as e:
-                console.print(f"[yellow]⚠️ Lỗi lọc ảnh: {e}[/]")
-
         return downloaded
 
     def download_from_url(

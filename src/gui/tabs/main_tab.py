@@ -1801,14 +1801,9 @@ class MainTab:
     # ===== IMAGE FILTER =====
 
     def filter_images(self):
-        """Lọc ảnh - xóa logo/banner, giữ ảnh sản phẩm"""
+        """Lọc ảnh - loại ảnh ghép/collage, giữ ảnh có người"""
         if self.is_running:
             self.add_log("Đang chạy task khác...")
-            return
-
-        # Kiểm tra API key
-        if not self.app.config.gemini_api_key:
-            self.add_log("❌ Cần Gemini API key để lọc ảnh! Vào Settings.")
             return
 
         self.is_running = True
@@ -1820,24 +1815,25 @@ class MainTab:
         self.edit_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
-        self.add_log("🔍 Bắt đầu lọc ảnh...")
+        self.add_log("🔍 Bắt đầu lọc ảnh (loại ảnh ghép, giữ ảnh có người)...")
 
         thread = threading.Thread(target=self._run_image_filter, daemon=True)
         thread.start()
 
     def _run_image_filter(self):
-        """Background thread lọc ảnh"""
+        """Background thread lọc ảnh - sử dụng OpenCV/MediaPipe"""
         try:
-            from ...image_processor import ImageFilter
-            import time
+            from ...image_filter import ImageFilter
+            import shutil
 
             input_folder = Path(self.app.config.input_folder)
             if not input_folder.exists():
                 self.after_safe(lambda: self.add_log(f"❌ Folder không tồn tại: {input_folder}"))
                 return
 
-            # Lấy tất cả subfolder
-            folders = [f for f in input_folder.iterdir() if f.is_dir()]
+            # Lấy tất cả subfolder (không lấy _rejected)
+            folders = [f for f in input_folder.iterdir()
+                      if f.is_dir() and not f.name.startswith('_')]
 
             if not folders:
                 self.after_safe(lambda: self.add_log("Không có folder nào để lọc"))
@@ -1845,58 +1841,75 @@ class MainTab:
 
             self.after_safe(lambda n=len(folders): self.add_log(f"📁 Tìm thấy {n} folder"))
 
-            filter = ImageFilter(self.app.config.gemini_api_key)
+            # Khởi tạo filter (không cần API key)
+            img_filter = ImageFilter(
+                require_person=True,
+                reject_collage=True,
+                collage_threshold=0.25  # Nhạy hơn với ảnh ghép
+            )
 
             total_kept = 0
-            total_deleted = 0
+            total_rejected = 0
 
-            for folder in folders:
-                if self.stop_flag.is_set():
-                    break
-
-                # Đếm ảnh trong folder
-                extensions = {'.jpg', '.jpeg', '.png', '.webp'}
-                images = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
-
-                if not images:
-                    continue
-
-                self.after_safe(lambda f=folder.name, n=len(images): self.add_log(f"\n📁 {f}: {n} ảnh"))
-
-                for img_path in images:
+            try:
+                for folder in folders:
                     if self.stop_flag.is_set():
                         break
 
-                    try:
-                        analysis = filter.analyze_image(str(img_path))
+                    # Đếm ảnh trong folder
+                    extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+                    images = [f for f in folder.iterdir()
+                             if f.suffix.lower() in extensions and not f.name.startswith('_')]
 
-                        if analysis.should_keep:
-                            total_kept += 1
-                            self.after_safe(lambda p=img_path.name, d=analysis.description:
-                                self.add_log(f"  ✓ {p}: {d[:50]}"))
-                        else:
-                            total_deleted += 1
-                            self.after_safe(lambda p=img_path.name, d=analysis.description:
-                                self.add_log(f"  ✗ {p}: {d[:50]}"))
+                    if not images:
+                        continue
 
-                            # Xóa file
-                            try:
-                                img_path.unlink()
-                                self.after_safe(lambda: self.add_log("    → Đã xóa"))
-                            except Exception as e:
-                                self.after_safe(lambda e=e: self.add_log(f"    → Lỗi xóa: {e}"))
+                    self.after_safe(lambda f=folder.name, n=len(images):
+                        self.add_log(f"\n📁 {f}: {n} ảnh"))
 
-                        # Rate limit
-                        time.sleep(0.5)
+                    # Tạo thư mục _rejected trong folder
+                    rejected_folder = folder / "_rejected"
 
-                    except Exception as e:
-                        self.after_safe(lambda p=img_path.name, e=str(e): self.add_log(f"  ⚠️ {p}: {e}"))
+                    for img_path in images:
+                        if self.stop_flag.is_set():
+                            break
 
-            # Tổng kết
-            self.after_safe(lambda: self.add_log("\n" + "="*40))
-            self.after_safe(lambda k=total_kept, d=total_deleted:
-                self.add_log(f"✅ Hoàn thành! Giữ: {k}, Xóa: {d}"))
+                        try:
+                            result = img_filter.filter_image(str(img_path))
 
+                            if result.should_keep:
+                                total_kept += 1
+                                self.after_safe(lambda p=img_path.name, r=result.reason:
+                                    self.add_log(f"  ✓ {p}: {r}"))
+                            else:
+                                total_rejected += 1
+                                self.after_safe(lambda p=img_path.name, r=result.reason:
+                                    self.add_log(f"  ✗ {p}: {r}"))
+
+                                # Di chuyển vào _rejected (không xóa)
+                                try:
+                                    rejected_folder.mkdir(exist_ok=True)
+                                    shutil.move(str(img_path), str(rejected_folder / img_path.name))
+                                    self.after_safe(lambda: self.add_log("    → Đã chuyển vào _rejected"))
+                                except Exception as e:
+                                    self.after_safe(lambda e=e: self.add_log(f"    → Lỗi: {e}"))
+
+                        except Exception as e:
+                            self.after_safe(lambda p=img_path.name, e=str(e):
+                                self.add_log(f"  ⚠️ {p}: {e}"))
+
+                # Tổng kết
+                self.after_safe(lambda: self.add_log("\n" + "="*40))
+                self.after_safe(lambda k=total_kept, r=total_rejected:
+                    self.add_log(f"✅ Hoàn thành! Giữ: {k}, Loại: {r}"))
+                self.after_safe(lambda: self.add_log("📂 Ảnh bị loại nằm trong thư mục _rejected"))
+
+            finally:
+                img_filter.close()
+
+        except ImportError as e:
+            self.after_safe(lambda: self.add_log(f"❌ Thiếu thư viện: {e}"))
+            self.after_safe(lambda: self.add_log("💡 Chạy: pip install opencv-python mediapipe"))
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
             import traceback

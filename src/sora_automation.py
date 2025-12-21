@@ -59,7 +59,7 @@ class SoraAutomation:
         profile_path: str = None,
         headless: bool = False,
         timeout: int = 300,
-        use_existing_browser: bool = False  # Mở Chrome mới với cùng profile
+        use_existing_browser: bool = True  # Dùng Chrome đang mở (từ Grok)
     ):
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)

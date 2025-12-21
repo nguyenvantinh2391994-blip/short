@@ -8,10 +8,9 @@ if exist "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 )
 
-REM Auto pull code moi nhat
+REM Auto pull code moi nhat (branch hien tai)
 echo Dang kiem tra cap nhat...
-git fetch origin claude/video-shorts-automation-HrKXG 2>nul
-git reset --hard origin/claude/video-shorts-automation-HrKXG 2>nul
+git pull 2>nul
 if %errorlevel%==0 (
     echo Da cap nhat code moi nhat!
 ) else (

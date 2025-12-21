@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 REM ========================================
 REM   Short Video Creator - Auto Update & Run
 REM ========================================
@@ -8,18 +9,27 @@ if exist "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 )
 
-REM Auto pull code moi nhat (branch hien tai)
+REM Fetch tat ca branches
 echo Dang kiem tra cap nhat...
-git pull 2>nul
-if %errorlevel%==0 (
-    echo Da cap nhat code moi nhat!
+git fetch --all 2>nul
+
+REM Tim branch claude moi nhat (theo commit date)
+for /f "tokens=*" %%i in ('git for-each-ref --sort=-committerdate --format="%%(refname:short)" refs/remotes/origin/claude/* --count=1') do set LATEST_BRANCH=%%i
+
+REM Neu tim thay branch moi
+if defined LATEST_BRANCH (
+    REM Bo prefix "origin/"
+    set LATEST_BRANCH=%LATEST_BRANCH:origin/=%
+    echo Branch moi nhat: %LATEST_BRANCH%
+
+    REM Checkout va reset ve branch moi nhat
+    git checkout %LATEST_BRANCH% 2>nul
+    git reset --hard origin/%LATEST_BRANCH% 2>nul
+    echo Da cap nhat thanh cong!
 ) else (
-    echo Khong the cap nhat, tiep tuc chay...
+    echo Khong tim thay branch, dung phien ban hien tai...
 )
 
-REM Chay GUI mac dinh
-if "%~1"=="" (
-    python run_gui.py
-) else (
-    python -m src.main %*
-)
+echo.
+REM Chay GUI
+python run_gui.py

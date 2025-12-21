@@ -58,7 +58,8 @@ class SoraAutomation:
         chrome_path: str = None,
         profile_path: str = None,
         headless: bool = False,
-        timeout: int = 300
+        timeout: int = 300,
+        use_existing_browser: bool = False  # Mở Chrome mới với cùng profile
     ):
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)
@@ -67,6 +68,7 @@ class SoraAutomation:
         self.profile_path = profile_path
         self.timeout = timeout
         self.chrome_process = None
+        self.use_existing_browser = use_existing_browser
 
     def log(self, msg: str):
         console.print(f"[cyan]{msg}[/]")
@@ -162,8 +164,30 @@ class SoraAutomation:
             self.log_err(f"Lỗi mở Chrome: {e}")
             return False
 
+    def navigate_to_sora(self) -> bool:
+        """Mở tab SORA trong browser đang có (Ctrl+T rồi navigate)"""
+        try:
+            self.log("🌐 Mở tab SORA trong browser hiện tại...")
+
+            # Mở tab mới
+            pag.hotkey("ctrl", "t")
+            time.sleep(1)
+
+            # Gõ URL và Enter
+            pyperclip.copy(self.SORA_URL)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(4)
+
+            self.log_ok("Đã mở tab SORA")
+            return True
+        except Exception as e:
+            self.log_err(f"Lỗi mở tab SORA: {e}")
+            return False
+
     def start(self) -> bool:
-        """Khởi động Chrome và mở SORA"""
+        """Khởi động SORA (dùng browser đang mở hoặc mở Chrome mới)"""
         if not HAS_PAG:
             self.log_err("Cần cài pyautogui: pip install pyautogui")
             return False
@@ -173,12 +197,17 @@ class SoraAutomation:
             return False
 
         try:
-            self.log("🚀 Mở Chrome cho SORA...")
-
-            if not self.open_chrome(self.SORA_URL):
-                return False
-
-            time.sleep(5)
+            if self.use_existing_browser:
+                # Dùng browser đang mở (từ Grok) - chỉ mở tab mới
+                self.log("🚀 Dùng browser đang mở...")
+                if not self.navigate_to_sora():
+                    return False
+            else:
+                # Mở Chrome mới
+                self.log("🚀 Mở Chrome cho SORA...")
+                if not self.open_chrome(self.SORA_URL):
+                    return False
+                time.sleep(5)
 
             # Kiểm tra đăng nhập - tìm textarea
             self.log("🔍 Kiểm tra đăng nhập SORA...")

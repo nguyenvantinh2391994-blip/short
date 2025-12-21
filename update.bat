@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+setlocal EnableDelayedExpansion
 echo ========================================
 echo    Short Video Creator - Auto Update
 echo ========================================
@@ -24,6 +25,7 @@ git fetch --all
 
 echo.
 echo [3/6] Tim branch moi nhat...
+set LATEST_BRANCH=
 for /f "tokens=*" %%i in ('git for-each-ref --sort=-committerdate --format="%%(refname:short)" refs/remotes/origin/claude/* --count=1') do set LATEST_BRANCH=%%i
 
 if not defined LATEST_BRANCH (
@@ -32,14 +34,14 @@ if not defined LATEST_BRANCH (
     exit /b 1
 )
 
-REM Bo prefix "origin/"
-set LATEST_BRANCH=%LATEST_BRANCH:origin/=%
-echo Branch moi nhat: %LATEST_BRANCH%
+REM Bo prefix "origin/" - su dung delayed expansion
+set BRANCH_NAME=!LATEST_BRANCH:origin/=!
+echo Branch moi nhat: !BRANCH_NAME!
 
 echo.
 echo [4/6] Checkout va reset ve branch moi nhat...
-git checkout %LATEST_BRANCH%
-git reset --hard origin/%LATEST_BRANCH%
+git checkout !BRANCH_NAME!
+git reset --hard origin/!BRANCH_NAME!
 
 echo.
 echo [5/6] Khoi phuc config...
@@ -59,11 +61,12 @@ pip install -r requirements.txt --quiet
 echo.
 echo ========================================
 echo    DA CAP NHAT XONG!
-echo    Branch: %LATEST_BRANCH%
+echo    Branch: !BRANCH_NAME!
 echo    Commit hien tai:
 git log --oneline -1
 echo.
 echo    Chay GUI: python run_gui.py
 echo    Hoac:     run.bat
 echo ========================================
+endlocal
 pause

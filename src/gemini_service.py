@@ -325,9 +325,19 @@ CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
                     )
                     if result.returncode != 0:
                         # Nếu ffmpeg fail, giữ lại file WAV
-                        console.print(f"[yellow]⚠️ ffmpeg không khả dụng, lưu WAV[/]")
+                        console.print(f"[yellow]⚠️ ffmpeg convert thất bại, lưu WAV[/]")
                         output_file = output_file.with_suffix(".wav")
                         shutil.copy(tmp_wav, str(output_file))
+                except FileNotFoundError:
+                    # ffmpeg không được cài đặt - lưu WAV thay vì MP3
+                    console.print(f"[yellow]⚠️ ffmpeg không được cài đặt, lưu WAV thay vì MP3[/]")
+                    output_file = output_file.with_suffix(".wav")
+                    shutil.copy(tmp_wav, str(output_file))
+                except Exception as e:
+                    # Lỗi khác - vẫn lưu WAV
+                    console.print(f"[yellow]⚠️ Lỗi convert MP3: {e}, lưu WAV[/]")
+                    output_file = output_file.with_suffix(".wav")
+                    shutil.copy(tmp_wav, str(output_file))
                 finally:
                     # Xóa file tạm
                     if os.path.exists(tmp_wav):

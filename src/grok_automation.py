@@ -182,19 +182,10 @@ class GrokBrowserAutomation:
 
             if self.profile_path and Path(self.profile_path).exists():
                 profile = Path(self.profile_path)
-                # Kiểm tra xem path là profile folder hay user-data-dir
-                if profile.name == "Default" or profile.name.startswith("Profile "):
-                    # Đường dẫn đầy đủ đến profile (VD: .../User Data/Default)
-                    cmd.extend([
-                        f"--user-data-dir={profile.parent}",
-                        f"--profile-directory={profile.name}"
-                    ])
-                else:
-                    # Đường dẫn là user-data-dir (VD: E:/chrome-profiles/1)
-                    cmd.extend([
-                        f"--user-data-dir={profile}",
-                        f"--profile-directory=Default"
-                    ])
+                cmd.extend([
+                    f"--user-data-dir={profile.parent}",
+                    f"--profile-directory={profile.name}"
+                ])
 
             cmd.extend([
                 "--window-size=1200,800",

@@ -171,7 +171,7 @@ class ShopeeDownloader:
 
         return None, None
 
-    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None, force_selenium: bool = False, min_images: int = 3) -> Optional[ShopeeProduct]:
+    def get_product_info(self, shop_id: int, item_id: int, original_url: str = None, force_selenium: bool = True, min_images: int = 3) -> Optional[ShopeeProduct]:
         """
         Lấy thông tin sản phẩm từ Shopee API
 

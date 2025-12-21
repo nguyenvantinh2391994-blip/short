@@ -2,13 +2,13 @@
 SORA Automation - Tự động tạo video bằng OpenAI SORA
 Website: https://sora.chatgpt.com/drafts
 
-Sử dụng PyAutoGUI + DevTools JS (giống Grok) để hỗ trợ Chrome extension
+Sử dụng PyAutoGUI + DevTools JS (giống Grok)
+Dùng chung Chrome profile với Grok (đã đăng nhập sẵn)
 """
 
 import subprocess
 import time
 import os
-import shutil
 import requests
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -42,13 +42,12 @@ class SoraResult:
     video_path: str = ""
     video_url: str = ""
     error: str = ""
-    duration: float = 0
 
 
 class SoraAutomation:
     """
     Tự động hóa SORA bằng PyAutoGUI + DevTools JS
-    Hỗ trợ Chrome extension (debug mode)
+    Dùng chung Chrome với Grok (cài đặt browser profiles)
     """
 
     SORA_URL = "https://sora.chatgpt.com/drafts"
@@ -82,9 +81,8 @@ class SoraAutomation:
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
     def run_js(self, js: str, close_devtools: bool = True) -> bool:
-        """Chạy JS qua DevTools Console"""
+        """Chạy JS qua DevTools Console (không lấy kết quả)"""
         if not pag or not pyperclip:
-            self.log_err("Thiếu pyautogui hoặc pyperclip")
             return False
 
         try:
@@ -110,21 +108,17 @@ class SoraAutomation:
             return False
 
     def run_js_get_result(self, js: str) -> Optional[str]:
-        """Chạy JS và lấy kết quả qua clipboard"""
+        """Chạy JS và lấy kết quả qua clipboard (dùng copy())"""
         if not pag or not pyperclip:
             return None
 
         try:
-            # Clear clipboard
-            pyperclip.copy("")
-
             # Mở DevTools
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
 
-            # Paste code
-            full_js = f"copy({js})"
-            pyperclip.copy(full_js)
+            # Paste code (đã có copy() bên trong js)
+            pyperclip.copy(js)
             pag.hotkey("ctrl", "v")
             time.sleep(0.3)
             pag.press("enter")
@@ -142,6 +136,32 @@ class SoraAutomation:
             self.log_err(f"run_js_get_result error: {e}")
             return None
 
+    def open_chrome(self, url: str) -> bool:
+        """Mở Chrome với profile (giống Grok)"""
+        try:
+            cmd = [self.chrome_path]
+
+            if self.profile_path and Path(self.profile_path).exists():
+                profile = Path(self.profile_path)
+                cmd.extend([
+                    f"--user-data-dir={profile.parent}",
+                    f"--profile-directory={profile.name}"
+                ])
+
+            cmd.extend([
+                "--window-size=1200,800",
+                "--window-position=50,50",
+                url
+            ])
+
+            self.log(f"   Lệnh: {' '.join(cmd[:3])}...")
+            self.chrome_process = subprocess.Popen(cmd, shell=False)
+            self.log_ok(f"Chrome PID: {self.chrome_process.pid}")
+            return True
+        except Exception as e:
+            self.log_err(f"Lỗi mở Chrome: {e}")
+            return False
+
     def start(self) -> bool:
         """Khởi động Chrome và mở SORA"""
         if not HAS_PAG:
@@ -155,41 +175,21 @@ class SoraAutomation:
         try:
             self.log("🚀 Mở Chrome cho SORA...")
 
-            # Tạo lệnh mở Chrome
-            cmd = [self.chrome_path]
+            if not self.open_chrome(self.SORA_URL):
+                return False
 
-            # Thêm profile nếu có
-            if self.profile_path:
-                # Lấy thư mục parent (User Data) và tên profile
-                profile_dir = Path(self.profile_path)
-                if profile_dir.name == "Default" or profile_dir.name.startswith("Profile"):
-                    user_data_dir = str(profile_dir.parent)
-                    profile_name = profile_dir.name
-                    cmd.append(f"--user-data-dir={user_data_dir}")
-                    cmd.append(f"--profile-directory={profile_name}")
-                else:
-                    cmd.append(f"--user-data-dir={self.profile_path}")
-
-            # Thêm URL SORA
-            cmd.append(self.SORA_URL)
-
-            self.log(f"   Lệnh: {' '.join(cmd)}")
-
-            # Mở Chrome
-            self.chrome_process = subprocess.Popen(cmd)
             time.sleep(5)
 
-            # Kiểm tra đăng nhập bằng JS
+            # Kiểm tra đăng nhập - tìm textarea
             self.log("🔍 Kiểm tra đăng nhập SORA...")
 
             for attempt in range(30):
-                is_logged_in = self._check_logged_in_js()
-                if is_logged_in:
+                if self._check_logged_in():
                     self.log_ok("Đã đăng nhập SORA!")
                     return True
 
                 if attempt % 10 == 0 and attempt > 0:
-                    self.log(f"   Chờ đăng nhập... ({attempt}s)")
+                    self.log(f"   Chờ đăng nhập... ({attempt * 2}s)")
 
                 time.sleep(2)
 
@@ -200,154 +200,192 @@ class SoraAutomation:
             self.log_err(f"Lỗi khởi động: {e}")
             return False
 
-    def _check_logged_in_js(self) -> bool:
-        """Kiểm tra đã đăng nhập bằng JS"""
-        try:
-            result = self.run_js_get_result(
-                "document.querySelector('textarea') ? 'yes' : 'no'"
-            )
-            return result and "yes" in result.lower()
-        except:
-            return False
-
-    def _input_prompt_js(self, prompt: str) -> bool:
-        """Nhập prompt qua JS"""
-        # Escape prompt cho JS
-        escaped = prompt.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
-
-        js = f"""
-        (function() {{
-            const textarea = document.querySelector('textarea');
-            if (textarea) {{
-                textarea.focus();
-                textarea.value = '{escaped}';
-                textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                return 'done';
-            }}
-            return 'not_found';
-        }})()
-        """
+    def _check_logged_in(self) -> bool:
+        """Kiểm tra đã đăng nhập - tìm textarea 'Describe your video...'"""
+        js = '''(function(){
+            var ta = document.querySelector('textarea[placeholder*="Describe"]');
+            if(ta){ copy('yes'); return; }
+            var tas = document.querySelectorAll('textarea');
+            if(tas.length > 0){ copy('yes'); return; }
+            copy('no');
+        })();'''
 
         result = self.run_js_get_result(js)
-        return result and "done" in str(result).lower()
+        return result and 'yes' in str(result).lower()
 
-    def _upload_image_js(self, image_path: str) -> bool:
-        """Upload ảnh - dùng PyAutoGUI vì cần file dialog"""
-        if not os.path.exists(image_path):
-            self.log_warn(f"Không tìm thấy ảnh: {image_path}")
+    def click_and_type_prompt(self, prompt: str) -> bool:
+        """Click vào textarea và paste prompt"""
+        # JS focus vào textarea
+        js = '''(function(){
+            var ta = document.querySelector('textarea[placeholder*="Describe"]');
+            if(!ta) ta = document.querySelector('textarea');
+            if(ta){
+                ta.focus();
+                ta.click();
+                console.log('OK: Clicked textarea');
+                return true;
+            }
+            console.log('FAIL: Textarea not found');
+            return false;
+        })();'''
+
+        self.log("   JS: Click vào textarea prompt...")
+        if not self.run_js(js):
+            self.log_err("Không tìm thấy textarea")
             return False
 
-        try:
-            # Tìm và click nút upload (+)
-            js_click_upload = """
-            (function() {
-                // Tìm button có SVG với icon +
-                const buttons = document.querySelectorAll('button');
-                for (const btn of buttons) {
-                    const svg = btn.querySelector('svg');
-                    if (svg) {
-                        const paths = svg.querySelectorAll('path');
-                        for (const path of paths) {
-                            const d = path.getAttribute('d') || '';
-                            if (d.includes('M12 6') || d.includes('M12 ')) {
-                                btn.click();
-                                return 'clicked';
-                            }
+        self.log_ok("Đã click textarea")
+        time.sleep(0.5)
+
+        # Paste prompt
+        self.log(f"   Paste: {prompt[:40]}...")
+        pyperclip.copy(prompt)
+        pag.hotkey("ctrl", "v")
+        time.sleep(0.5)
+
+        self.log_ok("Đã paste prompt")
+        return True
+
+    def click_upload_button(self) -> bool:
+        """Click nút upload (+) - SVG với path M12 6"""
+        js = '''(function(){
+            // Tìm button chứa SVG với path icon +
+            var btns = document.querySelectorAll('button');
+            for(var b of btns){
+                var svg = b.querySelector('svg');
+                if(svg){
+                    var paths = svg.querySelectorAll('path');
+                    for(var p of paths){
+                        var d = p.getAttribute('d') || '';
+                        if(d.includes('M12 6')){
+                            b.click();
+                            console.log('OK: Clicked upload button');
+                            copy('clicked');
+                            return;
                         }
                     }
                 }
-                // Fallback: click input file trực tiếp
-                const fileInput = document.querySelector('input[type="file"]');
-                if (fileInput) {
-                    fileInput.click();
-                    return 'file_input';
+            }
+            console.log('FAIL: Upload button not found');
+            copy('notfound');
+        })();'''
+
+        self.log("   JS: Click nút upload (+)...")
+        result = self.run_js_get_result(js)
+
+        if result and 'clicked' in str(result).lower():
+            self.log_ok("Đã click nút upload")
+            return True
+
+        self.log_err("Không tìm thấy nút upload")
+        return False
+
+    def upload_file(self, file_path: str) -> bool:
+        """Upload file sau khi đã click nút upload"""
+        if not os.path.exists(file_path):
+            self.log_err(f"Không tìm thấy file: {file_path}")
+            return False
+
+        # Chờ dialog mở
+        time.sleep(1.5)
+
+        # Paste đường dẫn file và Enter
+        abs_path = os.path.abspath(file_path)
+        self.log(f"   Paste path: {Path(file_path).name}")
+        pyperclip.copy(abs_path)
+        pag.hotkey("ctrl", "v")
+        time.sleep(0.5)
+        pag.press("enter")
+        time.sleep(2)
+
+        self.log_ok(f"Đã upload: {Path(file_path).name}")
+        return True
+
+    def press_enter_to_send(self) -> bool:
+        """Nhấn Enter để gửi prompt"""
+        self.log("   PyAutoGUI: Nhấn Enter...")
+        pag.press("enter")
+        time.sleep(0.5)
+        self.log_ok("Đã nhấn Enter gửi yêu cầu")
+        return True
+
+    def check_video_status(self) -> str:
+        """Check trạng thái video: 'done', 'loading', 'waiting'"""
+        js = '''(function(){
+            // Check video element với src từ videos.openai.com
+            var videos = document.querySelectorAll('video');
+            for(var v of videos){
+                var src = v.src || v.currentSrc || '';
+                if(src.includes('videos.openai.com')){
+                    copy('done');
+                    return;
                 }
-                return 'not_found';
-            })()
-            """
+            }
+            // Check loading spinner (animate-spin)
+            var spinners = document.querySelectorAll('svg.animate-spin, svg circle.animate-spin, [class*="animate-spin"]');
+            for(var s of spinners){
+                if(s.offsetParent !== null){
+                    copy('loading');
+                    return;
+                }
+            }
+            // Check thêm bằng circle element trong SVG
+            var circles = document.querySelectorAll('circle[stroke-dasharray]');
+            for(var c of circles){
+                var parent = c.closest('svg');
+                if(parent && parent.offsetParent !== null){
+                    copy('loading');
+                    return;
+                }
+            }
+            copy('waiting');
+        })();'''
 
-            result = self.run_js_get_result(js_click_upload)
-            self.log(f"   Upload click: {result}")
+        result = self.run_js_get_result(js)
+        if result in ['done', 'loading', 'waiting']:
+            return result
+        return 'waiting'
 
-            time.sleep(1)
+    def get_video_url(self) -> Optional[str]:
+        """Lấy URL video từ element <video src="...">"""
+        js = '''(function(){
+            var videos = document.querySelectorAll('video');
+            for(var v of videos){
+                var src = v.src || v.currentSrc || '';
+                if(src.includes('videos.openai.com')){
+                    copy(src);
+                    return;
+                }
+            }
+            copy('notfound');
+        })();'''
 
-            # Type đường dẫn file vào dialog
-            abs_path = os.path.abspath(image_path)
-            pyperclip.copy(abs_path)
-
-            time.sleep(0.5)
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.5)
-            pag.press("enter")
-
-            self.log_ok(f"Đã upload: {Path(image_path).name}")
-            time.sleep(2)
-            return True
-
-        except Exception as e:
-            self.log_err(f"Lỗi upload ảnh: {e}")
-            return False
-
-    def _submit_prompt(self) -> bool:
-        """Gửi prompt bằng Enter"""
-        try:
-            pag.press("enter")
-            self.log_ok("Đã gửi prompt")
-            return True
-        except:
-            return False
-
-    def _wait_for_video_js(self) -> Optional[str]:
-        """Chờ video tạo xong và lấy URL"""
-        self.log(f"⏳ Chờ video tạo xong (timeout: {self.timeout}s)...")
-
-        start_time = time.time()
-
-        while time.time() - start_time < self.timeout:
-            try:
-                # Kiểm tra video element
-                js = """
-                (function() {
-                    const videos = document.querySelectorAll('video');
-                    for (const v of videos) {
-                        const src = v.src || v.currentSrc;
-                        if (src && src.includes('videos.openai.com')) {
-                            return src;
-                        }
-                    }
-                    // Kiểm tra loading
-                    const spinners = document.querySelectorAll('[class*="animate-spin"], .animate-spin');
-                    for (const s of spinners) {
-                        if (s.offsetParent !== null) {
-                            return 'loading';
-                        }
-                    }
-                    return 'waiting';
-                })()
-                """
-
-                result = self.run_js_get_result(js)
-
-                if result and result.startswith("http"):
-                    self.log_ok("Video đã sẵn sàng!")
-                    return result
-
-                # Log progress
-                elapsed = int(time.time() - start_time)
-                if elapsed % 15 == 0 and elapsed > 0:
-                    status = "đang tạo..." if result == "loading" else "đang chờ..."
-                    self.log(f"   {elapsed}s - {status}")
-
-                time.sleep(3)
-
-            except Exception as e:
-                self.log_warn(f"Lỗi khi chờ: {e}")
-                time.sleep(3)
-
-        self.log_err("Timeout chờ video")
+        result = self.run_js_get_result(js)
+        if result and result.startswith('http'):
+            return result
         return None
 
-    def _download_video(self, video_url: str, output_path: str) -> bool:
+    def wait_for_video_done(self, timeout: int = 300) -> bool:
+        """Đợi video tạo xong"""
+        self.log(f"   Đang chờ video... (timeout: {timeout}s)")
+
+        for i in range(timeout // 5):
+            time.sleep(5)
+            elapsed = i * 5
+
+            status = self.check_video_status()
+
+            if status == 'done':
+                self.log_ok(f"Video xong! ({elapsed}s)")
+                return True
+
+            if elapsed % 15 == 0 and elapsed > 0:
+                self.log(f"   {elapsed}s - {status}...")
+
+        self.log_err(f"Timeout sau {timeout}s")
+        return False
+
+    def download_video(self, video_url: str, output_path: str) -> bool:
         """Download video từ URL"""
         try:
             self.log("📥 Downloading video...")
@@ -383,7 +421,19 @@ class SoraAutomation:
         output_name: str = "sora_video",
         code: str = ""
     ) -> Dict[str, Any]:
-        """Tạo video từ prompt và ảnh"""
+        """
+        Tạo video SORA
+
+        Workflow:
+        1. Vào SORA URL
+        2. Nhập prompt vào textarea
+        3. Click nút + để upload ảnh
+        4. Chọn file ảnh, Enter
+        5. Enter để gửi prompt
+        6. Chờ video tạo xong (check spinner)
+        7. Download video
+        8. Lưu với tên 00_sora_xxx.mp4
+        """
         result = {
             "success": False,
             "video_path": "",
@@ -392,43 +442,51 @@ class SoraAutomation:
         }
 
         try:
-            self.log(f"🎬 Tạo video SORA: {prompt[:50]}...")
+            self.log(f"🎬 Tạo video SORA...")
+            self.log(f"   Prompt: {prompt[:50]}...")
 
             # Refresh trang
             pag.press("f5")
             time.sleep(3)
 
-            # Nhập prompt
-            if not self._input_prompt_js(prompt):
-                # Fallback: type trực tiếp
-                self.log("   Fallback: type prompt trực tiếp...")
-                pag.click()
-                time.sleep(0.5)
-                pyperclip.copy(prompt)
-                pag.hotkey("ctrl", "v")
+            # Bước 1: Nhập prompt
+            if not self.click_and_type_prompt(prompt):
+                result["error"] = "Không thể nhập prompt"
+                return result
 
             time.sleep(1)
 
-            # Upload ảnh nếu có
+            # Bước 2: Upload ảnh nếu có
             if image_path and os.path.exists(image_path):
                 self.log(f"📷 Upload ảnh: {Path(image_path).name}")
-                self._upload_image_js(image_path)
+
+                if self.click_upload_button():
+                    if not self.upload_file(image_path):
+                        self.log_warn("Không upload được ảnh, tiếp tục không có ảnh")
+                else:
+                    self.log_warn("Không tìm thấy nút upload, tiếp tục không có ảnh")
+
                 time.sleep(2)
 
-            # Gửi prompt
-            self._submit_prompt()
+            # Bước 3: Gửi prompt (Enter)
+            self.press_enter_to_send()
             time.sleep(3)
 
-            # Chờ video
-            video_url = self._wait_for_video_js()
+            # Bước 4: Chờ video tạo xong
+            if not self.wait_for_video_done(self.timeout):
+                result["error"] = "Timeout chờ video"
+                return result
 
+            # Bước 5: Lấy URL video
+            video_url = self.get_video_url()
             if not video_url:
-                result["error"] = "Không thể tạo video hoặc timeout"
+                result["error"] = "Không lấy được URL video"
                 return result
 
             result["video_url"] = video_url
+            self.log_ok(f"Video URL: {video_url[:60]}...")
 
-            # Xác định thư mục output
+            # Bước 6: Xác định thư mục output (cùng chỗ với Grok)
             if code:
                 video_folder = self.output_folder / "_temp_videos" / code
             else:
@@ -440,10 +498,12 @@ class SoraAutomation:
             final_name = f"00_sora_{output_name}.mp4"
             final_path = str(video_folder / final_name)
 
-            # Download video
-            if not self._download_video(video_url, final_path):
+            # Bước 7: Download video
+            if not self.download_video(video_url, final_path):
                 result["error"] = "Không thể download video"
                 return result
+
+            # TODO: Bước 8 - Xóa watermark SORA (cần AI inpainting vì WM nhảy vị trí)
 
             result["success"] = True
             result["video_path"] = final_path
@@ -459,8 +519,7 @@ class SoraAutomation:
             return result
 
     def close(self):
-        """Đóng browser"""
-        # Không đóng Chrome vì user có thể đang dùng
+        """Đóng - không đóng Chrome vì user có thể đang dùng"""
         self.log("   SORA automation kết thúc")
 
 
@@ -472,10 +531,15 @@ if __name__ == "__main__":
     parser.add_argument("--prompt", "-p", required=True, help="Video prompt")
     parser.add_argument("--image", "-i", help="Image path to upload")
     parser.add_argument("--output", "-o", default="sora_output", help="Output name")
+    parser.add_argument("--chrome", help="Chrome path")
+    parser.add_argument("--profile", help="Chrome profile path")
 
     args = parser.parse_args()
 
-    sora = SoraAutomation()
+    sora = SoraAutomation(
+        chrome_path=args.chrome,
+        profile_path=args.profile
+    )
 
     try:
         if sora.start():

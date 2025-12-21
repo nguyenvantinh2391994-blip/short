@@ -705,14 +705,17 @@ class MainTab:
         """Background thread mở browser để login"""
         try:
             from ...shopee_downloader import ShopeeDownloader
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
 
-            # Browser profile
+            # Browser profile từ Settings
             chrome_path = None
             profile_path = None
             if self.app.config.browser_profiles:
                 first_profile = self.app.config.browser_profiles[0]
                 chrome_path = first_profile.get("chrome_path")
                 profile_path = first_profile.get("profile_path")
+                self.after_safe(lambda: self.add_log(f"📱 Dùng profile: {first_profile.get('name', 'Default')}"))
 
             # Tạo downloader với browser HIỆN (không headless)
             self.shopee_downloader = ShopeeDownloader(
@@ -722,18 +725,37 @@ class MainTab:
                 headless=False  # Hiện browser để user đăng nhập
             )
 
-            # Mở Shopee
-            try:
-                import undetected_chromedriver as uc
-                self.shopee_downloader.driver = uc.Chrome(headless=False)
-            except ImportError:
-                from selenium import webdriver
-                from selenium.webdriver.chrome.options import Options
-                options = Options()
-                self.shopee_downloader.driver = webdriver.Chrome(options=options)
+            # Setup Chrome options - DÙNG PROFILE ĐÃ LƯU
+            options = Options()
+
+            # Sử dụng Chrome profile từ Settings (đã đăng nhập)
+            if profile_path:
+                from pathlib import Path
+                profile = Path(profile_path)
+                if profile.exists():
+                    self.after_safe(lambda: self.add_log(f"📁 Profile path: {profile_path}"))
+                    options.add_argument(f"--user-data-dir={profile}")
+                else:
+                    self.after_safe(lambda: self.add_log(f"⚠️ Profile không tồn tại: {profile_path}"))
+
+            # Đường dẫn Chrome executable
+            if chrome_path:
+                from pathlib import Path
+                if Path(chrome_path).exists():
+                    options.binary_location = chrome_path
+
+            # Window settings
+            options.add_argument("--window-size=1200,800")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+
+            # Tạo driver với profile đã lưu
+            self.shopee_downloader.driver = webdriver.Chrome(options=options)
 
             driver = self.shopee_downloader.driver
-            driver.set_window_size(1200, 800)
             driver.set_window_position(100, 100)
 
             # Vào trang Shopee

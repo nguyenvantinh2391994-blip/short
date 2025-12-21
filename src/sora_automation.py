@@ -143,12 +143,19 @@ class SoraAutomation:
         try:
             cmd = [self.chrome_path]
 
+            self.log(f"   Chrome path: {self.chrome_path}")
+            self.log(f"   Profile path: {self.profile_path}")
+
             if self.profile_path and Path(self.profile_path).exists():
                 profile = Path(self.profile_path)
+                self.log(f"   User data dir: {profile.parent}")
+                self.log(f"   Profile dir: {profile.name}")
                 cmd.extend([
                     f"--user-data-dir={profile.parent}",
                     f"--profile-directory={profile.name}"
                 ])
+            else:
+                self.log_warn("Profile path không tồn tại, dùng Chrome mặc định")
 
             cmd.extend([
                 "--window-size=1200,800",

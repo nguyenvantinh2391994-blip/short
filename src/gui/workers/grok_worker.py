@@ -111,7 +111,7 @@ class GrokWorker:
     ) -> bool:
         """Xử lý 1 mã sản phẩm với 1 profile"""
         from ...grok_selenium import GrokSeleniumAutomation
-        from ...video_merger import get_music_for_index, get_voice_for_code
+        from ...video_merger import get_random_music, get_voice_for_code
 
         code = item["code"]
         row = item["row"]
@@ -193,14 +193,12 @@ class GrokWorker:
             # ===== BƯỚC 2: Ghép video + nhạc + voice =====
             self.log(f"[{profile_name}] Ghép {len(created_videos)} video...", "progress")
 
-            # Lấy nhạc (thread-safe)
+            # Lấy nhạc ngẫu nhiên từ thư mục music
             music_path = None
             if self.music_folder and self.music_folder.exists():
-                with self._lock:
-                    music_path = get_music_for_index(str(self.music_folder), self._music_index)
-                    self._music_index += 1
+                music_path = get_random_music(str(self.music_folder))
                 if music_path:
-                    self.log(f"[{profile_name}] 🎵 Nhạc: {Path(music_path).name}", "info")
+                    self.log(f"[{profile_name}] 🎵 Nhạc (random): {Path(music_path).name}", "info")
 
             # Lấy voice
             voice_path = None
@@ -212,13 +210,13 @@ class GrokWorker:
             # Đường dẫn output
             final_video = self.output_folder / f"{code}.mp4"
 
-            # Ghép video
+            # Ghép video với nhạc nền 60% volume
             success = merger.merge_videos(
                 video_paths=created_videos,
                 output_path=str(final_video),
                 music_path=music_path,
                 voice_path=voice_path,
-                music_volume=0.3,
+                music_volume=0.6,  # 60% volume
                 voice_volume=1.0
             )
 

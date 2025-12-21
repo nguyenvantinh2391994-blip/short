@@ -215,6 +215,26 @@ def get_music_for_index(music_folder: str, index: int) -> Optional[str]:
     return os.path.join(music_folder, music_file)
 
 
+def get_random_music(music_folder: str) -> Optional[str]:
+    """Lấy file nhạc ngẫu nhiên từ thư mục music"""
+    import random
+
+    if not music_folder or not os.path.exists(music_folder):
+        return None
+
+    music_files = [
+        f for f in os.listdir(music_folder)
+        if f.lower().endswith(('.mp3', '.wav', '.m4a', '.aac'))
+    ]
+
+    if not music_files:
+        return None
+
+    # Random chọn 1 file
+    music_file = random.choice(music_files)
+    return os.path.join(music_folder, music_file)
+
+
 def get_voice_for_code(voice_folder: str, product_code: str) -> Optional[str]:
     """Lấy file voice theo mã sản phẩm"""
     if not voice_folder or not os.path.exists(voice_folder):

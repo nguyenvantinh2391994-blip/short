@@ -148,21 +148,12 @@ class SoraAutomation:
 
             if self.profile_path and Path(self.profile_path).exists():
                 profile = Path(self.profile_path)
-                # Kiểm tra xem path là profile folder hay user-data-dir
-                if profile.name == "Default" or profile.name.startswith("Profile "):
-                    # Đường dẫn đầy đủ đến profile (VD: .../User Data/Default)
-                    user_data_dir = profile.parent
-                    profile_dir = profile.name
-                else:
-                    # Đường dẫn là user-data-dir (VD: E:/chrome-profiles/1)
-                    user_data_dir = profile
-                    profile_dir = "Default"
-
-                self.log(f"   User data dir: {user_data_dir}")
-                self.log(f"   Profile dir: {profile_dir}")
+                # Dùng cùng logic với Grok
+                self.log(f"   User data dir: {profile.parent}")
+                self.log(f"   Profile dir: {profile.name}")
                 cmd.extend([
-                    f"--user-data-dir={user_data_dir}",
-                    f"--profile-directory={profile_dir}"
+                    f"--user-data-dir={profile.parent}",
+                    f"--profile-directory={profile.name}"
                 ])
             else:
                 self.log_warn("Profile path không tồn tại, dùng Chrome mặc định")

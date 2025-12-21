@@ -235,8 +235,8 @@ class VideoMerger:
         self,
         image_paths: List[str],
         duration_per_image: float = 1.0,
-        target_width: int = 1080,
-        target_height: int = 1920
+        target_width: int = None,
+        target_height: int = None
     ) -> List:
         """
         Tạo video clips từ ảnh
@@ -244,8 +244,8 @@ class VideoMerger:
         Args:
             image_paths: Danh sách đường dẫn ảnh
             duration_per_image: Thời lượng mỗi ảnh (giây)
-            target_width: Chiều rộng video
-            target_height: Chiều cao video
+            target_width: Chiều rộng video (None = giữ nguyên)
+            target_height: Chiều cao video (None = giữ nguyên)
 
         Returns:
             List các ImageClip
@@ -256,13 +256,7 @@ class VideoMerger:
                 continue
             try:
                 clip = ImageClip(img_path, duration=duration_per_image)
-                # Resize để fit 9:16
-                clip = clip.resize(height=target_height)
-                if clip.w > target_width:
-                    clip = clip.resize(width=target_width)
-                # Center crop nếu cần
-                if clip.w != target_width or clip.h != target_height:
-                    clip = clip.resize((target_width, target_height))
+                # Giữ nguyên kích thước gốc, không resize
                 clips.append(clip)
             except Exception as e:
                 self.log(f"Lỗi load ảnh {img_path}: {e}")

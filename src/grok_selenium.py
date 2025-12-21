@@ -71,156 +71,27 @@ class GrokSeleniumAutomation:
         console.print(f"[yellow]   ⚠ {msg}[/]")
 
     def _hide_chrome_window(self):
-        """Ẩn Chrome window của tool khỏi taskbar (Windows only)"""
+        """Ẩn Chrome window của tool bằng cách đẩy ra ngoài màn hình"""
+        if not self.driver:
+            return
         try:
-            import platform
-            if platform.system() != 'Windows':
-                return
-
-            import ctypes
-            from ctypes import wintypes
-
-            # Windows API constants
-            GWL_EXSTYLE = -20
-            WS_EX_TOOLWINDOW = 0x00000080  # Ẩn khỏi taskbar
-            WS_EX_APPWINDOW = 0x00040000
-
-            user32 = ctypes.windll.user32
-
-            # Lấy hwnd từ Selenium driver (chỉ ẩn window của tool)
-            if hasattr(self, 'driver') and self.driver:
-                try:
-                    # Lấy title của window hiện tại
-                    current_title = self.driver.title
-
-                    def find_chrome_hwnd(hwnd, target_title):
-                        if user32.IsWindowVisible(hwnd):
-                            length = user32.GetWindowTextLengthW(hwnd)
-                            if length > 0:
-                                buff = ctypes.create_unicode_buffer(length + 1)
-                                user32.GetWindowTextW(hwnd, buff, length + 1)
-                                title = buff.value
-                                # Chỉ tìm window có title trùng hoặc chứa URL của driver
-                                if current_title and current_title in title:
-                                    return hwnd
-                                # Hoặc window mới mở (title rỗng hoặc "New Tab")
-                                if 'New Tab' in title or title == 'about:blank':
-                                    return hwnd
-                        return None
-
-                    # Tìm hwnd bằng cách enumerate
-                    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, ctypes.py_object)
-
-                    found_hwnds = []
-                    def callback(hwnd, results):
-                        if user32.IsWindowVisible(hwnd):
-                            length = user32.GetWindowTextLengthW(hwnd)
-                            if length > 0:
-                                buff = ctypes.create_unicode_buffer(length + 1)
-                                user32.GetWindowTextW(hwnd, buff, length + 1)
-                                title = buff.value
-                                # Chỉ lấy window có chứa URL grok hoặc title trùng
-                                if 'grok' in title.lower() or 'imagine' in title.lower():
-                                    results.append(hwnd)
-                                elif current_title and current_title in title:
-                                    results.append(hwnd)
-                        return True
-
-                    user32.EnumWindows(WNDENUMPROC(callback), ctypes.py_object(found_hwnds))
-
-                    # Lưu hwnd để có thể show lại sau
-                    if found_hwnds:
-                        self._chrome_hwnd = found_hwnds[0]
-
-                        # Ẩn window
-                        style = user32.GetWindowLongW(self._chrome_hwnd, GWL_EXSTYLE)
-                        new_style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
-                        user32.SetWindowLongW(self._chrome_hwnd, GWL_EXSTYLE, new_style)
-                        user32.SetWindowPos(self._chrome_hwnd, 0, -2000, -2000, 0, 0, 0x0001 | 0x0004)
-
-                        self.log(f"   Đã ẩn Chrome window")
-                        self._is_hidden = True
-
-                except Exception as e:
-                    self.log(f"   Lỗi ẩn window: {e}")
-
+            # Chỉ dùng Selenium - chỉ ảnh hưởng Chrome của tool
+            self.driver.set_window_position(-2000, -2000)
+            self._is_hidden = True
+            self.log("   Đã ẩn Chrome window")
         except Exception as e:
-            self.log(f"   Không thể ẩn Chrome: {e}")
+            self.log(f"   Lỗi ẩn window: {e}")
 
     def show_chrome_window(self):
-        """Hiện lại Chrome window"""
+        """Hiện Chrome window của tool"""
+        if not self.driver:
+            return
         try:
-            import platform
-            if platform.system() != 'Windows':
-                return
-
-            import ctypes
-            from ctypes import wintypes
-
-            GWL_EXSTYLE = -20
-            WS_EX_APPWINDOW = 0x00040000
-            WS_EX_TOOLWINDOW = 0x00000080
-            SW_RESTORE = 9
-            SW_SHOW = 5
-            SW_SHOWNORMAL = 1
-            HWND_TOP = 0
-            SWP_SHOWWINDOW = 0x0040
-
-            user32 = ctypes.windll.user32
-
-            # Nếu không có hwnd lưu sẵn, tìm lại
-            if not hasattr(self, '_chrome_hwnd') or not self._chrome_hwnd:
-                # Tìm window của Chrome/Grok
-                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, ctypes.py_object)
-                found_hwnds = []
-
-                def callback(hwnd, results):
-                    if user32.IsWindowVisible(hwnd) or True:  # Tìm cả window ẩn
-                        length = user32.GetWindowTextLengthW(hwnd)
-                        if length > 0:
-                            buff = ctypes.create_unicode_buffer(length + 1)
-                            user32.GetWindowTextW(hwnd, buff, length + 1)
-                            title = buff.value
-                            if 'grok' in title.lower() or 'imagine' in title.lower():
-                                results.append(hwnd)
-                    return True
-
-                user32.EnumWindows(WNDENUMPROC(callback), ctypes.py_object(found_hwnds))
-                if found_hwnds:
-                    self._chrome_hwnd = found_hwnds[0]
-
-            if hasattr(self, '_chrome_hwnd') and self._chrome_hwnd:
-                # Đưa về style bình thường (hiện trên taskbar)
-                style = user32.GetWindowLongW(self._chrome_hwnd, GWL_EXSTYLE)
-                new_style = (style | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
-                user32.SetWindowLongW(self._chrome_hwnd, GWL_EXSTYLE, new_style)
-
-                # Restore window nếu bị minimize
-                user32.ShowWindow(self._chrome_hwnd, SW_RESTORE)
-
-                # Đưa về vị trí giữa màn hình với kích thước hợp lý
-                screen_width = user32.GetSystemMetrics(0)
-                screen_height = user32.GetSystemMetrics(1)
-                win_width = 1200
-                win_height = 800
-                x = (screen_width - win_width) // 2
-                y = (screen_height - win_height) // 2
-
-                # Di chuyển và resize window
-                user32.SetWindowPos(
-                    self._chrome_hwnd,
-                    HWND_TOP,
-                    x, y,
-                    win_width, win_height,
-                    SWP_SHOWWINDOW
-                )
-
-                # Đưa lên foreground
-                user32.SetForegroundWindow(self._chrome_hwnd)
-
-                self.log("   Đã hiện Chrome window")
-                self._is_hidden = False
-
+            # Đưa vào giữa màn hình
+            self.driver.set_window_position(100, 100)
+            self.driver.set_window_size(1200, 800)
+            self._is_hidden = False
+            self.log("   Đã hiện Chrome window")
         except Exception as e:
             self.log(f"   Lỗi hiện window: {e}")
 
@@ -260,16 +131,18 @@ class GrokSeleniumAutomation:
                 else:
                     options.add_argument("--window-size=1920,1080")
 
-                # Download preferences
+                # Download preferences - luôn set để không hỏi lại mỗi lần
+                prefs = {
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": False,  # Bỏ scan file
+                    "profile.default_content_setting_values.automatic_downloads": 1,  # Cho phép tải nhiều file
+                    "profile.default_content_setting_values.notifications": 2,  # Tắt thông báo
+                }
                 if download_dir:
                     self.download_dir = download_dir
-                    prefs = {
-                        "download.default_directory": download_dir,
-                        "download.prompt_for_download": False,
-                        "download.directory_upgrade": True,
-                        "safebrowsing.enabled": False  # Bỏ scan file
-                    }
-                    options.add_experimental_option("prefs", prefs)
+                    prefs["download.default_directory"] = download_dir
+                options.add_experimental_option("prefs", prefs)
 
                 # Profile path
                 user_data_dir = None
@@ -321,6 +194,47 @@ class GrokSeleniumAutomation:
             except:
                 pass
             self.driver = None
+
+    def check_rate_limit(self) -> bool:
+        """
+        Kiểm tra xem có bị rate limit không
+        Toast rate limit có dạng: <li data-sonner-toast data-type="error">...Rate limit reached...</li>
+        Returns: True nếu bị rate limit
+        """
+        if not self.driver:
+            return False
+
+        try:
+            # Dùng JavaScript để tìm chính xác toast rate limit
+            js_check = '''
+            // Tìm toast error của sonner
+            var toasts = document.querySelectorAll('[data-sonner-toast][data-type="error"]');
+            for (var toast of toasts) {
+                var text = toast.textContent || toast.innerText || '';
+                if (text.toLowerCase().includes('rate limit')) {
+                    return 'RATE_LIMIT:' + text.substring(0, 100);
+                }
+            }
+
+            // Backup: tìm bất kỳ element nào có text "rate limit reached"
+            var body = document.body.innerText || '';
+            if (body.toLowerCase().includes('rate limit reached')) {
+                return 'RATE_LIMIT_TEXT';
+            }
+
+            return '';
+            '''
+
+            result = self.driver.execute_script(js_check)
+
+            if result and result.startswith('RATE_LIMIT'):
+                self.log_warn(f"⚠️ Phát hiện Rate Limit! ({result})")
+                return True
+
+            return False
+        except Exception as e:
+            self.log(f"   Lỗi check rate limit: {e}")
+            return False
 
     def navigate_to_grok(self) -> bool:
         """Navigate to Grok Imagine"""
@@ -511,12 +425,19 @@ class GrokSeleniumAutomation:
             self.log_err(f"Lỗi upload ảnh: {e}")
             return False
 
-    def submit_and_wait(self, timeout: int = 90) -> bool:
+    def submit_and_wait(self, timeout: int = 90) -> str:
         """Submit và chờ video tạo xong
         Logic:
         1. Nếu thấy % (0%-100%) = đang tạo video
         2. Nếu không thấy % và thấy icon film = video xong
         3. Chờ thêm 10s sau khi xong để đảm bảo
+        4. Nếu thấy rate limit toast = dừng ngay
+
+        Returns:
+            "OK" nếu video tạo xong
+            "RATE_LIMIT" nếu bị rate limit
+            "TIMEOUT" nếu hết thời gian
+            "ERROR" nếu có lỗi
         """
         try:
             self.log("Đang chờ video được tạo (tối đa 90s)...")
@@ -527,8 +448,17 @@ class GrokSeleniumAutomation:
             while time.time() - start_time < timeout:
                 elapsed = int(time.time() - start_time)
 
-                # Check tiến độ và icon film
+                # Check tiến độ, icon film VÀ rate limit
                 js_check = '''
+                // 0. Check rate limit TRƯỚC
+                var toasts = document.querySelectorAll('[data-sonner-toast][data-type="error"]');
+                for (var toast of toasts) {
+                    var text = toast.textContent || toast.innerText || '';
+                    if (text.toLowerCase().includes('rate limit')) {
+                        return 'rate_limit|' + text.substring(0, 50);
+                    }
+                }
+
                 // 1. Check xem có đang hiện % không (đang tạo video)
                 var progressDiv = document.querySelector('div.tabular-nums');
                 if (progressDiv) {
@@ -565,19 +495,24 @@ class GrokSeleniumAutomation:
                         if elapsed % 5 == 0:
                             if status == 'progress':
                                 self.log(f"   [{elapsed}s] Đang tạo: {data}")
-                            else:
+                            elif status != 'waiting':
                                 self.log(f"   [{elapsed}s] {status}")
+
+                        # Rate limit - dừng ngay
+                        if status == 'rate_limit':
+                            self.log_warn(f"⚠️ Rate Limit detected! ({data})")
+                            return "RATE_LIMIT"
 
                         if status == 'film_ready':
                             self.log_ok(f"Thấy icon film - Video đã xong! ({elapsed}s)")
                             self.log("   Chờ thêm 10s để video load hoàn toàn...")
                             time.sleep(10)
-                            return True
+                            return "OK"
                         elif status == 'video_src':
                             self.log_ok(f"Thấy video src! ({elapsed}s)")
                             self._captured_video_url = data
                             time.sleep(5)
-                            return True
+                            return "OK"
                         # progress hoặc waiting -> tiếp tục chờ
                     else:
                         if elapsed % 10 == 0:
@@ -590,11 +525,14 @@ class GrokSeleniumAutomation:
                 time.sleep(2)
 
             self.log_warn(f"Timeout sau {timeout}s")
-            return False
+            # Khi timeout, kiểm tra lại rate limit một lần nữa
+            if self.check_rate_limit():
+                return "RATE_LIMIT"
+            return "TIMEOUT"
 
         except Exception as e:
             self.log_err(f"Lỗi chờ video: {e}")
-            return False
+            return "ERROR"
 
     def download_video(self, output_path: str) -> bool:
         """Download video bằng cách click nút Download, thử lại nếu không có file"""
@@ -767,6 +705,13 @@ class GrokSeleniumAutomation:
                 self.log("1. Mở trang Grok Imagine...")
                 if not self.navigate_to_grok():
                     return GrokVideoResult(False, error="Không thể truy cập Grok")
+            else:
+                # Kiểm tra URL hiện tại - nếu không phải grok.com thì navigate
+                current_url = self.driver.current_url
+                if 'grok.com' not in current_url:
+                    self.log(f"1. URL sai ({current_url[:40]}...), navigate về Grok...")
+                    if not self.navigate_to_grok():
+                        return GrokVideoResult(False, error="Không thể truy cập Grok")
 
             # Input prompt
             if prompt:
@@ -780,8 +725,15 @@ class GrokSeleniumAutomation:
 
             # Submit and wait (90s timeout)
             self.log("4. Chờ video (tối đa 90s)...")
-            if not self.submit_and_wait(timeout=90):
-                return GrokVideoResult(False, error="Timeout chờ video")
+            wait_result = self.submit_and_wait(timeout=90)
+
+            if wait_result == "RATE_LIMIT":
+                return GrokVideoResult(False, error="RATE_LIMIT")
+            elif wait_result != "OK":
+                # TIMEOUT hoặc ERROR - kiểm tra lại rate limit
+                if self.check_rate_limit():
+                    return GrokVideoResult(False, error="RATE_LIMIT")
+                return GrokVideoResult(False, error=f"Lỗi chờ video: {wait_result}")
 
             # Wait thêm 5s để video load hoàn toàn
             time.sleep(5)

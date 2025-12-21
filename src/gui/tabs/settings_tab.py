@@ -33,6 +33,9 @@ class SettingsTab:
         # Folders section
         self.setup_folders_config()
 
+        # Gemini API section
+        self.setup_gemini_config()
+
         # Advanced section
         self.setup_advanced_config()
 
@@ -335,6 +338,66 @@ class SettingsTab:
             command=lambda: self.browse_folder(self.output_folder_entry)
         ).pack(side="left")
 
+        # Voice folder
+        voice_row = ctk.CTkFrame(frame, fg_color="transparent")
+        voice_row.pack(anchor="w", padx=15, pady=(5, 15))
+
+        ctk.CTkLabel(voice_row, text="Voice:", width=80).pack(side="left")
+        self.voice_folder_entry = ctk.CTkEntry(voice_row, width=300)
+        self.voice_folder_entry.pack(side="left", padx=10)
+        self.voice_folder_entry.insert(0, self.app.config.voice_folder or "voice")
+
+        ctk.CTkButton(
+            voice_row,
+            text="📁",
+            width=40,
+            command=lambda: self.browse_folder(self.voice_folder_entry)
+        ).pack(side="left")
+
+    def setup_gemini_config(self):
+        """Gemini API configuration"""
+        frame = ctk.CTkFrame(self.scroll_frame)
+        frame.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(
+            frame,
+            text="🤖 Gemini API",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+
+        # API Key
+        ctk.CTkLabel(frame, text="API Key:").pack(anchor="w", padx=15, pady=(5, 0))
+        self.gemini_key_entry = ctk.CTkEntry(frame, width=400, show="*")
+        self.gemini_key_entry.pack(anchor="w", padx=15, pady=(0, 5))
+        self.gemini_key_entry.insert(0, self.app.config.gemini_api_key)
+
+        # Show/hide button
+        key_btn_row = ctk.CTkFrame(frame, fg_color="transparent")
+        key_btn_row.pack(anchor="w", padx=15, pady=(0, 10))
+
+        self.show_key_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            key_btn_row,
+            text="Hiện API Key",
+            variable=self.show_key_var,
+            command=self.toggle_api_key_visibility
+        ).pack(side="left")
+
+        # Help text
+        ctk.CTkLabel(
+            frame,
+            text="Lấy API key tại: https://aistudio.google.com/apikey",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        ).pack(anchor="w", padx=15, pady=(0, 15))
+
+    def toggle_api_key_visibility(self):
+        """Toggle API key visibility"""
+        if self.show_key_var.get():
+            self.gemini_key_entry.configure(show="")
+        else:
+            self.gemini_key_entry.configure(show="*")
+
     def setup_advanced_config(self):
         """Advanced settings"""
         frame = ctk.CTkFrame(self.scroll_frame)
@@ -420,6 +483,8 @@ class SettingsTab:
         self.app.config.prompt_column = self.prompt_col_entry.get()
         self.app.config.input_folder = self.input_folder_entry.get()
         self.app.config.output_folder = self.output_folder_entry.get()
+        self.app.config.voice_folder = self.voice_folder_entry.get()
+        self.app.config.gemini_api_key = self.gemini_key_entry.get()
 
         try:
             self.app.config.max_threads = int(self.threads_entry.get())

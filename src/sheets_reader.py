@@ -270,15 +270,21 @@ class SheetsReader:
                 return product
         return None
 
-    def get_pending_products(self, status_column: str = "E", prompt_column: str = "F") -> List[Dict]:
+    def get_pending_products(
+        self,
+        status_column: str = "G",
+        prompt_column: str = "F",
+        sora_prompt_column: str = "E"
+    ) -> List[Dict]:
         """Lấy các sản phẩm có cột trạng thái trống (chưa làm video)
 
         Args:
-            status_column: Cột trạng thái (mặc định E)
-            prompt_column: Cột chứa prompt (mặc định F)
+            status_column: Cột trạng thái (mặc định G)
+            prompt_column: Cột chứa prompt Grok (mặc định F)
+            sora_prompt_column: Cột chứa prompt SORA (mặc định E)
 
         Returns:
-            List[Dict]: Danh sách {row, code, prompt, data}
+            List[Dict]: Danh sách {row, code, prompt, sora_prompt, data}
         """
         if not self.sheet:
             if not self.open_spreadsheet():
@@ -293,9 +299,10 @@ class SheetsReader:
             headers = all_values[0]
             pending = []
 
-            # Tìm index của cột trạng thái (E = 4) và prompt (F = 5)
+            # Tìm index của các cột
             status_col_idx = ord(status_column.upper()) - ord('A')
             prompt_col_idx = ord(prompt_column.upper()) - ord('A')
+            sora_prompt_col_idx = ord(sora_prompt_column.upper()) - ord('A')
 
             for row_idx, row in enumerate(all_values[1:], start=2):  # Bắt đầu từ row 2
                 # Kiểm tra cột trạng thái có trống không
@@ -304,14 +311,17 @@ class SheetsReader:
                 if not status_value.strip():  # Trống
                     # Lấy mã sản phẩm từ cột A
                     code = row[0] if row else ""
-                    # Lấy prompt từ cột F
+                    # Lấy prompt Grok từ cột F
                     prompt = row[prompt_col_idx] if len(row) > prompt_col_idx else ""
+                    # Lấy prompt SORA từ cột E
+                    sora_prompt = row[sora_prompt_col_idx] if len(row) > sora_prompt_col_idx else ""
 
                     if code:
                         pending.append({
                             "row": row_idx,
                             "code": code,
                             "prompt": prompt.strip(),
+                            "sora_prompt": sora_prompt.strip(),
                             "data": row
                         })
 

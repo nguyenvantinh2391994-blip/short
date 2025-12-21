@@ -26,6 +26,7 @@ class ScriptResult:
     """Kết quả tạo kịch bản"""
     success: bool
     script: str = ""
+    sora_prompt: str = ""  # Prompt cho SORA video
     error: str = ""
 
 
@@ -91,6 +92,26 @@ VÍ DỤ:
 "Ôi trời ơi mọi người ơi! Món này siêu xịn sò nè! Chất lượng đỉnh của chóp mà giá mềm xèo luôn! Ai mua rồi cũng khen nức nở! Hàng có hạn lắm, mua ngay kẻo hết nha mọi người!"
 
 CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
+
+    # Prompt template cho SORA video hook (10s)
+    SORA_PROMPT_TEMPLATE = """Tạo prompt cho AI video generator (SORA) để tạo video HOOK thu hút 10 giây.
+
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
+
+YÊU CẦU:
+- Mô tả cảnh quay ngắn gọn, trực quan
+- Tập trung vào sản phẩm và người dùng
+- Phong cách: quảng cáo TikTok/Reels hiện đại
+- Ánh sáng đẹp, màu sắc tươi sáng
+- Camera movement: zoom in, slow motion, hoặc tracking shot
+
+ĐỊNH DẠNG PROMPT SORA (tiếng Anh, 1-2 câu ngắn):
+- Mô tả cảnh + hành động + phong cách
+- Ví dụ: "Close-up of a woman applying lipstick with soft natural lighting, cinematic slow motion, beauty advertisement style"
+
+CHỈ TRẢ VỀ PROMPT SORA BẰNG TIẾNG ANH, KHÔNG GIẢI THÍCH:"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """
@@ -207,12 +228,107 @@ CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
                 return ScriptResult(False, error="Kịch bản trống")
 
             console.print(f"[green]✓ Đã tạo kịch bản ({len(script)} ký tự)[/]")
-            return ScriptResult(True, script=script)
+
+            # Tạo SORA prompt
+            sora_prompt = ""
+            try:
+                sora_prompt = self._generate_sora_prompt_internal(product_name, product_description)
+                if sora_prompt:
+                    console.print(f"[green]✓ Đã tạo SORA prompt[/]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Không tạo được SORA prompt: {e}[/]")
+
+            return ScriptResult(True, script=script, sora_prompt=sora_prompt)
 
         except requests.RequestException as e:
             return ScriptResult(False, error=f"Lỗi kết nối: {e}")
         except Exception as e:
             return ScriptResult(False, error=f"Lỗi: {e}")
+
+    def _generate_sora_prompt_internal(
+        self,
+        product_name: str,
+        product_description: str
+    ) -> str:
+        """
+        Tạo prompt cho SORA video (internal method)
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+
+        Returns:
+            SORA prompt string hoặc empty string nếu lỗi
+        """
+        prompt = self.SORA_PROMPT_TEMPLATE.format(
+            product_name=product_name,
+            product_description=product_description or "Sản phẩm chất lượng cao"
+        )
+
+        url = f"{self.GEMINI_API_URL}/{self.model}:generateContent?key={self.api_key}"
+
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.8,
+                "topK": 40,
+                "topP": 0.95,
+                "maxOutputTokens": 150,
+            }
+        }
+
+        response = requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return ""
+
+        data = response.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return ""
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+        if not parts:
+            return ""
+
+        sora_prompt = parts[0].get("text", "").strip()
+
+        # Clean up - remove quotes
+        if sora_prompt.startswith('"') and sora_prompt.endswith('"'):
+            sora_prompt = sora_prompt[1:-1]
+        if sora_prompt.startswith("'") and sora_prompt.endswith("'"):
+            sora_prompt = sora_prompt[1:-1]
+
+        return sora_prompt
+
+    def generate_sora_prompt(
+        self,
+        product_name: str,
+        product_description: str
+    ) -> str:
+        """
+        Tạo prompt cho SORA video (public method)
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+
+        Returns:
+            SORA prompt string
+        """
+        try:
+            return self._generate_sora_prompt_internal(product_name, product_description)
+        except Exception as e:
+            console.print(f"[red]❌ Lỗi tạo SORA prompt: {e}[/]")
+            return ""
 
     def generate_voice(
         self,
@@ -407,6 +523,7 @@ class ScriptProcessor:
         name_column: str = "C",
         description_column: str = "D",
         script_column: str = "G",
+        sora_prompt_column: str = "E",
     ):
         """
         Args:
@@ -415,12 +532,14 @@ class ScriptProcessor:
             name_column: Cột tên sản phẩm
             description_column: Cột mô tả
             script_column: Cột ghi kịch bản
+            sora_prompt_column: Cột ghi SORA prompt
         """
         self.gemini = gemini_service
         self.voice_folder = Path(voice_folder)
         self.name_column = name_column
         self.description_column = description_column
         self.script_column = script_column
+        self.sora_prompt_column = sora_prompt_column
 
         # Tạo thư mục voice nếu chưa có
         self.voice_folder.mkdir(parents=True, exist_ok=True)
@@ -528,6 +647,12 @@ class ScriptProcessor:
                         cell = f"{self.script_column}{row_idx}"
                         sheet.update_acell(cell, script_result.script)
                         console.print(f"[green]✓ Đã ghi kịch bản vào {cell}[/]")
+
+                        # Ghi SORA prompt vào cột E nếu có
+                        if script_result.sora_prompt:
+                            sora_cell = f"{self.sora_prompt_column}{row_idx}"
+                            sheet.update_acell(sora_cell, script_result.sora_prompt)
+                            console.print(f"[green]✓ Đã ghi SORA prompt vào {sora_cell}[/]")
                     except Exception as e:
                         console.print(f"[yellow]⚠️ Lỗi ghi sheet: {e}[/]")
 

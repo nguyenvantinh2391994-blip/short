@@ -1239,7 +1239,7 @@ class MainTab:
                 self.tasks[code] = task
                 self.after_safe(lambda t=task: self.add_task_row(t))
 
-            # Lấy browser profile
+            # Lấy browser profile (dùng chung với Grok)
             chrome_path = None
             profile_path = None
             if self.app.config.browser_profiles:
@@ -1247,10 +1247,12 @@ class MainTab:
                 chrome_path = first_profile.get("chrome_path")
                 profile_path = first_profile.get("profile_path")
 
-            # Khởi tạo SORA automation
+            # Folder input/output
+            input_folder = Path(self.app.config.input_folder)
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
+            # Khởi tạo SORA automation
             sora = SoraAutomation(
                 output_folder=str(output_folder),
                 chrome_path=chrome_path,
@@ -1271,20 +1273,34 @@ class MainTab:
                         break
 
                     code = item["code"]
-                    prompt = item.get("prompt", "")
 
-                    if not prompt:
-                        self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt"))
+                    # Lấy SORA prompt từ cột E (sora_prompt) hoặc fallback về prompt thường
+                    sora_prompt = item.get("sora_prompt", "") or item.get("prompt", "")
+
+                    if not sora_prompt:
+                        self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt SORA"))
                         self.set_task_grok_status(code, TaskItem.STATUS_ERROR)
                         continue
+
+                    # Tìm ảnh đầu tiên trong folder input/{code}/
+                    code_folder = input_folder / code
+                    image_path = None
+                    if code_folder.exists():
+                        images = sorted(code_folder.glob("*.jpg")) + sorted(code_folder.glob("*.png")) + sorted(code_folder.glob("*.webp"))
+                        if images:
+                            image_path = str(images[0])  # Lấy ảnh đầu tiên
+                            self.after_safe(lambda c=code, p=images[0].name:
+                                self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
 
                     self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
                     self.set_task_grok_status(code, TaskItem.STATUS_PROCESSING)
 
-                    # Tạo video
+                    # Tạo video SORA với ảnh
                     result = sora.generate_video(
-                        prompt=prompt,
-                        output_name=code
+                        prompt=sora_prompt,
+                        image_path=image_path,
+                        output_name=code,
+                        code=code
                     )
 
                     if result and result.get("success"):

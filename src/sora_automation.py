@@ -244,7 +244,7 @@ class SoraAutomation:
                 return False
 
     def start(self) -> bool:
-        """Khởi động SORA (dùng browser đang mở hoặc mở Chrome mới)"""
+        """Khởi động SORA - mở Chrome với profile (giống Grok)"""
         if not HAS_PAG:
             self.log_err("Cần cài pyautogui: pip install pyautogui")
             return False
@@ -254,23 +254,11 @@ class SoraAutomation:
             return False
 
         try:
-            # Kiểm tra có Chrome đang chạy không
-            chrome_running = self._is_chrome_running()
-
-            if self.use_existing_browser and chrome_running:
-                # Dùng browser đang mở (từ Grok) - chỉ mở tab mới
-                self.log("🚀 Dùng browser đang mở...")
-                if not self.navigate_to_sora():
-                    return False
-            else:
-                # Mở Chrome mới (hoặc fallback khi không có browser)
-                if self.use_existing_browser:
-                    self.log("⚠️ Không tìm thấy Chrome đang chạy, mở Chrome mới...")
-                else:
-                    self.log("🚀 Mở Chrome cho SORA...")
-                if not self.open_chrome(self.SORA_URL):
-                    return False
-                time.sleep(5)
+            # Mở Chrome với profile (giống Grok)
+            self.log("🚀 Mở Chrome cho SORA...")
+            if not self.open_chrome(self.SORA_URL):
+                return False
+            time.sleep(5)
 
             # Kiểm tra đăng nhập - tìm textarea
             self.log("🔍 Kiểm tra đăng nhập SORA...")

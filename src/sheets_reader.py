@@ -272,16 +272,16 @@ class SheetsReader:
 
     def get_pending_products(
         self,
-        status_column: str = "F",
-        prompt_column: str = "G",
-        sora_prompt_column: str = "E"
+        status_column: str = "E",
+        prompt_column: str = "F",
+        sora_prompt_column: str = "F"
     ) -> List[Dict]:
         """Lấy các sản phẩm có cột trạng thái trống (chưa làm video)
 
         Args:
-            status_column: Cột trạng thái (mặc định F)
-            prompt_column: Cột chứa prompt Grok (mặc định G)
-            sora_prompt_column: Cột chứa prompt SORA (mặc định E)
+            status_column: Cột trạng thái (mặc định E)
+            prompt_column: Cột chứa prompt video (mặc định F)
+            sora_prompt_column: Cột chứa prompt SORA (mặc định F - dùng chung)
 
         Returns:
             List[Dict]: Danh sách {row, code, prompt, sora_prompt, data}
@@ -332,7 +332,7 @@ class SheetsReader:
             console.print(f"[red]❌ Lỗi đọc dữ liệu: {e}[/]")
             return []
 
-    def update_status(self, row: int, status: str = "VIDEO", status_column: str = "F") -> bool:
+    def update_status(self, row: int, status: str = "VIDEO", status_column: str = "E") -> bool:
         """Cập nhật trạng thái cho sản phẩm"""
         if not self.sheet:
             if not self.open_spreadsheet():

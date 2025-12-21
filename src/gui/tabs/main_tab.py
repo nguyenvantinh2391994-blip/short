@@ -1279,7 +1279,7 @@ class MainTab:
 
                     if not sora_prompt:
                         self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt SORA"))
-                        self.set_task_grok_status(code, TaskItem.STATUS_ERROR)
+                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
                         continue
 
                     # Tìm ảnh đầu tiên trong folder input/{code}/
@@ -1293,7 +1293,7 @@ class MainTab:
                                 self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
 
                     self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
-                    self.set_task_grok_status(code, TaskItem.STATUS_PROCESSING)
+                    self.set_task_video_status(code, TaskItem.STATUS_PROCESSING)
 
                     # Tạo video SORA với ảnh
                     result = sora.generate_video(
@@ -1307,7 +1307,7 @@ class MainTab:
                         video_path = result.get("video_path")
                         self.after_safe(lambda c=code, p=video_path:
                             self.add_log(f"  ✓ {c}: Video đã tạo - {Path(p).name}"))
-                        self.set_task_grok_status(code, TaskItem.STATUS_DONE)
+                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
                         self.set_task_render_status(code, TaskItem.STATUS_DONE)
 
                         # Cập nhật Google Sheets
@@ -1319,7 +1319,7 @@ class MainTab:
                         error = result.get("error", "Lỗi không xác định") if result else "Timeout"
                         self.after_safe(lambda c=code, e=error:
                             self.add_log(f"  ✗ {c}: {e}"))
-                        self.set_task_grok_status(code, TaskItem.STATUS_ERROR)
+                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
 
                 self.after_safe(lambda: self.add_log("\n✅ Hoàn thành SORA!"))
 

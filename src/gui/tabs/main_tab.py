@@ -1293,7 +1293,7 @@ class MainTab:
                                 self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
 
                     self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
-                    self.set_task_video_status(code, TaskItem.STATUS_PROCESSING)
+                    self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
 
                     # Tạo video SORA với ảnh
                     result = sora.generate_video(

@@ -288,7 +288,7 @@ class SoraAutomation:
                 copy(result ? 'clicked' : 'notfound');
                 return;
             }
-            // Fallback
+            // Fallback - tim button co SVG path bat dau bang M12 6
             var btns = document.querySelectorAll('button');
             for(var b of btns){
                 var svg = b.querySelector('svg');
@@ -296,12 +296,21 @@ class SoraAutomation:
                     var paths = svg.querySelectorAll('path');
                     for(var p of paths){
                         var d = p.getAttribute('d') || '';
-                        if(d.includes('M12 6') || d.includes('M12 5')){
+                        if(d.startsWith('M12 6') || d.startsWith('M12 5')){
                             b.click();
                             copy('clicked');
                             return;
                         }
                     }
+                }
+            }
+            // Fallback 2 - tim theo text Attach
+            for(var b of btns){
+                var text = b.textContent || '';
+                if(text.toLowerCase().includes('attach')){
+                    b.click();
+                    copy('clicked');
+                    return;
                 }
             }
             copy('notfound');

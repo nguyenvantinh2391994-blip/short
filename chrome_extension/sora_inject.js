@@ -99,20 +99,30 @@
     // Tim tat ca button, khong check visibility
     const btns = document.querySelectorAll('button');
 
-    // Tim theo SVG path (plus icon)
+    // Tim theo SVG path (plus icon) - M12 6a1 1 0 0 1 1 1v
     for (const b of btns) {
       const svg = b.querySelector('svg');
       if (svg) {
         const paths = svg.querySelectorAll('path');
         for (const p of paths) {
           const d = p.getAttribute('d') || '';
-          // Plus icon patterns
-          if (d.includes('M12 6') || d.includes('M12 5') || d.includes('M12 4')) {
+          // Plus icon patterns - SORA dùng "M12 6a1"
+          if (d.startsWith('M12 6') || d.startsWith('M12 5') || d.startsWith('M12 4')) {
             b.click();
             log('Upload button clicked (SVG)!', 'success');
             return true;
           }
         }
+      }
+    }
+
+    // Tim theo text "Attach media"
+    for (const b of btns) {
+      const text = b.textContent || '';
+      if (text.toLowerCase().includes('attach')) {
+        b.click();
+        log('Upload button clicked (Attach)!', 'success');
+        return true;
       }
     }
 
@@ -123,16 +133,6 @@
       if (btn) {
         btn.click();
         log(`Upload button clicked (${label})!`, 'success');
-        return true;
-      }
-    }
-
-    // Tim theo title
-    for (const label of labels) {
-      const btn = document.querySelector(`button[title*="${label}" i]`);
-      if (btn) {
-        btn.click();
-        log(`Upload button clicked (title: ${label})!`, 'success');
         return true;
       }
     }

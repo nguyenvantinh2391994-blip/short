@@ -524,9 +524,7 @@ class SoraAutomation:
                     # Đợi ảnh load xong
                     self.wait_for_send_button_ready()
 
-            # Đóng DevTools (nếu còn mở) trước khi gửi
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+            # Đóng DevTools trước khi gửi
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(0.5)
 
@@ -605,9 +603,7 @@ class SoraAutomation:
                     # Đợi ảnh load xong
                     self.wait_for_send_button_ready()
 
-            # Đóng DevTools (nếu còn mở) trước khi gửi
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+            # Đóng DevTools trước khi gửi
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(0.5)
 

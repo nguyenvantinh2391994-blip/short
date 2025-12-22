@@ -375,29 +375,41 @@ class SoraAutomation:
         return True
 
     def check_video_status(self) -> str:
-        """Check trạng thái video: 'done', 'loading', 'waiting' - sử dụng SORA_HELPER."""
+        """Check trạng thái video: 'done', 'loading', 'waiting'.
+
+        Tìm video ở vị trí chính (div width:100% height:100%), không phải sidebar.
+        """
         js = '''(function(){
-            if(window.SORA_HELPER){
-                var status = SORA_HELPER.checkStatus();
-                copy(status.status || 'waiting');
-                return;
+            // Tìm video trong container chính (width: 100%; height: 100%)
+            var containers = document.querySelectorAll('div[style*="width: 100%"][style*="height: 100%"]');
+            for(var c of containers){
+                var video = c.querySelector('video');
+                if(video){
+                    var src = video.src || '';
+                    if(src.includes('videos.openai.com')){
+                        copy('done');
+                        return;
+                    }
+                }
             }
-            // Fallback
-            var videos = document.querySelectorAll('video');
-            for(var v of videos){
-                var src = v.src || v.currentSrc || '';
-                if(src.includes('videos.openai.com')){
+
+            // Hoặc tìm theo class object-cover
+            var videoContainer = document.querySelector('div[class*="object-cover"]');
+            if(videoContainer){
+                var video = videoContainer.querySelector('video');
+                if(video && video.src && video.src.includes('videos.openai.com')){
                     copy('done');
                     return;
                 }
             }
-            var spinners = document.querySelectorAll('[class*="animate-spin"]');
-            for(var s of spinners){
-                if(s.offsetParent !== null){
-                    copy('loading');
-                    return;
-                }
+
+            // Check loading (vòng tròn progress)
+            var circle = document.querySelector('circle[stroke-dashoffset]');
+            if(circle){
+                copy('loading');
+                return;
             }
+
             copy('waiting');
         })();'''
 
@@ -407,22 +419,31 @@ class SoraAutomation:
         return 'waiting'
 
     def get_video_url(self) -> Optional[str]:
-        """Lấy URL video - sử dụng SORA_HELPER."""
+        """Lấy URL video từ container chính."""
         js = '''(function(){
-            if(window.SORA_HELPER){
-                var url = SORA_HELPER.getVideoUrl();
-                copy(url || 'notfound');
-                return;
+            // Tìm video trong container chính
+            var containers = document.querySelectorAll('div[style*="width: 100%"][style*="height: 100%"]');
+            for(var c of containers){
+                var video = c.querySelector('video');
+                if(video){
+                    var src = video.src || '';
+                    if(src.includes('videos.openai.com')){
+                        copy(src);
+                        return;
+                    }
+                }
             }
-            // Fallback
-            var videos = document.querySelectorAll('video');
-            for(var v of videos){
-                var src = v.src || v.currentSrc || '';
-                if(src.includes('videos.openai.com')){
-                    copy(src);
+
+            // Fallback: tìm theo class
+            var videoContainer = document.querySelector('div[class*="object-cover"]');
+            if(videoContainer){
+                var video = videoContainer.querySelector('video');
+                if(video && video.src && video.src.includes('videos.openai.com')){
+                    copy(video.src);
                     return;
                 }
             }
+
             copy('notfound');
         })();'''
 

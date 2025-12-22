@@ -151,10 +151,7 @@ class SoraAutomation:
             # Đóng DevTools
             if close_devtools:
                 pag.hotkey("ctrl", "shift", "j")
-                time.sleep(0.8)
-                # Đảm bảo focus trở về page
-                pag.press("escape")
-                time.sleep(0.3)
+                time.sleep(0.5)
 
             return True
         except Exception as e:
@@ -170,27 +167,19 @@ class SoraAutomation:
             # Focus vào Chrome trước
             self._focus_chrome_window()
 
-            # Mở DevTools Console
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
 
-            # Paste và chạy JS
             pyperclip.copy(js)
             pag.hotkey("ctrl", "v")
             time.sleep(0.3)
             pag.press("enter")
             time.sleep(1)
 
-            # Lấy kết quả từ clipboard
             result = pyperclip.paste()
 
-            # Đóng DevTools - nhấn 2 lần để chắc chắn
             pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.8)
-
-            # Click vào trang để đảm bảo focus trở về page
-            pag.press("escape")
-            time.sleep(0.3)
+            time.sleep(0.5)
 
             return result
         except Exception as e:
@@ -375,11 +364,10 @@ class SoraAutomation:
         self.log_ok(f"Đã upload: {Path(file_path).name}")
         return True
 
-    def wait_for_send_button_ready(self, wait_seconds: int = 5) -> bool:
+    def wait_for_send_button_ready(self, wait_seconds: int = 10) -> bool:
         """Đợi ảnh load xong trước khi gửi.
 
         Đợi cố định vài giây để ảnh upload hoàn tất.
-        (Không dùng DevTools để tránh làm loạn prompt)
         """
         self.log(f"   Đợi ảnh load ({wait_seconds}s)...")
         time.sleep(wait_seconds)
@@ -534,7 +522,7 @@ class SoraAutomation:
                 if self.click_upload_button():
                     self.upload_file(image_path)
                     # Đợi ảnh load xong (nút Create video sáng lên)
-                    self.wait_for_send_button_ready(wait_seconds=5)
+                    self.wait_for_send_button_ready()
 
             # Gửi (Enter)
             self.log("   Nhấn Enter gửi...")
@@ -609,7 +597,7 @@ class SoraAutomation:
                 if self.click_upload_button():
                     self.upload_file(image_path)
                     # Đợi ảnh load xong (nút Create video sáng lên)
-                    self.wait_for_send_button_ready(wait_seconds=5)
+                    self.wait_for_send_button_ready()
 
             # Gửi (Enter)
             pag.press("enter")

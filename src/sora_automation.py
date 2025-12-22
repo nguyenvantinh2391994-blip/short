@@ -521,8 +521,14 @@ class SoraAutomation:
                 self.log(f"📷 Upload ảnh: {Path(image_path).name}")
                 if self.click_upload_button():
                     self.upload_file(image_path)
-                    # Đợi ảnh load xong (nút Create video sáng lên)
+                    # Đợi ảnh load xong
                     self.wait_for_send_button_ready()
+
+            # Đóng DevTools (nếu còn mở) trước khi gửi
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
 
             # Gửi (Enter)
             self.log("   Nhấn Enter gửi...")
@@ -596,8 +602,14 @@ class SoraAutomation:
                 self.log(f"📷 Upload ảnh: {Path(image_path).name}")
                 if self.click_upload_button():
                     self.upload_file(image_path)
-                    # Đợi ảnh load xong (nút Create video sáng lên)
+                    # Đợi ảnh load xong
                     self.wait_for_send_button_ready()
+
+            # Đóng DevTools (nếu còn mở) trước khi gửi
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
 
             # Gửi (Enter)
             pag.press("enter")

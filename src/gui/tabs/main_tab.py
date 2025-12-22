@@ -1945,6 +1945,140 @@ class MainTab:
                     except Exception as e:
                         self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi thread: {e}"))
 
+            if self.stop_flag.is_set():
+                self.after_safe(lambda: self.add_log("⏹️ Đã dừng"))
+                return
+
+            # === BƯỚC 5: SORA VIDEO (sau Grok) ===
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda: self.add_log("🎬 BƯỚC 5: TẠO VIDEO SORA"))
+            self.after_safe(lambda: self.add_log("="*40))
+
+            try:
+                from ...sora_automation import SoraAutomation, find_sora_image
+
+                # Lấy browser profile
+                chrome_path = None
+                profile_path = None
+                if self.app.config.browser_profiles:
+                    first_profile = self.app.config.browser_profiles[0]
+                    chrome_path = first_profile.get("chrome_path")
+                    profile_path = first_profile.get("profile_path")
+
+                # Khởi tạo SORA
+                sora = SoraAutomation(
+                    chrome_path=chrome_path,
+                    profile_path=profile_path,
+                    output_folder=str(output_folder),
+                )
+
+                # Refresh data từ sheet
+                fresh_values = reader.sheet.get_all_values()
+                first_sora = True
+
+                for item in valid_items:
+                    if self.stop_flag.is_set():
+                        break
+
+                    code = item["code"]
+                    row_idx = item["row"] - 1
+
+                    if row_idx >= len(fresh_values):
+                        continue
+
+                    row = fresh_values[row_idx]
+                    # Lấy SORA prompt từ cột E (index 4)
+                    sora_prompt = row[4].strip() if len(row) > 4 else ""
+
+                    if not sora_prompt:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: Không có SORA prompt"))
+                        continue
+
+                    # Tìm ảnh SORA
+                    image_path = find_sora_image(str(input_folder), code)
+                    if not image_path:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: Không có ảnh SORA"))
+                        continue
+
+                    self.after_safe(lambda c=code: self.add_log(f"  🎬 {c}: Tạo video SORA..."))
+
+                    # Tạo video SORA
+                    if first_sora:
+                        result = sora.create_video(
+                            image_path=image_path,
+                            prompt=sora_prompt,
+                            product_code=code
+                        )
+                        first_sora = False
+                    else:
+                        result = sora.create_video_continue(
+                            image_path=image_path,
+                            prompt=sora_prompt,
+                            product_code=code
+                        )
+
+                    if result and result.success:
+                        self.after_safe(lambda c=code: self.add_log(f"  ✓ {c}: Video SORA OK"))
+
+                        # Re-merge với SORA video
+                        self.after_safe(lambda c=code: self.add_log(f"  🔄 {c}: Re-merge với SORA..."))
+                        try:
+                            from ...video_merger import VideoMerger
+
+                            merger = VideoMerger(
+                                transition_type="crossfade",
+                                transition_duration=0.5,
+                                on_log=lambda msg: self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
+                            )
+
+                            temp_folder = output_folder / "_temp_videos" / code
+                            sora_video = temp_folder / f"00_sora_{code}.mp4"
+
+                            # Lấy Grok videos (không phải SORA)
+                            grok_videos = sorted([
+                                str(v) for v in temp_folder.glob("*.mp4")
+                                if "00_sora_" not in v.name
+                            ])
+
+                            if sora_video.exists() and grok_videos:
+                                # Lấy voice
+                                voice_path = None
+                                if self.app.config.voice_folder:
+                                    voice_folder = Path(self.app.config.voice_folder)
+                                    for ext in ['.mp3', '.wav']:
+                                        vp = voice_folder / f"{code}{ext}"
+                                        if vp.exists():
+                                            voice_path = str(vp)
+                                            break
+
+                                # Lấy music
+                                music_path = None
+                                if self.app.config.music_folder:
+                                    from ...video_merger import get_music_for_index
+                                    music_path = get_music_for_index(self.app.config.music_folder, 0)
+
+                                final_video = output_folder / f"{code}.mp4"
+                                success = merger.merge_with_sora(
+                                    sora_video=str(sora_video),
+                                    grok_videos=grok_videos,
+                                    output_path=str(final_video),
+                                    music_path=music_path,
+                                    voice_path=voice_path,
+                                    music_volume=0.6,
+                                    voice_volume=1.0,
+                                    mute_original=True
+                                )
+                                if success:
+                                    self.after_safe(lambda c=code: self.add_log(f"  ✓ {c}: Re-merge OK"))
+                        except Exception as me:
+                            self.after_safe(lambda c=code, e=str(me): self.add_log(f"  ⚠️ {c}: Re-merge lỗi: {e}"))
+                    else:
+                        error = result.error if result else "Timeout"
+                        self.after_safe(lambda c=code, e=error: self.add_log(f"  ✗ {c}: {e}"))
+
+            except Exception as e:
+                self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi SORA: {e}"))
+
             # === HOÀN THÀNH ===
             self.after_safe(lambda: self.add_log("\n" + "="*40))
             self.after_safe(lambda: self.add_log("🎉 HOÀN THÀNH TOÀN BỘ QUY TRÌNH!"))

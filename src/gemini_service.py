@@ -26,6 +26,7 @@ class ScriptResult:
     """Kết quả tạo kịch bản"""
     success: bool
     script: str = ""
+    sora_prompt: str = ""  # Prompt cho SORA video
     error: str = ""
 
 
@@ -69,32 +70,48 @@ class GeminiService:
     # API endpoints
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    # Prompt template cho kịch bản bán hàng 15 giây
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là chuyên gia viết kịch bản quảng cáo bán hàng trên TikTok/Shopee.
+    # Prompt template cho kịch bản bán hàng vui tươi (20-30s)
+    SCRIPT_PROMPT_TEMPLATE = """Bạn là MC bán hàng livestream VUI VẺ, NĂNG ĐỘNG trên TikTok/Shopee.
 
-THÔNG TIN SẢN PHẨM:
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
+
+YÊU CẦU: Viết kịch bản VUI TƯƠI, HÀO HỨNG cho video 20-30 giây.
+
+QUY TẮC:
+1. Độ dài: 55-80 từ (đọc nhanh trong 20-30 giây)
+2. Giọng điệu: VUI VẺ, PHẤN KHÍCH như chia sẻ deal HOT cho bạn thân
+3. Bắt đầu: "Ôi trời ơi!", "Mọi người ơi!", "Siêu HOT nè!"
+4. Dùng từ: siêu xịn, đỉnh của chóp, cực phẩm, xịn sò, mê xỉu
+5. Nêu 2-3 ưu điểm nổi bật
+6. Tạo FOMO: hàng có hạn, mua ngay kẻo hết
+7. Kết: "Mua ngay!", "Đặt liền nha!"
+
+VÍ DỤ:
+"Ôi trời ơi mọi người ơi! Món này siêu xịn sò nè! Chất lượng đỉnh của chóp mà giá mềm xèo luôn! Ai mua rồi cũng khen nức nở! Hàng có hạn lắm, mua ngay kẻo hết nha mọi người!"
+
+CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
+
+    # Prompt template cho SORA video hook (10s)
+    SORA_PROMPT_TEMPLATE = """Tạo prompt cho AI video generator (SORA) để tạo video HOOK thu hút 10 giây.
+
+SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
 YÊU CẦU:
-Viết kịch bản voice-over bán hàng NGẮN GỌN, TÁC ĐỘNG MẠNH cho video 15 giây.
+- Mô tả cảnh quay ngắn gọn, trực quan
+- Tập trung vào sản phẩm và người dùng
+- Phong cách: quảng cáo TikTok/Reels hiện đại
+- Ánh sáng đẹp, màu sắc tươi sáng
+- Camera movement: zoom in, slow motion, hoặc tracking shot
 
-QUY TẮC BẮT BUỘC:
-1. Độ dài: 40-60 từ (đọc trong 12-15 giây)
-2. Bắt đầu bằng câu hook gây chú ý (hỏi/than/shock)
-3. Nêu 1-2 điểm nổi bật nhất của sản phẩm
-4. Kết thúc bằng call-to-action mạnh mẽ
-5. Giọng điệu: thân thiện, năng động, tự tin
-6. Dùng từ ngữ đơn giản, dễ hiểu
-7. Tạo cảm giác khan hiếm/cấp bách
+ĐỊNH DẠNG PROMPT SORA (tiếng Anh, 1-2 câu ngắn):
+- Mô tả cảnh + hành động + phong cách
+- Ví dụ: "Close-up of a woman applying lipstick with soft natural lighting, cinematic slow motion, beauty advertisement style"
 
-ĐỊNH DẠNG OUTPUT:
-Chỉ trả về nội dung kịch bản, KHÔNG có tiêu đề, KHÔNG có giải thích, KHÔNG có dấu ngoặc.
-
-VÍ DỤ MẪU:
-"Mẹ ơi, bé nhà mình đẹp xuất sắc với bộ áo dài này! Chất gấm lụa cao cấp, mềm mại, bé mặc thoải mái suốt ngày. Đủ size từ 8 đến 45 ký. Tết này bé xinh như công chúa nhé! Đặt ngay kẻo hết mẹ ơi!"
-
-BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
+CHỈ TRẢ VỀ PROMPT SORA BẰNG TIẾNG ANH, KHÔNG GIẢI THÍCH:"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """
@@ -211,18 +228,113 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
                 return ScriptResult(False, error="Kịch bản trống")
 
             console.print(f"[green]✓ Đã tạo kịch bản ({len(script)} ký tự)[/]")
-            return ScriptResult(True, script=script)
+
+            # Tạo SORA prompt
+            sora_prompt = ""
+            try:
+                sora_prompt = self._generate_sora_prompt_internal(product_name, product_description)
+                if sora_prompt:
+                    console.print(f"[green]✓ Đã tạo SORA prompt[/]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Không tạo được SORA prompt: {e}[/]")
+
+            return ScriptResult(True, script=script, sora_prompt=sora_prompt)
 
         except requests.RequestException as e:
             return ScriptResult(False, error=f"Lỗi kết nối: {e}")
         except Exception as e:
             return ScriptResult(False, error=f"Lỗi: {e}")
 
+    def _generate_sora_prompt_internal(
+        self,
+        product_name: str,
+        product_description: str
+    ) -> str:
+        """
+        Tạo prompt cho SORA video (internal method)
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+
+        Returns:
+            SORA prompt string hoặc empty string nếu lỗi
+        """
+        prompt = self.SORA_PROMPT_TEMPLATE.format(
+            product_name=product_name,
+            product_description=product_description or "Sản phẩm chất lượng cao"
+        )
+
+        url = f"{self.GEMINI_API_URL}/{self.model}:generateContent?key={self.api_key}"
+
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.8,
+                "topK": 40,
+                "topP": 0.95,
+                "maxOutputTokens": 150,
+            }
+        }
+
+        response = requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return ""
+
+        data = response.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return ""
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+        if not parts:
+            return ""
+
+        sora_prompt = parts[0].get("text", "").strip()
+
+        # Clean up - remove quotes
+        if sora_prompt.startswith('"') and sora_prompt.endswith('"'):
+            sora_prompt = sora_prompt[1:-1]
+        if sora_prompt.startswith("'") and sora_prompt.endswith("'"):
+            sora_prompt = sora_prompt[1:-1]
+
+        return sora_prompt
+
+    def generate_sora_prompt(
+        self,
+        product_name: str,
+        product_description: str
+    ) -> str:
+        """
+        Tạo prompt cho SORA video (public method)
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+
+        Returns:
+            SORA prompt string
+        """
+        try:
+            return self._generate_sora_prompt_internal(product_name, product_description)
+        except Exception as e:
+            console.print(f"[red]❌ Lỗi tạo SORA prompt: {e}[/]")
+            return ""
+
     def generate_voice(
         self,
         text: str,
         output_path: str,
-        voice_name: str = "Aoede",
+        voice_name: str = "Kore",
         output_format: str = "mp3"
     ) -> VoiceResult:
         """
@@ -232,6 +344,9 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
             text: Nội dung cần đọc
             output_path: Đường dẫn file output (.mp3 hoặc .wav)
             voice_name: Tên giọng đọc (Aoede, Charon, Fenrir, Kore, Puck)
+                        - Kore: Giọng nữ vui tươi, năng động (mặc định)
+                        - Puck: Giọng vui vẻ, linh hoạt
+                        - Aoede: Giọng nữ trầm ấm
             output_format: Format output (mp3 hoặc wav)
 
         Returns:
@@ -326,9 +441,19 @@ BÂY GIỜ HÃY VIẾT KỊCH BẢN:"""
                     )
                     if result.returncode != 0:
                         # Nếu ffmpeg fail, giữ lại file WAV
-                        console.print(f"[yellow]⚠️ ffmpeg không khả dụng, lưu WAV[/]")
+                        console.print(f"[yellow]⚠️ ffmpeg convert thất bại, lưu WAV[/]")
                         output_file = output_file.with_suffix(".wav")
                         shutil.copy(tmp_wav, str(output_file))
+                except FileNotFoundError:
+                    # ffmpeg không được cài đặt - lưu WAV thay vì MP3
+                    console.print(f"[yellow]⚠️ ffmpeg không được cài đặt, lưu WAV thay vì MP3[/]")
+                    output_file = output_file.with_suffix(".wav")
+                    shutil.copy(tmp_wav, str(output_file))
+                except Exception as e:
+                    # Lỗi khác - vẫn lưu WAV
+                    console.print(f"[yellow]⚠️ Lỗi convert MP3: {e}, lưu WAV[/]")
+                    output_file = output_file.with_suffix(".wav")
+                    shutil.copy(tmp_wav, str(output_file))
                 finally:
                     # Xóa file tạm
                     if os.path.exists(tmp_wav):
@@ -398,6 +523,7 @@ class ScriptProcessor:
         name_column: str = "C",
         description_column: str = "D",
         script_column: str = "G",
+        sora_prompt_column: str = "E",
     ):
         """
         Args:
@@ -406,12 +532,14 @@ class ScriptProcessor:
             name_column: Cột tên sản phẩm
             description_column: Cột mô tả
             script_column: Cột ghi kịch bản
+            sora_prompt_column: Cột ghi SORA prompt
         """
         self.gemini = gemini_service
         self.voice_folder = Path(voice_folder)
         self.name_column = name_column
         self.description_column = description_column
         self.script_column = script_column
+        self.sora_prompt_column = sora_prompt_column
 
         # Tạo thư mục voice nếu chưa có
         self.voice_folder.mkdir(parents=True, exist_ok=True)
@@ -519,6 +647,12 @@ class ScriptProcessor:
                         cell = f"{self.script_column}{row_idx}"
                         sheet.update_acell(cell, script_result.script)
                         console.print(f"[green]✓ Đã ghi kịch bản vào {cell}[/]")
+
+                        # Ghi SORA prompt vào cột E nếu có
+                        if script_result.sora_prompt:
+                            sora_cell = f"{self.sora_prompt_column}{row_idx}"
+                            sheet.update_acell(sora_cell, script_result.sora_prompt)
+                            console.print(f"[green]✓ Đã ghi SORA prompt vào {sora_cell}[/]")
                     except Exception as e:
                         console.print(f"[yellow]⚠️ Lỗi ghi sheet: {e}[/]")
 

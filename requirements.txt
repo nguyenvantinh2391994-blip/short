@@ -12,6 +12,9 @@ pyautogui>=0.9.54
 pyperclip>=1.8.2
 opencv-python>=4.8.0
 
+# Image filtering (person detection)
+mediapipe>=0.10.0
+
 # Browser automation - Selenium
 selenium>=4.15.0
 webdriver-manager>=4.0.0

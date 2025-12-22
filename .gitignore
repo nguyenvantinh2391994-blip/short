@@ -3,6 +3,10 @@ config/config.json
 config/credentials.json
 config/grok_tokens.json
 config/xai_config.json
+config/gui_config.json
+
+# Config backup folder
+config_backup/
 
 # Keep example files
 !config/*.example.json

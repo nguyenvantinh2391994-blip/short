@@ -235,8 +235,8 @@ class VideoMerger:
         self,
         image_paths: List[str],
         duration_per_image: float = 1.0,
-        target_width: int = 1080,
-        target_height: int = 1920
+        target_width: int = None,
+        target_height: int = None
     ) -> List:
         """
         Tạo video clips từ ảnh
@@ -244,8 +244,8 @@ class VideoMerger:
         Args:
             image_paths: Danh sách đường dẫn ảnh
             duration_per_image: Thời lượng mỗi ảnh (giây)
-            target_width: Chiều rộng video
-            target_height: Chiều cao video
+            target_width: Chiều rộng video (None = giữ nguyên)
+            target_height: Chiều cao video (None = giữ nguyên)
 
         Returns:
             List các ImageClip
@@ -256,13 +256,7 @@ class VideoMerger:
                 continue
             try:
                 clip = ImageClip(img_path, duration=duration_per_image)
-                # Resize để fit 9:16
-                clip = clip.resize(height=target_height)
-                if clip.w > target_width:
-                    clip = clip.resize(width=target_width)
-                # Center crop nếu cần
-                if clip.w != target_width or clip.h != target_height:
-                    clip = clip.resize((target_width, target_height))
+                # Giữ nguyên kích thước gốc, không resize
                 clips.append(clip)
             except Exception as e:
                 self.log(f"Lỗi load ảnh {img_path}: {e}")
@@ -475,6 +469,26 @@ def get_music_for_index(music_folder: str, index: int) -> Optional[str]:
 
     # Lấy theo index, lặp lại nếu hết
     music_file = music_files[index % len(music_files)]
+    return os.path.join(music_folder, music_file)
+
+
+def get_random_music(music_folder: str) -> Optional[str]:
+    """Lấy file nhạc ngẫu nhiên từ thư mục music"""
+    import random
+
+    if not music_folder or not os.path.exists(music_folder):
+        return None
+
+    music_files = [
+        f for f in os.listdir(music_folder)
+        if f.lower().endswith(('.mp3', '.wav', '.m4a', '.aac'))
+    ]
+
+    if not music_files:
+        return None
+
+    # Random chọn 1 file
+    music_file = random.choice(music_files)
     return os.path.join(music_folder, music_file)
 
 

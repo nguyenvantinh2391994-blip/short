@@ -11,6 +11,16 @@ from typing import Callable, Optional, Dict, Any, List
 from queue import Queue
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+
+
+@dataclass
+class ProcessResult:
+    """Kết quả xử lý một item"""
+    success: bool
+    output_path: str = ""
+    error: str = ""
+    remaining_images: List = field(default_factory=list)  # Ảnh còn lại nếu bị rate limit
 
 
 class GrokWorker:
@@ -138,10 +148,20 @@ class GrokWorker:
 
         # Gọi process_single_product
         try:
-            success = self.process_single_product(item, profile, reader, merger)
+            result = self.process_single_product(item, profile, reader, merger)
             code = item.get("code", "")
-            output_path = str(self.output_folder / f"{code}.mp4") if success else ""
-            return Result(success=success, output_path=output_path)
+
+            # Handle ProcessResult
+            if isinstance(result, ProcessResult):
+                return Result(
+                    success=result.success,
+                    output_path=result.output_path or str(self.output_folder / f"{code}.mp4") if result.success else "",
+                    error=result.error
+                )
+            else:
+                # Fallback cho boolean return (không nên xảy ra)
+                output_path = str(self.output_folder / f"{code}.mp4") if result else ""
+                return Result(success=bool(result), output_path=output_path)
         except Exception as e:
             return Result(success=False, error=str(e))
 
@@ -154,7 +174,7 @@ class GrokWorker:
     ) -> bool:
         """Xử lý 1 mã sản phẩm với 1 profile"""
         from ...grok_selenium import GrokSeleniumAutomation
-        from ...video_merger import get_music_for_index, get_voice_for_code
+        from ...video_merger import get_random_music, get_voice_for_code
 
         code = item["code"]
         row = item["row"]
@@ -219,6 +239,21 @@ class GrokWorker:
                     created_videos.append(str(video_path))
                     self.log(f"[{profile_name}] ✓ Tạo xong: {video_name}", "success")
                 else:
+                    self.log(f"[{profile_name}] Video thất bại - error: {result.error}", "warning")
+
+                    # Kiểm tra rate limit
+                    if result.error == "RATE_LIMIT":
+                        self.log(f"[{profile_name}] 🚫 RATE LIMIT DETECTED!", "error")
+                        self.log(f"[{profile_name}] → Đóng Chrome profile này...", "warning")
+                        # Đánh dấu profile này bị rate limit
+                        profile["rate_limited"] = True
+                        # Đóng automation hiện tại
+                        automation.close_driver()
+                        # Return đặc biệt để chuyển profile
+                        remaining = images[j:]
+                        self.log(f"[{profile_name}] → Return với {len(remaining)} ảnh còn lại", "info")
+                        return ProcessResult(False, error="RATE_LIMIT", remaining_images=remaining)
+
                     self.log(f"[{profile_name}] ✗ Thất bại: {result.error}", "error")
 
                 # Navigate về Grok cho ảnh tiếp theo
@@ -231,7 +266,7 @@ class GrokWorker:
 
             if not created_videos:
                 self.log(f"[{profile_name}] ✗ Không tạo được video nào cho {code}", "error")
-                return False
+                return ProcessResult(False, error="Không tạo được video")
 
             # ===== BƯỚC 2: Ghép video + nhạc + voice =====
             self.log(f"[{profile_name}] Ghép {len(created_videos)} video...", "progress")
@@ -243,30 +278,23 @@ class GrokWorker:
                 if voice_path:
                     self.log(f"[{profile_name}] 🎤 Voice: {Path(voice_path).name}", "info")
 
-            # Lấy nhạc - LUÔN lấy nhạc nếu không có voice
+            # Lấy nhạc ngẫu nhiên từ thư mục music
             music_path = None
             if self.music_folder and self.music_folder.exists():
-                with self._lock:
-                    music_path = get_music_for_index(str(self.music_folder), self._music_index)
-                    self._music_index += 1
+                music_path = get_random_music(str(self.music_folder))
                 if music_path:
-                    if not voice_path:
-                        self.log(f"[{profile_name}] 🎵 Không có voice, dùng nhạc: {Path(music_path).name}", "info")
-                    else:
-                        self.log(f"[{profile_name}] 🎵 Nhạc nền: {Path(music_path).name}", "info")
+                    self.log(f"[{profile_name}] 🎵 Nhạc (random): {Path(music_path).name}", "info")
 
             # Đường dẫn output
             final_video = self.output_folder / f"{code}.mp4"
 
-            # Ghép video (mute_original=True để tắt âm gốc)
-            # Nếu có voice -> nhạc 0.5, không có voice -> nhạc full (1.0)
-            music_vol = 0.5 if voice_path else 1.0
+            # Ghép video với nhạc nền 60% volume (mute_original=True để tắt âm gốc)
             success = merger.merge_videos(
                 video_paths=created_videos,
                 output_path=str(final_video),
                 music_path=music_path,
                 voice_path=voice_path,
-                music_volume=music_vol,
+                music_volume=0.6,  # 60% volume
                 voice_volume=1.0,
                 mute_original=True  # Tắt âm thanh gốc của video
             )
@@ -280,14 +308,14 @@ class GrokWorker:
                     self._completed_count += 1
                     self.progress(self._completed_count, self._total_count, f"Hoàn thành: {code}")
 
-                return True
+                return ProcessResult(True, output_path=str(final_video))
             else:
                 self.log(f"[{profile_name}] ✗ Lỗi ghép video cho {code}", "error")
-                return False
+                return ProcessResult(False, error="Lỗi ghép video")
 
         except Exception as e:
             self.log(f"[{profile_name}] Lỗi xử lý {code}: {e}", "error")
-            return False
+            return ProcessResult(False, error=str(e))
 
         finally:
             # Remove từ list trước khi đóng
@@ -462,42 +490,89 @@ class GrokWorker:
                 on_log=self.log
             )
 
-            # ===== CHẠY SONG SONG =====
+            # ===== XỬ LÝ VỚI RATE LIMIT HANDLING =====
             self.log(f"\n{'='*40}", "info")
-            self.log(f"Bắt đầu xử lý song song với {num_profiles} profile...", "progress")
+            self.log(f"Bắt đầu xử lý với {num_profiles} profile (có rate limit handling)...", "progress")
 
-            # Phân chia công việc cho các profile
-            # Mỗi profile xử lý các mã theo round-robin
-            with ThreadPoolExecutor(max_workers=num_profiles) as executor:
-                futures = []
+            # Hiển thị danh sách profiles
+            for i, p in enumerate(self.browser_profiles):
+                self.log(f"   Profile {i+1}: {p.get('name', 'Unknown')} - {p.get('profile_path', 'N/A')}", "info")
 
-                for i, item in enumerate(still_pending):
-                    if self.stop_flag.is_set():
-                        break
+            # Đánh dấu profile nào bị rate limit
+            for profile in self.browser_profiles:
+                profile["rate_limited"] = False
 
-                    # Chọn profile theo round-robin
-                    profile = self.browser_profiles[i % num_profiles]
+            # Hàm lấy profile khả dụng tiếp theo
+            def get_available_profile():
+                available = [p for p in self.browser_profiles if not p.get("rate_limited", False)]
+                self.log(f"   📊 Profiles khả dụng: {len(available)}/{len(self.browser_profiles)}", "info")
+                if available:
+                    return available[0]
+                return None
 
-                    # Submit task
-                    future = executor.submit(
-                        self.process_single_product,
-                        item, profile, reader, merger
-                    )
-                    futures.append((item["code"], future))
+            # Queue các item cần xử lý
+            pending_queue = list(still_pending)
 
-                # Chờ tất cả hoàn thành
-                for code, future in futures:
-                    if self.stop_flag.is_set():
-                        break
-                    try:
-                        future.result()
-                    except Exception as e:
-                        self.log(f"Lỗi xử lý {code}: {e}", "error")
+            while pending_queue and not self.stop_flag.is_set():
+                # Lấy profile khả dụng
+                profile = get_available_profile()
+
+                if not profile:
+                    self.log("⚠️ Tất cả profile đều bị rate limit!", "error")
+                    self.log("   Vui lòng thêm thêm profile Chrome trong Settings.", "warning")
+                    self.log(f"   Còn {len(pending_queue)} mã chưa xử lý.", "warning")
+                    break
+
+                item = pending_queue.pop(0)
+                code = item["code"]
+
+                self.log(f"\n[{profile.get('name', 'Unknown')}] Xử lý: {code}", "progress")
+
+                try:
+                    result = self.process_single_product(item, profile, reader, merger)
+
+                    if isinstance(result, ProcessResult):
+                        if result.error == "RATE_LIMIT":
+                            # Đánh dấu profile bị rate limit
+                            profile["rate_limited"] = True
+                            self.log(f"🚫 Profile '{profile.get('name')}' bị RATE LIMIT!", "warning")
+
+                            # Kiểm tra còn profile nào không
+                            remaining_profiles = [p for p in self.browser_profiles if not p.get("rate_limited", False)]
+                            if remaining_profiles:
+                                self.log(f"   ↪ Chuyển sang profile: {remaining_profiles[0].get('name')}", "info")
+                            else:
+                                self.log(f"   ❌ Không còn profile nào khả dụng!", "error")
+
+                            # Nếu còn ảnh chưa xử lý, tạo item mới với ảnh còn lại
+                            if result.remaining_images:
+                                new_item = item.copy()
+                                new_item["images"] = result.remaining_images
+                                pending_queue.insert(0, new_item)  # Thêm vào đầu queue
+                                self.log(f"   📷 Còn {len(result.remaining_images)} ảnh chưa xử lý", "info")
+                            else:
+                                # Thêm lại item vào đầu queue để thử với profile khác
+                                pending_queue.insert(0, item)
+                                self.log(f"   📷 Thêm lại {code} vào queue", "info")
+
+                        elif not result.success:
+                            self.log(f"✗ Lỗi xử lý {code}: {result.error}", "error")
+                        # Nếu thành công, không cần làm gì thêm
+
+                except Exception as e:
+                    self.log(f"Lỗi xử lý {code}: {e}", "error")
+                    import traceback
+                    self.log(traceback.format_exc(), "error")
 
             # Hoàn thành
             self.progress(self._total_count, self._total_count, "Hoàn thành")
             self.log(f"\n{'='*40}", "info")
             self.log(f"Hoàn thành xử lý {self._completed_count}/{self._total_count} mã!", "success")
+
+            # Báo cáo profile bị rate limit
+            rate_limited_profiles = [p.get("name") for p in self.browser_profiles if p.get("rate_limited")]
+            if rate_limited_profiles:
+                self.log(f"⚠️ Profiles bị rate limit: {', '.join(rate_limited_profiles)}", "warning")
 
         except Exception as e:
             self.log(f"Lỗi: {str(e)}", "error")

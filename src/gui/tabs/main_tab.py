@@ -138,6 +138,21 @@ class MainTab:
         btn_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
         btn_frame.pack(side="left", padx=15, pady=12)
 
+        # Nút Login Shopee - để đăng nhập và lưu cookies
+        self.login_btn = ctk.CTkButton(
+            btn_frame,
+            text="Login",
+            command=self.login_shopee,
+            width=60,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#6B7280",  # Gray
+            hover_color="#4B5563",
+            text_color="white"
+        )
+        self.login_btn.pack(side="left", padx=(0, 5))
+
         # Nút Tải ảnh - Orange/Amber
         self.shopee_btn = ctk.CTkButton(
             btn_frame,
@@ -183,12 +198,12 @@ class MainTab:
         )
         self.script_btn.pack(side="left", padx=(0, 10))
 
-        # Nút Tạo Video - Green/Success
+        # Nút Tạo Video (Grok) - Green/Success
         self.start_btn = ctk.CTkButton(
             btn_frame,
-            text="Tạo Video",
+            text="Grok",
             command=self.start_process,
-            width=120,
+            width=80,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
@@ -196,7 +211,22 @@ class MainTab:
             hover_color=self.COLORS["success_hover"],
             text_color="white"
         )
-        self.start_btn.pack(side="left", padx=(0, 10))
+        self.start_btn.pack(side="left", padx=(0, 5))
+
+        # Nút Tạo Video SORA - Gradient Purple/Blue
+        self.sora_btn = ctk.CTkButton(
+            btn_frame,
+            text="SORA",
+            command=self.start_sora_process,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#7C3AED",  # Purple
+            hover_color="#6D28D9",
+            text_color="white"
+        )
+        self.sora_btn.pack(side="left", padx=(0, 10))
 
         # Nút Edit - Dark Cyan (trước Chạy Full)
         self.edit_btn = ctk.CTkButton(
@@ -672,6 +702,119 @@ class MainTab:
 
     # ===== ACTIONS =====
 
+    def login_shopee(self):
+        """Mở browser để đăng nhập Shopee và lưu cookies"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.add_log("🔐 Mở Shopee để đăng nhập...")
+        self.add_log("   1. Đăng nhập tài khoản Shopee")
+        self.add_log("   2. Giải captcha nếu có")
+        self.add_log("   3. Bấm 'Lưu Cookies' khi xong")
+
+        thread = threading.Thread(target=self._run_login_shopee, daemon=True)
+        thread.start()
+
+    def _run_login_shopee(self):
+        """Background thread mở browser để login"""
+        try:
+            from ...shopee_downloader import ShopeeDownloader
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+
+            # Browser profile từ Settings
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+                self.after_safe(lambda: self.add_log(f"📱 Dùng profile: {first_profile.get('name', 'Default')}"))
+
+            # Tạo downloader với browser HIỆN (không headless)
+            self.shopee_downloader = ShopeeDownloader(
+                output_dir=self.app.config.input_folder,
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                headless=False  # Hiện browser để user đăng nhập
+            )
+
+            # Setup Chrome options - DÙNG PROFILE ĐÃ LƯU
+            options = Options()
+
+            # Sử dụng Chrome profile từ Settings (đã đăng nhập)
+            if profile_path:
+                from pathlib import Path
+                profile = Path(profile_path)
+                if profile.exists():
+                    self.after_safe(lambda: self.add_log(f"📁 Profile path: {profile_path}"))
+                    options.add_argument(f"--user-data-dir={profile}")
+                else:
+                    self.after_safe(lambda: self.add_log(f"⚠️ Profile không tồn tại: {profile_path}"))
+
+            # Đường dẫn Chrome executable
+            if chrome_path:
+                from pathlib import Path
+                if Path(chrome_path).exists():
+                    options.binary_location = chrome_path
+
+            # Window settings
+            options.add_argument("--window-size=1200,800")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+
+            # Tạo driver với profile đã lưu
+            self.shopee_downloader.driver = webdriver.Chrome(options=options)
+
+            driver = self.shopee_downloader.driver
+            driver.set_window_position(100, 100)
+
+            # Vào trang Shopee
+            driver.get("https://shopee.vn")
+            self.after_safe(lambda: self.add_log("✓ Đã mở Shopee"))
+            self.after_safe(lambda: self.add_log("📌 Hãy đăng nhập và giải captcha nếu có"))
+
+            # Đổi nút Login thành Lưu Cookies
+            self.after_safe(lambda: self.login_btn.configure(
+                text="Lưu",
+                fg_color="#10B981",
+                hover_color="#059669",
+                command=self._save_shopee_cookies
+            ))
+
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+
+    def _save_shopee_cookies(self):
+        """Lưu cookies và đóng browser"""
+        try:
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader and self.shopee_downloader.driver:
+                # Lưu cookies
+                self.shopee_downloader._save_cookies_to_file(self.shopee_downloader.driver)
+                self.add_log("✓ Đã lưu cookies vào config/shopee_cookies.txt")
+
+                # Đóng browser
+                self.shopee_downloader.driver.quit()
+                self.shopee_downloader.driver = None
+                self.add_log("✓ Đã đóng browser")
+
+            # Reset nút Login
+            self.login_btn.configure(
+                text="Login",
+                fg_color="#6B7280",
+                hover_color="#4B5563",
+                command=self.login_shopee
+            )
+
+        except Exception as e:
+            self.add_log(f"❌ Lỗi lưu cookies: {e}")
+
     def download_shopee_images(self):
         """Tải ảnh từ Shopee"""
         if self.is_running:
@@ -1030,10 +1173,166 @@ class MainTab:
         self.shopee_btn.configure(state="normal")
         self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
+        self.sora_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
         self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+
+    # ===== SORA VIDEO CREATION =====
+
+    def start_sora_process(self):
+        """Bắt đầu tạo video bằng SORA"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.sora_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("🎬 Bắt đầu tạo video SORA...")
+
+        thread = threading.Thread(target=self._run_sora_creation, daemon=True)
+        thread.start()
+
+    def _run_sora_creation(self):
+        """Background thread tạo video SORA"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...sora_automation import SoraAutomation
+
+            self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối Google Sheets!"))
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Không có sản phẩm nào cần tạo video"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"📋 Tìm thấy {n} sản phẩm"))
+
+            # Tạo tasks
+            for item in pending:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # Lấy browser profile (dùng chung với Grok)
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            # Folder input/output
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+            output_folder.mkdir(parents=True, exist_ok=True)
+
+            # Khởi tạo SORA automation (giống Grok)
+            sora = SoraAutomation(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                output_folder=str(output_folder),
+            )
+
+            first_video = True  # Track xem đã mở Chrome chưa
+
+            # Xử lý từng sản phẩm
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+
+                # Lấy SORA prompt từ cột E (sora_prompt) hoặc fallback về prompt thường
+                sora_prompt = item.get("sora_prompt", "") or item.get("prompt", "")
+
+                if not sora_prompt:
+                    self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt SORA"))
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                    continue
+
+                # Tìm ảnh đầu tiên trong folder input/{code}/
+                code_folder = input_folder / code
+                image_path = None
+                if code_folder.exists():
+                    images = sorted(code_folder.glob("*.jpg")) + sorted(code_folder.glob("*.png")) + sorted(code_folder.glob("*.webp"))
+                    if images:
+                        image_path = str(images[0])  # Lấy ảnh đầu tiên
+                        self.after_safe(lambda c=code, p=images[0].name:
+                            self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+
+                self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
+                self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
+
+                # Tạo video SORA (giống Grok)
+                if first_video:
+                    result = sora.create_video(
+                        image_path=image_path or "",
+                        prompt=sora_prompt,
+                        product_code=code
+                    )
+                    first_video = False
+                else:
+                    result = sora.create_video_continue(
+                        image_path=image_path or "",
+                        prompt=sora_prompt,
+                        product_code=code
+                    )
+
+                if result and result.success:
+                    video_path = result.video_path
+                    self.after_safe(lambda c=code, p=video_path:
+                        self.add_log(f"  ✓ {c}: Video đã tạo - {Path(p).name}"))
+                    self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                    self.set_task_render_status(code, TaskItem.STATUS_DONE)
+
+                    # Cập nhật Google Sheets
+                    try:
+                        reader.update_status(item["row"], "DONE", self.app.config.status_column)
+                    except Exception:
+                        pass
+                else:
+                    error = result.error if result else "Timeout"
+                    self.after_safe(lambda c=code, e=error:
+                        self.add_log(f"  ✗ {c}: {e}"))
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+
+            self.after_safe(lambda: self.add_log("\n✅ Hoàn thành SORA!"))
+
+        except ImportError as e:
+            self.after_safe(lambda: self.add_log(f"❌ Chưa có module SORA: {e}"))
+            self.after_safe(lambda: self.add_log("💡 Module sora_automation.py chưa được tạo"))
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_process_complete)
 
     def stop_process(self):
         """Stop current process"""
@@ -1516,114 +1815,14 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("  Không có mã nào có ảnh để tạo video"))
                 return
 
-            # Track trạng thái hoàn thành
-            import threading as th
-            video_done = {}  # code -> True/False
-            voice_done = {}  # code -> True/False
-            edit_done = {}   # code -> True/False
-            status_lock = th.Lock()
-
             # Khởi tạo trạng thái
             voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
             voice_folder.mkdir(parents=True, exist_ok=True)
-            temp_folder = output_folder / "_temp_videos"
-            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
-
-            for item in valid_items:
-                code = item["code"]
-                video_done[code] = False
-                edit_done[code] = False
-                # Check voice đã có sẵn chưa
-                voice_mp3 = voice_folder / f"{code}.mp3"
-                voice_wav = voice_folder / f"{code}.wav"
-                voice_done[code] = voice_mp3.exists() or voice_wav.exists()
-
-            # Hàm Edit cho 1 mã (chạy khi cả video và voice xong)
-            def try_edit_item(code):
-                with status_lock:
-                    if edit_done.get(code):
-                        return  # Đã edit rồi
-                    if not video_done.get(code) or not voice_done.get(code):
-                        return  # Chưa đủ điều kiện
-                    edit_done[code] = True
-
-                self.after_safe(lambda c=code: self.add_log(f"  [Edit] 🎬 {c}: ghép video + voice..."))
-
-                try:
-                    from ...video_merger import VideoMerger
-                    import random
-
-                    merger = VideoMerger()
-
-                    # Tìm video trong temp folder
-                    code_temp = temp_folder / code
-                    if not code_temp.exists():
-                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ❌ {c}: không tìm thấy video"))
-                        return
-
-                    videos = list(code_temp.glob("*.mp4"))
-                    if not videos:
-                        return
-
-                    # Tìm voice
-                    voice_path = None
-                    for ext in ['.mp3', '.wav']:
-                        vp = voice_folder / f"{code}{ext}"
-                        if vp.exists():
-                            voice_path = str(vp)
-                            break
-
-                    # Tìm music ngẫu nhiên
-                    music_path = None
-                    if music_folder and music_folder.exists():
-                        music_files = list(music_folder.glob("*.mp3"))
-                        if music_files:
-                            music_path = str(random.choice(music_files))
-
-                    # Tìm ảnh từ INPUT
-                    image_paths = []
-                    code_input = input_folder / code
-                    if code_input.exists():
-                        for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
-                            image_paths.extend([str(p) for p in code_input.glob(ext)])
-                        image_paths.sort()
-
-                    # Output
-                    final_video = output_folder / f"{code}_final.mp4"
-                    music_vol = 0.5 if voice_path else 1.0
-
-                    success = merger.merge_videos_with_images(
-                        video_paths=[str(v) for v in videos],
-                        image_paths=image_paths,
-                        output_path=str(final_video),
-                        music_path=music_path,
-                        voice_path=voice_path,
-                        music_volume=music_vol,
-                        voice_volume=1.0,
-                        mute_original=True,
-                        image_duration=1.0,
-                        target_width=1080,
-                        target_height=1920
-                    )
-
-                    if success:
-                        self.tasks[code].output_path = final_video
-                        self.after_safe(lambda c=code: self.update_task_row(c))
-                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ✅ {c}: Hoàn thành final!"))
-                    else:
-                        self.after_safe(lambda c=code: self.add_log(f"  [Edit] ❌ {c}: lỗi ghép"))
-
-                except Exception as e:
-                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"  [Edit] ❌ {c}: {e}"))
 
             # Định nghĩa hàm chạy song song cho kịch bản
             def run_script_generation():
                 if not self.app.config.gemini_api_key:
                     self.after_safe(lambda: self.add_log("  [Script] ⚠️ Bỏ qua - chưa có API key"))
-                    # Đánh dấu tất cả voice done để edit có thể chạy
-                    with status_lock:
-                        for code in voice_done:
-                            voice_done[code] = True
                     return
 
                 gemini = GeminiService(self.app.config.gemini_api_key)
@@ -1647,9 +1846,6 @@ class MainTab:
                     existing_script = row[6].strip() if len(row) > 6 else ""  # G
 
                     if not name:
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
                         continue
 
                     # Check existing voice
@@ -1659,9 +1855,6 @@ class MainTab:
 
                     if has_voice:
                         self.after_safe(lambda c=code: self.add_log(f"  [Script] ⏭️ {c}: đã có voice"))
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
                         continue
 
                     try:
@@ -1677,9 +1870,6 @@ class MainTab:
                                 reader.sheet.update_acell(f"G{item['row']}", script)
                             else:
                                 self.after_safe(lambda c=code, e=script_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
-                                with status_lock:
-                                    voice_done[code] = True
-                                try_edit_item(code)
                                 continue
 
                         # Tạo voice
@@ -1696,18 +1886,10 @@ class MainTab:
                             else:
                                 self.after_safe(lambda c=code, e=voice_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
 
-                        # Đánh dấu voice done và thử edit
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
-
                         time.sleep(1)  # Rate limit
 
                     except Exception as e:
                         self.after_safe(lambda c=code, e=str(e): self.add_log(f"  [Script] ❌ {c}: {e}"))
-                        with status_lock:
-                            voice_done[code] = True
-                        try_edit_item(code)
 
             # Định nghĩa hàm chạy song song cho video
             def run_video_creation():
@@ -1738,26 +1920,18 @@ class MainTab:
 
                         if result and result.success:
                             self.set_task_render_status(code, TaskItem.STATUS_DONE)
-                            self.after_safe(lambda c=code: self.add_log(f"  [Video] ✓ {c}: xong video"))
-
-                            # Đánh dấu video done và thử edit
-                            with status_lock:
-                                video_done[code] = True
-                            try_edit_item(code)
+                            if result.output_path:
+                                self.tasks[code].output_path = Path(result.output_path)
+                                self.after_safe(lambda c=code: self.update_task_row(c))
+                            self.after_safe(lambda c=code: self.add_log(f"  [Video] ✅ {c}: Hoàn thành!"))
                         else:
                             self.set_task_render_status(code, TaskItem.STATUS_ERROR)
                             error_msg = getattr(result, 'error', 'Lỗi') if result else 'Không có kết quả'
                             self.after_safe(lambda c=code, err=error_msg: self.add_log(f"  [Video] ❌ {c}: {err}"))
-                            with status_lock:
-                                video_done[code] = True
-                            try_edit_item(code)
 
                     except Exception as e:
                         self.set_task_render_status(code, TaskItem.STATUS_ERROR)
                         self.after_safe(lambda c=code, err=str(e): self.add_log(f"  [Video] ❌ {c}: {err}"))
-                        with status_lock:
-                            video_done[code] = True
-                        try_edit_item(code)
 
             # Chạy song song 2 luồng
             with ThreadPoolExecutor(max_workers=2) as executor:
@@ -1798,14 +1972,9 @@ class MainTab:
     # ===== IMAGE FILTER =====
 
     def filter_images(self):
-        """Lọc ảnh - xóa logo/banner, giữ ảnh sản phẩm"""
+        """Lọc ảnh - loại ảnh ghép/collage, giữ ảnh có người"""
         if self.is_running:
             self.add_log("Đang chạy task khác...")
-            return
-
-        # Kiểm tra API key
-        if not self.app.config.gemini_api_key:
-            self.add_log("❌ Cần Gemini API key để lọc ảnh! Vào Settings.")
             return
 
         self.is_running = True
@@ -1817,24 +1986,25 @@ class MainTab:
         self.edit_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
-        self.add_log("🔍 Bắt đầu lọc ảnh...")
+        self.add_log("🔍 Bắt đầu lọc ảnh (loại ảnh ghép, giữ ảnh có người)...")
 
         thread = threading.Thread(target=self._run_image_filter, daemon=True)
         thread.start()
 
     def _run_image_filter(self):
-        """Background thread lọc ảnh"""
+        """Background thread lọc ảnh - sử dụng OpenCV/MediaPipe"""
         try:
-            from ...image_processor import ImageFilter
-            import time
+            from ...image_filter import ImageFilter
+            import shutil
 
             input_folder = Path(self.app.config.input_folder)
             if not input_folder.exists():
                 self.after_safe(lambda: self.add_log(f"❌ Folder không tồn tại: {input_folder}"))
                 return
 
-            # Lấy tất cả subfolder
-            folders = [f for f in input_folder.iterdir() if f.is_dir()]
+            # Lấy tất cả subfolder (không lấy _rejected)
+            folders = [f for f in input_folder.iterdir()
+                      if f.is_dir() and not f.name.startswith('_')]
 
             if not folders:
                 self.after_safe(lambda: self.add_log("Không có folder nào để lọc"))
@@ -1842,58 +2012,74 @@ class MainTab:
 
             self.after_safe(lambda n=len(folders): self.add_log(f"📁 Tìm thấy {n} folder"))
 
-            filter = ImageFilter(self.app.config.gemini_api_key)
+            # Khởi tạo filter (không cần API key)
+            img_filter = ImageFilter(
+                require_person=True,
+                reject_collage=True
+            )
 
             total_kept = 0
-            total_deleted = 0
+            total_rejected = 0
 
-            for folder in folders:
-                if self.stop_flag.is_set():
-                    break
-
-                # Đếm ảnh trong folder
-                extensions = {'.jpg', '.jpeg', '.png', '.webp'}
-                images = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
-
-                if not images:
-                    continue
-
-                self.after_safe(lambda f=folder.name, n=len(images): self.add_log(f"\n📁 {f}: {n} ảnh"))
-
-                for img_path in images:
+            try:
+                for folder in folders:
                     if self.stop_flag.is_set():
                         break
 
-                    try:
-                        analysis = filter.analyze_image(str(img_path))
+                    # Đếm ảnh trong folder
+                    extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+                    images = [f for f in folder.iterdir()
+                             if f.suffix.lower() in extensions and not f.name.startswith('_')]
 
-                        if analysis.should_keep:
-                            total_kept += 1
-                            self.after_safe(lambda p=img_path.name, d=analysis.description:
-                                self.add_log(f"  ✓ {p}: {d[:50]}"))
-                        else:
-                            total_deleted += 1
-                            self.after_safe(lambda p=img_path.name, d=analysis.description:
-                                self.add_log(f"  ✗ {p}: {d[:50]}"))
+                    if not images:
+                        continue
 
-                            # Xóa file
-                            try:
-                                img_path.unlink()
-                                self.after_safe(lambda: self.add_log("    → Đã xóa"))
-                            except Exception as e:
-                                self.after_safe(lambda e=e: self.add_log(f"    → Lỗi xóa: {e}"))
+                    self.after_safe(lambda f=folder.name, n=len(images):
+                        self.add_log(f"\n📁 {f}: {n} ảnh"))
 
-                        # Rate limit
-                        time.sleep(0.5)
+                    # Tạo thư mục _rejected trong folder
+                    rejected_folder = folder / "_rejected"
 
-                    except Exception as e:
-                        self.after_safe(lambda p=img_path.name, e=str(e): self.add_log(f"  ⚠️ {p}: {e}"))
+                    for img_path in images:
+                        if self.stop_flag.is_set():
+                            break
 
-            # Tổng kết
-            self.after_safe(lambda: self.add_log("\n" + "="*40))
-            self.after_safe(lambda k=total_kept, d=total_deleted:
-                self.add_log(f"✅ Hoàn thành! Giữ: {k}, Xóa: {d}"))
+                        try:
+                            result = img_filter.filter_image(str(img_path))
 
+                            if result.should_keep:
+                                total_kept += 1
+                                self.after_safe(lambda p=img_path.name, r=result.reason:
+                                    self.add_log(f"  ✓ {p}: {r}"))
+                            else:
+                                total_rejected += 1
+                                self.after_safe(lambda p=img_path.name, r=result.reason:
+                                    self.add_log(f"  ✗ {p}: {r}"))
+
+                                # Di chuyển vào _rejected (không xóa)
+                                try:
+                                    rejected_folder.mkdir(exist_ok=True)
+                                    shutil.move(str(img_path), str(rejected_folder / img_path.name))
+                                    self.after_safe(lambda: self.add_log("    → Đã chuyển vào _rejected"))
+                                except Exception as e:
+                                    self.after_safe(lambda e=e: self.add_log(f"    → Lỗi: {e}"))
+
+                        except Exception as e:
+                            self.after_safe(lambda p=img_path.name, e=str(e):
+                                self.add_log(f"  ⚠️ {p}: {e}"))
+
+                # Tổng kết
+                self.after_safe(lambda: self.add_log("\n" + "="*40))
+                self.after_safe(lambda k=total_kept, r=total_rejected:
+                    self.add_log(f"✅ Hoàn thành! Giữ: {k}, Loại: {r}"))
+                self.after_safe(lambda: self.add_log("📂 Ảnh bị loại nằm trong thư mục _rejected"))
+
+            finally:
+                img_filter.close()
+
+        except ImportError as e:
+            self.after_safe(lambda: self.add_log(f"❌ Thiếu thư viện: {e}"))
+            self.after_safe(lambda: self.add_log("💡 Chạy: pip install opencv-python mediapipe"))
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
             import traceback

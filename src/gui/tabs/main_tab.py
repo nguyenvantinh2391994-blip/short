@@ -1207,7 +1207,7 @@ class MainTab:
         """Background thread tạo video SORA"""
         try:
             from ...sheets_reader import SheetsReader
-            from ...sora_automation import SoraAutomation
+            from ...sora_automation import SoraAutomation, find_sora_image
 
             self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
 
@@ -1276,15 +1276,14 @@ class MainTab:
                     self.set_task_video_status(code, TaskItem.STATUS_ERROR)
                     continue
 
-                # Tìm ảnh đầu tiên trong folder input/{code}/
-                code_folder = input_folder / code
-                image_path = None
-                if code_folder.exists():
-                    images = sorted(code_folder.glob("*.jpg")) + sorted(code_folder.glob("*.png")) + sorted(code_folder.glob("*.webp"))
-                    if images:
-                        image_path = str(images[0])  # Lấy ảnh đầu tiên
-                        self.after_safe(lambda c=code, p=images[0].name:
-                            self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+                # Tìm ảnh SORA trong folder input/sora/{code}.jpg
+                image_path = find_sora_image(str(input_folder), code)
+                if image_path:
+                    self.after_safe(lambda c=code, p=Path(image_path).name:
+                        self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+                else:
+                    self.after_safe(lambda c=code:
+                        self.add_log(f"  ⚠️ {c}: Không tìm thấy ảnh trong input/sora/"))
 
                 self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)

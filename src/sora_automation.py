@@ -43,17 +43,20 @@ class SoraResult:
     error: str = ""
 
 
-def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
-    """Tìm ảnh SORA trong thư mục input/{product_code}/sora/
+def find_sora_image(input_folder: str, product_code: str = None) -> Optional[str]:
+    """Tìm ảnh SORA trong thư mục input/sora/
 
     Args:
-        input_folder: Thư mục input gốc
-        product_code: Mã sản phẩm
+        input_folder: Thư mục input gốc (ví dụ: E:/affiliate/short/input)
+        product_code: Không dùng nữa, giữ lại để tương thích
 
     Returns:
-        Đường dẫn ảnh hoặc None nếu không tìm thấy
+        Đường dẫn ảnh đầu tiên trong thư mục sora hoặc None
+
+    Ví dụ:
+        input/sora/unnamed.jpg -> trả về path này
     """
-    sora_folder = Path(input_folder) / product_code / "sora"
+    sora_folder = Path(input_folder) / "sora"
 
     if not sora_folder.exists():
         return None
@@ -65,6 +68,27 @@ def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
             return str(images[0])  # Lấy ảnh đầu tiên
 
     return None
+
+
+def get_all_sora_images(input_folder: str) -> List[str]:
+    """Lấy tất cả ảnh trong thư mục input/sora/
+
+    Args:
+        input_folder: Thư mục input gốc
+
+    Returns:
+        Danh sách đường dẫn ảnh
+    """
+    sora_folder = Path(input_folder) / "sora"
+
+    if not sora_folder.exists():
+        return []
+
+    images = []
+    for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+        images.extend(sora_folder.glob(f"*{ext}"))
+
+    return [str(img) for img in sorted(images)]
 
 
 class SoraAutomation:

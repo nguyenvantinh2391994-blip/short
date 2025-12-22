@@ -155,6 +155,18 @@
     return false;
   }
 
+  function triggerFileInput() {
+    // Tim input[type="file"] va click de mo file dialog
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+      fileInput.click();
+      log('File input triggered - dialog should open', 'success');
+      return true;
+    }
+    log('File input not found', 'warning');
+    return false;
+  }
+
   function getVideoUrl() {
     const videos = document.querySelectorAll('video');
     for (const v of videos) {
@@ -214,6 +226,7 @@
     clickTextarea,
     inputPrompt,
     clickUploadButton,
+    triggerFileInput,
     pressEnter,
     clickSubmitButton,
     getVideoUrl,
@@ -221,7 +234,21 @@
     waitForVideo,
     getState: () => state,
 
-    // Shortcut: tao video tu prompt
+    // Upload flow: click upload button -> doi dialog -> Python paste path
+    async startUpload() {
+      log('Starting upload flow...');
+      const clicked = clickUploadButton();
+      if (!clicked) {
+        // Fallback: trigger file input directly
+        return triggerFileInput();
+      }
+      // Doi 1s de menu xuat hien (neu co)
+      await new Promise(r => setTimeout(r, 1000));
+      // Trigger file input
+      return triggerFileInput();
+    },
+
+    // Shortcut: tao video tu prompt (khong co anh)
     async createVideo(prompt) {
       log(`Creating video: ${prompt.substring(0, 30)}...`);
 
@@ -234,6 +261,23 @@
       pressEnter();
 
       return waitForVideo();
+    },
+
+    // Tao video voi anh (Python se xu ly file dialog)
+    async createVideoWithImage(prompt) {
+      log(`Creating video with image: ${prompt.substring(0, 30)}...`);
+
+      // 1. Nhap prompt
+      clickTextarea();
+      await new Promise(r => setTimeout(r, 300));
+      inputPrompt(prompt);
+      await new Promise(r => setTimeout(r, 300));
+
+      // 2. Click upload - Python se paste path vao dialog
+      clickUploadButton();
+
+      // Return de Python biet can paste path
+      return { status: 'waiting_for_file', message: 'Click upload done, waiting for file path' };
     }
   };
 

@@ -43,6 +43,30 @@ class SoraResult:
     error: str = ""
 
 
+def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
+    """Tìm ảnh SORA trong thư mục input/{product_code}/sora/
+
+    Args:
+        input_folder: Thư mục input gốc
+        product_code: Mã sản phẩm
+
+    Returns:
+        Đường dẫn ảnh hoặc None nếu không tìm thấy
+    """
+    sora_folder = Path(input_folder) / product_code / "sora"
+
+    if not sora_folder.exists():
+        return None
+
+    # Tìm ảnh trong thư mục sora
+    for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+        images = list(sora_folder.glob(f"*{ext}"))
+        if images:
+            return str(images[0])  # Lấy ảnh đầu tiên
+
+    return None
+
+
 class SoraAutomation:
     """
     Tự động hóa SORA bằng PyAutoGUI + DevTools JS
@@ -208,40 +232,55 @@ class SoraAutomation:
             return False
 
     def click_and_type_prompt(self, prompt: str) -> bool:
-        """Click vào textarea và paste prompt."""
+        """Click vào textarea và paste prompt - sử dụng SORA_HELPER từ extension."""
+        # Sử dụng SORA_HELPER nếu có, fallback về cách cũ
         js = '''(function(){
+            if(window.SORA_HELPER){
+                SORA_HELPER.clickTextarea();
+                SORA_HELPER.inputPrompt(`''' + prompt.replace('`', '\\`').replace('\\', '\\\\') + '''`);
+                copy('ok');
+                return;
+            }
+            // Fallback
             var ta = document.querySelector('textarea[placeholder*="Describe"]');
             if(!ta) ta = document.querySelector('textarea');
             if(ta){
                 ta.focus();
                 ta.click();
-                console.log('OK: Clicked textarea');
-                return true;
+                copy('clicked');
+                return;
             }
-            console.log('FAIL: Textarea not found');
-            return false;
+            copy('notfound');
         })();'''
 
-        self.log("   Click textarea prompt...")
-        if not self.run_js(js):
-            self.log_err("Không tìm thấy textarea")
-            return False
+        self.log(f"   Nhập prompt: {prompt[:50]}...")
+        result = self.run_js_get_result(js)
 
-        self.log_ok("Đã click textarea")
-        time.sleep(0.5)
+        if result == 'ok':
+            self.log_ok("Đã nhập prompt (SORA_HELPER)")
+            return True
 
-        # Paste prompt
-        self.log(f"   Paste: {prompt[:50]}...")
-        pyperclip.copy(prompt)
-        pag.hotkey("ctrl", "v")
-        time.sleep(0.5)
+        if result == 'clicked':
+            # Fallback: paste prompt manually
+            time.sleep(0.5)
+            pyperclip.copy(prompt)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.5)
+            self.log_ok("Đã paste prompt (fallback)")
+            return True
 
-        self.log_ok("Đã paste prompt")
-        return True
+        self.log_err("Không tìm thấy textarea")
+        return False
 
     def click_upload_button(self) -> bool:
-        """Click nút upload (+)."""
+        """Click nút upload (+) - sử dụng SORA_HELPER từ extension."""
         js = '''(function(){
+            if(window.SORA_HELPER){
+                var result = SORA_HELPER.clickUploadButton();
+                copy(result ? 'clicked' : 'notfound');
+                return;
+            }
+            // Fallback
             var btns = document.querySelectorAll('button');
             for(var b of btns){
                 var svg = b.querySelector('svg');
@@ -249,16 +288,14 @@ class SoraAutomation:
                     var paths = svg.querySelectorAll('path');
                     for(var p of paths){
                         var d = p.getAttribute('d') || '';
-                        if(d.includes('M12 6')){
+                        if(d.includes('M12 6') || d.includes('M12 5')){
                             b.click();
-                            console.log('OK: Clicked upload button');
                             copy('clicked');
                             return;
                         }
                     }
                 }
             }
-            console.log('FAIL: Upload button not found');
             copy('notfound');
         })();'''
 
@@ -292,8 +329,14 @@ class SoraAutomation:
         return True
 
     def check_video_status(self) -> str:
-        """Check trạng thái video: 'done', 'loading', 'waiting'."""
+        """Check trạng thái video: 'done', 'loading', 'waiting' - sử dụng SORA_HELPER."""
         js = '''(function(){
+            if(window.SORA_HELPER){
+                var status = SORA_HELPER.checkStatus();
+                copy(status.status || 'waiting');
+                return;
+            }
+            // Fallback
             var videos = document.querySelectorAll('video');
             for(var v of videos){
                 var src = v.src || v.currentSrc || '';
@@ -318,8 +361,14 @@ class SoraAutomation:
         return 'waiting'
 
     def get_video_url(self) -> Optional[str]:
-        """Lấy URL video."""
+        """Lấy URL video - sử dụng SORA_HELPER."""
         js = '''(function(){
+            if(window.SORA_HELPER){
+                var url = SORA_HELPER.getVideoUrl();
+                copy(url || 'notfound');
+                return;
+            }
+            // Fallback
             var videos = document.querySelectorAll('video');
             for(var v of videos){
                 var src = v.src || v.currentSrc || '';

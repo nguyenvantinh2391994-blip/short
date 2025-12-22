@@ -5,6 +5,20 @@
 
 console.log('[SORA Debug] Content script loaded');
 
+// ========== INJECT HELPER INTO PAGE CONTEXT ==========
+function injectScript() {
+  const script = document.createElement('script');
+  script.src = chrome.runtime.getURL('sora_inject.js');
+  script.onload = () => {
+    script.remove();
+    console.log('[SORA Debug] Inject script loaded');
+  };
+  (document.head || document.documentElement).appendChild(script);
+}
+
+// Inject ngay khi load
+injectScript();
+
 // ========== STATE ==========
 const state = {
   videoUrl: null,
@@ -346,16 +360,5 @@ new MutationObserver(() => {
   }
 }).observe(document, { subtree: true, childList: true });
 
-// ========== EXPOSE TO WINDOW FOR PYTHON TOOL ==========
-// Python co the chay JS: window.SORA_HELPER.clickUpload()
-window.SORA_HELPER = {
-  clickTextarea,
-  inputPrompt,
-  clickUploadButton,
-  pressEnter,
-  getVideoUrl,
-  getStatus: checkProgress,
-  getState: () => state,
-};
-
-log('SORA_HELPER exposed to window', 'success');
+// SORA_HELPER duoc inject qua sora_inject.js vao page context
+log('Content script ready - SORA_HELPER injected via sora_inject.js', 'success');

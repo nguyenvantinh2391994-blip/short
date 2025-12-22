@@ -151,7 +151,10 @@ class SoraAutomation:
             # Đóng DevTools
             if close_devtools:
                 pag.hotkey("ctrl", "shift", "j")
-                time.sleep(0.5)
+                time.sleep(0.8)
+                # Đảm bảo focus trở về page
+                pag.press("escape")
+                time.sleep(0.3)
 
             return True
         except Exception as e:
@@ -167,19 +170,27 @@ class SoraAutomation:
             # Focus vào Chrome trước
             self._focus_chrome_window()
 
+            # Mở DevTools Console
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
 
+            # Paste và chạy JS
             pyperclip.copy(js)
             pag.hotkey("ctrl", "v")
             time.sleep(0.3)
             pag.press("enter")
             time.sleep(1)
 
+            # Lấy kết quả từ clipboard
             result = pyperclip.paste()
 
+            # Đóng DevTools - nhấn 2 lần để chắc chắn
             pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+            time.sleep(0.8)
+
+            # Click vào trang để đảm bảo focus trở về page
+            pag.press("escape")
+            time.sleep(0.3)
 
             return result
         except Exception as e:

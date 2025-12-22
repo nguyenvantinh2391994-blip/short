@@ -143,8 +143,17 @@ class SoraAutomation:
 
             self.log(f"   Profile path: {self.profile_path}")
 
-            if self.profile_path and Path(self.profile_path).exists():
-                profile = Path(self.profile_path)
+            # Xử lý profile path - đảm bảo có Default/Profile X ở cuối (giống Grok)
+            profile_path = self.profile_path
+            if profile_path:
+                profile = Path(profile_path)
+                # Nếu path không kết thúc bằng Default hoặc Profile X, tự động thêm Default
+                if not profile.name.startswith("Profile") and profile.name != "Default":
+                    profile_path = str(profile / "Default")
+                    self.log(f"   Auto-append Default: {profile_path}")
+
+            if profile_path and Path(profile_path).exists():
+                profile = Path(profile_path)
                 self.log(f"   user-data-dir: {profile.parent}")
                 self.log(f"   profile-directory: {profile.name}")
                 cmd.extend([
@@ -152,7 +161,7 @@ class SoraAutomation:
                     f"--profile-directory={profile.name}"
                 ])
             else:
-                self.log_warn(f"Profile không tồn tại: {self.profile_path}")
+                self.log_warn(f"Profile không tồn tại: {profile_path}")
 
             cmd.extend([
                 "--window-size=1200,800",

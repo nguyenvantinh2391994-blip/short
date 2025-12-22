@@ -364,6 +364,59 @@ class SoraAutomation:
         self.log_ok(f"Đã upload: {Path(file_path).name}")
         return True
 
+    def wait_for_send_button_ready(self, timeout: int = 10) -> bool:
+        """Đợi nút Create video sáng lên (không còn disabled).
+
+        Khi ảnh đang load: data-disabled="true"
+        Khi ảnh load xong: data-disabled="false"
+        """
+        js = '''(function(){
+            // Tìm nút Create video (có span "Create video" bên trong)
+            var btns = document.querySelectorAll('button');
+            for(var b of btns){
+                var span = b.querySelector('span.sr-only');
+                if(span && span.textContent.includes('Create video')){
+                    var disabled = b.getAttribute('data-disabled');
+                    copy(disabled === 'false' ? 'ready' : 'loading');
+                    return;
+                }
+            }
+            // Fallback: tìm nút có SVG arrow-up
+            for(var b of btns){
+                var svg = b.querySelector('svg');
+                if(svg){
+                    var path = svg.querySelector('path');
+                    if(path){
+                        var d = path.getAttribute('d') || '';
+                        if(d.includes('5.293') && d.includes('1.414')){
+                            var disabled = b.getAttribute('data-disabled');
+                            copy(disabled === 'false' ? 'ready' : 'loading');
+                            return;
+                        }
+                    }
+                }
+            }
+            copy('notfound');
+        })();'''
+
+        self.log("   Đợi ảnh load xong...")
+
+        for i in range(timeout):
+            result = self.run_js_get_result(js)
+
+            if result == 'ready':
+                self.log_ok(f"Ảnh đã load xong ({i+1}s)")
+                return True
+
+            if result == 'notfound':
+                self.log_warn("Không tìm thấy nút Create video")
+                return False
+
+            time.sleep(1)
+
+        self.log_warn(f"Timeout đợi ảnh load ({timeout}s)")
+        return False
+
     def check_video_status(self) -> str:
         """Check trạng thái video: 'done', 'loading', 'waiting' - sử dụng SORA_HELPER."""
         js = '''(function(){
@@ -511,7 +564,8 @@ class SoraAutomation:
                 self.log(f"📷 Upload ảnh: {Path(image_path).name}")
                 if self.click_upload_button():
                     self.upload_file(image_path)
-                time.sleep(2)
+                    # Đợi ảnh load xong (nút Create video sáng lên)
+                    self.wait_for_send_button_ready(timeout=10)
 
             # Gửi (Enter)
             self.log("   Nhấn Enter gửi...")
@@ -585,7 +639,8 @@ class SoraAutomation:
                 self.log(f"📷 Upload ảnh: {Path(image_path).name}")
                 if self.click_upload_button():
                     self.upload_file(image_path)
-                time.sleep(2)
+                    # Đợi ảnh load xong (nút Create video sáng lên)
+                    self.wait_for_send_button_ready(timeout=10)
 
             # Gửi (Enter)
             pag.press("enter")

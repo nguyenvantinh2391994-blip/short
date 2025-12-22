@@ -73,7 +73,8 @@ class SoraAutomation:
     Cấu trúc giống hệt GrokBrowserAutomation
     """
 
-    SORA_URL = "https://sora.chatgpt.com/drafts"
+    # URL tạo video mới (không phải drafts)
+    SORA_URL = "https://sora.chatgpt.com/"
 
     def __init__(
         self,
@@ -82,12 +83,14 @@ class SoraAutomation:
         output_folder: str = "OUTPUT",
         timeout: int = 300,
         headless: bool = False,
+        maximize: bool = True,  # Mặc định maximize để PyAutoGUI hoạt động tốt
     ):
         self.chrome_path = chrome_path
         self.profile_path = profile_path
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.timeout = timeout
+        self.maximize = maximize
         self.chrome_process = None
 
     def log(self, msg: str):
@@ -187,11 +190,17 @@ class SoraAutomation:
             else:
                 self.log_warn(f"Profile không tồn tại: {profile_path}")
 
-            cmd.extend([
-                "--window-size=1200,800",
-                "--window-position=50,50",
-                url
-            ])
+            # Window size - maximize hoặc fixed size
+            if self.maximize:
+                cmd.append("--start-maximized")
+                self.log("   Window: Maximized")
+            else:
+                cmd.extend([
+                    "--window-size=1200,800",
+                    "--window-position=50,50",
+                ])
+
+            cmd.append(url)
 
             self.log(f"   CMD: {' '.join(cmd[:5])}...")
             self.chrome_process = subprocess.Popen(cmd, shell=False)

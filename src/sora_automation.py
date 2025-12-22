@@ -431,8 +431,8 @@ class SoraAutomation:
             return result
         return None
 
-    def wait_for_video_done(self, timeout: int = 60) -> bool:
-        """Đợi video tạo xong (check mỗi 5s)."""
+    def wait_for_video_done(self, timeout: int = 180) -> bool:
+        """Đợi video tạo xong (check mỗi 5s, tối đa 3 phút)."""
         self.log(f"   Đang chờ video... (tối đa {timeout}s)")
 
         for i in range(timeout // 5):

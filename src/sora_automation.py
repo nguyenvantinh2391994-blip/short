@@ -364,12 +364,12 @@ class SoraAutomation:
         self.log_ok(f"Đã upload: {Path(file_path).name}")
         return True
 
-    def wait_for_send_button_ready(self, wait_seconds: int = 10) -> bool:
+    def wait_for_send_button_ready(self, wait_seconds: int = 60) -> bool:
         """Đợi ảnh load xong trước khi gửi.
 
-        Đợi cố định vài giây để ảnh upload hoàn tất.
+        Đợi tối đa 60s để ảnh upload và xử lý hoàn tất.
         """
-        self.log(f"   Đợi ảnh load ({wait_seconds}s)...")
+        self.log(f"   Đợi ảnh load (tối đa {wait_seconds}s)...")
         time.sleep(wait_seconds)
         self.log_ok("Sẵn sàng gửi")
         return True

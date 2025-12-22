@@ -477,7 +477,11 @@ class SoraAutomation:
         output_path: str = "",
         product_code: str = ""
     ) -> SoraResult:
-        """Tạo video (giống Grok.create_video)."""
+        """Tạo video (giống Grok.create_video).
+
+        Flow: Upload ảnh → Enter để generate → Đợi video → Download
+        (Không sử dụng textarea/prompt)
+        """
         if not HAS_PAG:
             console.print("[red]❌ Chưa cài pyautogui![/]")
             return SoraResult(False, error="Missing pyautogui")
@@ -489,7 +493,6 @@ class SoraAutomation:
         try:
             self.log(f"\n🎬 SORA: Tạo video...")
             self.log(f"   Ảnh: {Path(image_path).name if image_path else 'Không có'}")
-            self.log(f"   Prompt: {prompt[:50]}...")
 
             # Mở Chrome
             self.log("🌐 Mở Chrome...")
@@ -497,19 +500,19 @@ class SoraAutomation:
                 return SoraResult(False, error="Không mở được Chrome")
             time.sleep(5)
 
-            # Nhập prompt
-            if not self.click_and_type_prompt(prompt):
-                return SoraResult(False, error="Không nhập được prompt")
-            time.sleep(1)
+            # Upload ảnh (bắt buộc)
+            if not image_path or not os.path.exists(image_path):
+                return SoraResult(False, error=f"Không tìm thấy ảnh: {image_path}")
 
-            # Upload ảnh nếu có
-            if image_path and os.path.exists(image_path):
-                self.log(f"📷 Upload ảnh: {Path(image_path).name}")
-                if self.click_upload_button():
-                    self.upload_file(image_path)
-                time.sleep(2)
+            self.log(f"📷 Upload ảnh: {Path(image_path).name}")
+            if not self.click_upload_button():
+                return SoraResult(False, error="Không click được nút upload")
 
-            # Gửi prompt (Enter)
+            if not self.upload_file(image_path):
+                return SoraResult(False, error="Không upload được ảnh")
+            time.sleep(2)
+
+            # Gửi (Enter)
             self.log("   Nhấn Enter gửi...")
             pag.press("enter")
             time.sleep(3)
@@ -556,7 +559,11 @@ class SoraAutomation:
         output_path: str = "",
         product_code: str = ""
     ) -> SoraResult:
-        """Tạo video tiếp tục (không mở Chrome mới)."""
+        """Tạo video tiếp tục (không mở Chrome mới).
+
+        Flow: Refresh → Upload ảnh → Enter → Đợi video → Download
+        (Không sử dụng textarea/prompt)
+        """
         if not HAS_PAG or not HAS_CLIP:
             return SoraResult(False, error="Missing dependencies")
 
@@ -567,19 +574,19 @@ class SoraAutomation:
             pag.press("f5")
             time.sleep(3)
 
-            # Nhập prompt
-            if not self.click_and_type_prompt(prompt):
-                return SoraResult(False, error="Không nhập được prompt")
-            time.sleep(1)
+            # Upload ảnh (bắt buộc)
+            if not image_path or not os.path.exists(image_path):
+                return SoraResult(False, error=f"Không tìm thấy ảnh: {image_path}")
 
-            # Upload ảnh nếu có
-            if image_path and os.path.exists(image_path):
-                self.log(f"📷 Upload ảnh: {Path(image_path).name}")
-                if self.click_upload_button():
-                    self.upload_file(image_path)
-                time.sleep(2)
+            self.log(f"📷 Upload ảnh: {Path(image_path).name}")
+            if not self.click_upload_button():
+                return SoraResult(False, error="Không click được nút upload")
 
-            # Gửi prompt
+            if not self.upload_file(image_path):
+                return SoraResult(False, error="Không upload được ảnh")
+            time.sleep(2)
+
+            # Gửi (Enter)
             pag.press("enter")
             time.sleep(3)
 

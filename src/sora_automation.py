@@ -43,29 +43,29 @@ class SoraResult:
     error: str = ""
 
 
-def find_sora_image(input_folder: str, product_code: str = None) -> Optional[str]:
-    """Tìm ảnh SORA trong thư mục input/sora/
+def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
+    """Tìm ảnh SORA theo mã sản phẩm trong thư mục input/sora/
 
     Args:
         input_folder: Thư mục input gốc (ví dụ: E:/affiliate/short/input)
-        product_code: Không dùng nữa, giữ lại để tương thích
+        product_code: Mã sản phẩm (ví dụ: SP001)
 
     Returns:
-        Đường dẫn ảnh đầu tiên trong thư mục sora hoặc None
+        Đường dẫn ảnh hoặc None
 
     Ví dụ:
-        input/sora/unnamed.jpg -> trả về path này
+        find_sora_image("input", "SP001") -> "input/sora/SP001.jpg"
     """
     sora_folder = Path(input_folder) / "sora"
 
     if not sora_folder.exists():
         return None
 
-    # Tìm ảnh trong thư mục sora
+    # Tìm ảnh theo mã sản phẩm
     for ext in [".jpg", ".jpeg", ".png", ".webp"]:
-        images = list(sora_folder.glob(f"*{ext}"))
-        if images:
-            return str(images[0])  # Lấy ảnh đầu tiên
+        image_path = sora_folder / f"{product_code}{ext}"
+        if image_path.exists():
+            return str(image_path)
 
     return None
 

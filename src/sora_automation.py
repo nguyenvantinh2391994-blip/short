@@ -281,15 +281,19 @@ class SoraAutomation:
         return False
 
     def click_upload_button(self) -> bool:
-        """Click nút upload (+) - sử dụng SORA_HELPER từ extension."""
+        """Click nút upload (+) - tìm theo text Attach."""
         js = '''(function(){
-            if(window.SORA_HELPER){
-                var result = SORA_HELPER.clickUploadButton();
-                copy(result ? 'clicked' : 'notfound');
-                return;
-            }
-            // Fallback - tim button co SVG path bat dau bang M12 6
             var btns = document.querySelectorAll('button');
+            // Ưu tiên: tim theo text Attach
+            for(var b of btns){
+                var text = b.textContent || '';
+                if(text.includes('Attach')){
+                    b.click();
+                    copy('clicked');
+                    return;
+                }
+            }
+            // Fallback: SVG path
             for(var b of btns){
                 var svg = b.querySelector('svg');
                 if(svg){
@@ -302,15 +306,6 @@ class SoraAutomation:
                             return;
                         }
                     }
-                }
-            }
-            // Fallback 2 - tim theo text Attach
-            for(var b of btns){
-                var text = b.textContent || '';
-                if(text.toLowerCase().includes('attach')){
-                    b.click();
-                    copy('clicked');
-                    return;
                 }
             }
             copy('notfound');

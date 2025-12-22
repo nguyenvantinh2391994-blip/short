@@ -3,7 +3,7 @@
  * Quản lý communication giữa content script và Python tool
  */
 
-console.log('[Grok Debug] Background service worker started');
+console.log('[Video Debug] Background service worker started');
 
 // ========== STATE MANAGEMENT ==========
 const globalState = {
@@ -11,7 +11,10 @@ const globalState = {
   lastVideoUrl: null,
   lastError: null,
   activeTabId: null,
+  activeSource: null, // 'grok' or 'sora'
   logs: [],
+  grokTabId: null,
+  soraTabId: null,
 };
 
 function addLog(message, type = 'info') {
@@ -27,21 +30,29 @@ function addLog(message, type = 'info') {
 // ========== MESSAGE HANDLING FROM CONTENT SCRIPT ==========
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
+  const source = message.source || 'grok'; // 'grok' or 'sora'
 
   switch (message.action) {
     case 'CONTENT_SCRIPT_READY':
-      addLog(`Content script ready on ${message.pageType}: ${message.url}`, 'success');
+      addLog(`[${source.toUpperCase()}] Content script ready: ${message.url}`, 'success');
       globalState.activeTabId = tabId;
+      globalState.activeSource = source;
       globalState.isConnected = true;
+      // Track tab by source
+      if (source === 'sora') {
+        globalState.soraTabId = tabId;
+      } else {
+        globalState.grokTabId = tabId;
+      }
       break;
 
     case 'VIDEO_URL_FOUND':
-      addLog(`Video URL found: ${message.url.substring(0, 50)}...`, 'success');
+      addLog(`[${source.toUpperCase()}] Video URL: ${message.url.substring(0, 50)}...`, 'success');
       globalState.lastVideoUrl = message.url;
       // Notify popup
-      chrome.runtime.sendMessage({ action: 'VIDEO_READY', url: message.url });
+      chrome.runtime.sendMessage({ action: 'VIDEO_READY', url: message.url, source });
       // Show notification
-      showNotification('Video Ready!', 'Video URL has been captured');
+      showNotification(`${source.toUpperCase()} Video Ready!`, 'Video URL has been captured');
       break;
 
     case 'ERROR_DETECTED':
@@ -119,17 +130,33 @@ function showNotification(title, message) {
 
 // ========== TAB MONITORING ==========
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url?.includes('grok.com')) {
-    addLog(`Grok tab updated: ${tab.url}`, 'info');
-    globalState.activeTabId = tabId;
+  if (changeInfo.status === 'complete') {
+    if (tab.url?.includes('grok.com')) {
+      addLog(`Grok tab updated: ${tab.url}`, 'info');
+      globalState.grokTabId = tabId;
+      globalState.activeTabId = tabId;
+      globalState.activeSource = 'grok';
+    } else if (tab.url?.includes('sora.chatgpt.com')) {
+      addLog(`SORA tab updated: ${tab.url}`, 'info');
+      globalState.soraTabId = tabId;
+      globalState.activeTabId = tabId;
+      globalState.activeSource = 'sora';
+    }
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (tabId === globalState.activeTabId) {
+  if (tabId === globalState.grokTabId) {
     addLog('Grok tab closed', 'warning');
-    globalState.activeTabId = null;
-    globalState.isConnected = false;
+    globalState.grokTabId = null;
+  }
+  if (tabId === globalState.soraTabId) {
+    addLog('SORA tab closed', 'warning');
+    globalState.soraTabId = null;
+  }
+  if (tabId === globalState.activeTabId) {
+    globalState.activeTabId = globalState.soraTabId || globalState.grokTabId || null;
+    globalState.isConnected = globalState.activeTabId !== null;
   }
 });
 

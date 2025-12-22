@@ -73,8 +73,7 @@ class SoraAutomation:
     Cấu trúc giống hệt GrokBrowserAutomation
     """
 
-    # URL tạo video mới (không phải drafts)
-    SORA_URL = "https://sora.chatgpt.com/"
+    SORA_URL = "https://sora.chatgpt.com/drafts"
 
     def __init__(
         self,

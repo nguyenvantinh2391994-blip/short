@@ -1252,79 +1252,77 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Khởi tạo SORA automation
+            # Khởi tạo SORA automation (giống Grok)
             sora = SoraAutomation(
-                output_folder=str(output_folder),
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                output_folder=str(output_folder),
             )
 
-            try:
-                self.after_safe(lambda: self.add_log("🌐 Khởi động SORA..."))
+            first_video = True  # Track xem đã mở Chrome chưa
 
-                if not sora.start():
-                    self.after_safe(lambda: self.add_log("❌ Không thể khởi động SORA!"))
-                    return
+            # Xử lý từng sản phẩm
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
 
-                # Xử lý từng sản phẩm
-                for item in pending:
-                    if self.stop_flag.is_set():
-                        break
+                code = item["code"]
 
-                    code = item["code"]
+                # Lấy SORA prompt từ cột E (sora_prompt) hoặc fallback về prompt thường
+                sora_prompt = item.get("sora_prompt", "") or item.get("prompt", "")
 
-                    # Lấy SORA prompt từ cột E (sora_prompt) hoặc fallback về prompt thường
-                    sora_prompt = item.get("sora_prompt", "") or item.get("prompt", "")
+                if not sora_prompt:
+                    self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt SORA"))
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                    continue
 
-                    if not sora_prompt:
-                        self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: Không có prompt SORA"))
-                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
-                        continue
+                # Tìm ảnh đầu tiên trong folder input/{code}/
+                code_folder = input_folder / code
+                image_path = None
+                if code_folder.exists():
+                    images = sorted(code_folder.glob("*.jpg")) + sorted(code_folder.glob("*.png")) + sorted(code_folder.glob("*.webp"))
+                    if images:
+                        image_path = str(images[0])  # Lấy ảnh đầu tiên
+                        self.after_safe(lambda c=code, p=images[0].name:
+                            self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
 
-                    # Tìm ảnh đầu tiên trong folder input/{code}/
-                    code_folder = input_folder / code
-                    image_path = None
-                    if code_folder.exists():
-                        images = sorted(code_folder.glob("*.jpg")) + sorted(code_folder.glob("*.png")) + sorted(code_folder.glob("*.webp"))
-                        if images:
-                            image_path = str(images[0])  # Lấy ảnh đầu tiên
-                            self.after_safe(lambda c=code, p=images[0].name:
-                                self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+                self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
+                self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
 
-                    self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
-                    self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
-
-                    # Tạo video SORA với ảnh
-                    result = sora.generate_video(
+                # Tạo video SORA (giống Grok)
+                if first_video:
+                    result = sora.create_video(
+                        image_path=image_path or "",
                         prompt=sora_prompt,
-                        image_path=image_path,
-                        output_name=code,
-                        code=code
+                        product_code=code
+                    )
+                    first_video = False
+                else:
+                    result = sora.create_video_continue(
+                        image_path=image_path or "",
+                        prompt=sora_prompt,
+                        product_code=code
                     )
 
-                    if result and result.get("success"):
-                        video_path = result.get("video_path")
-                        self.after_safe(lambda c=code, p=video_path:
-                            self.add_log(f"  ✓ {c}: Video đã tạo - {Path(p).name}"))
-                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
-                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
+                if result and result.success:
+                    video_path = result.video_path
+                    self.after_safe(lambda c=code, p=video_path:
+                        self.add_log(f"  ✓ {c}: Video đã tạo - {Path(p).name}"))
+                    self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                    self.set_task_render_status(code, TaskItem.STATUS_DONE)
 
-                        # Cập nhật Google Sheets
-                        try:
-                            reader.update_status(item["row"], "DONE", self.app.config.status_column)
-                        except Exception:
-                            pass
-                    else:
-                        error = result.get("error", "Lỗi không xác định") if result else "Timeout"
-                        self.after_safe(lambda c=code, e=error:
-                            self.add_log(f"  ✗ {c}: {e}"))
-                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                    # Cập nhật Google Sheets
+                    try:
+                        reader.update_status(item["row"], "DONE", self.app.config.status_column)
+                    except Exception:
+                        pass
+                else:
+                    error = result.error if result else "Timeout"
+                    self.after_safe(lambda c=code, e=error:
+                        self.add_log(f"  ✗ {c}: {e}"))
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
 
-                self.after_safe(lambda: self.add_log("\n✅ Hoàn thành SORA!"))
-
-            finally:
-                sora.close()
+            self.after_safe(lambda: self.add_log("\n✅ Hoàn thành SORA!"))
 
         except ImportError as e:
             self.after_safe(lambda: self.add_log(f"❌ Chưa có module SORA: {e}"))

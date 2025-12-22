@@ -377,10 +377,29 @@ class SoraAutomation:
     def check_video_status(self) -> str:
         """Check trạng thái video: 'done', 'loading', 'waiting'.
 
-        Tìm video ở vị trí chính (div width:100% height:100%), không phải sidebar.
+        QUAN TRỌNG: Check loading TRƯỚC, rồi mới check video.
+        Vì có thể có video cũ từ lần generate trước.
         """
         js = '''(function(){
-            // Tìm video trong container chính (width: 100%; height: 100%)
+            // 1. Check loading TRƯỚC (vòng tròn progress)
+            var circle = document.querySelector('circle[stroke-dashoffset]');
+            if(circle){
+                copy('loading');
+                return;
+            }
+
+            // 2. Không có loading -> tìm video mới
+            // Tìm video trong div có class chứa "object-cover"
+            var videoContainer = document.querySelector('div[class*="object-cover"]');
+            if(videoContainer){
+                var video = videoContainer.querySelector('video');
+                if(video && video.src && video.src.includes('videos.openai.com')){
+                    copy('done');
+                    return;
+                }
+            }
+
+            // Fallback: tìm trong container chính
             var containers = document.querySelectorAll('div[style*="width: 100%"][style*="height: 100%"]');
             for(var c of containers){
                 var video = c.querySelector('video');
@@ -391,23 +410,6 @@ class SoraAutomation:
                         return;
                     }
                 }
-            }
-
-            // Hoặc tìm theo class object-cover
-            var videoContainer = document.querySelector('div[class*="object-cover"]');
-            if(videoContainer){
-                var video = videoContainer.querySelector('video');
-                if(video && video.src && video.src.includes('videos.openai.com')){
-                    copy('done');
-                    return;
-                }
-            }
-
-            // Check loading (vòng tròn progress)
-            var circle = document.querySelector('circle[stroke-dashoffset]');
-            if(circle){
-                copy('loading');
-                return;
             }
 
             copy('waiting');

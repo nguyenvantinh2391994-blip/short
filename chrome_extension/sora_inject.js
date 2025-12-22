@@ -1,35 +1,39 @@
 /**
  * SORA Inject Script - Chay trong page context
  * Expose SORA_HELPER ra window de Python tool su dung
+ * KHONG check visibility - hoat dong ca khi browser an/thu nho
  */
 
 (function() {
+  if (window.SORA_HELPER) {
+    console.log('[SORA] Already loaded');
+    return;
+  }
+
   console.log('[SORA Inject] Loading...');
 
   // ========== STATE ==========
   const state = {
     videoUrl: null,
     videoReady: false,
-    isProcessing: false,
   };
 
   // ========== UTILITIES ==========
   function log(msg, type = 'info') {
     const prefix = '[SORA]';
-    const styles = {
-      info: 'color: #3498db',
-      success: 'color: #2ecc71; font-weight: bold',
-      error: 'color: #e74c3c',
-      warning: 'color: #f39c12',
-    };
-    console.log(`%c${prefix} ${msg}`, styles[type] || styles.info);
+    const color = type === 'success' ? '#2ecc71' :
+                  type === 'error' ? '#e74c3c' :
+                  type === 'warning' ? '#f39c12' : '#3498db';
+    console.log(`%c${prefix} ${msg}`, `color: ${color}; font-weight: bold`);
   }
 
   // ========== ELEMENT HELPERS ==========
   function findTextarea() {
+    // Tim tat ca textarea, khong check visibility
     const selectors = [
       'textarea[placeholder*="Describe"]',
       'textarea[placeholder*="describe"]',
+      'textarea[placeholder*="prompt"]',
       'textarea',
     ];
     for (const sel of selectors) {
@@ -43,22 +47,48 @@
     const ta = findTextarea();
     if (ta) {
       ta.focus();
-      ta.click();
-      log('Clicked textarea', 'success');
+      log('Focused textarea', 'success');
       return true;
     }
     log('Textarea not found', 'warning');
     return false;
   }
 
+  // React-friendly way to set input value
+  function setNativeValue(element, value) {
+    const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+    const prototype = Object.getPrototypeOf(element);
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+    if (valueSetter && valueSetter !== prototypeValueSetter) {
+      prototypeValueSetter.call(element, value);
+    } else if (valueSetter) {
+      valueSetter.call(element, value);
+    } else {
+      element.value = value;
+    }
+  }
+
   function inputPrompt(text) {
     const ta = findTextarea();
     if (ta) {
       ta.focus();
-      ta.value = text;
+
+      // Use native setter for React compatibility
+      setNativeValue(ta, text);
+
+      // Trigger React events
+      ta.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      ta.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+      // Also try React's onChange handler
+      const tracker = ta._valueTracker;
+      if (tracker) {
+        tracker.setValue('');
+      }
       ta.dispatchEvent(new Event('input', { bubbles: true }));
-      ta.dispatchEvent(new Event('change', { bubbles: true }));
-      log(`Prompt: ${text.substring(0, 40)}...`, 'success');
+
+      log(`Prompt set: ${text.substring(0, 40)}...`, 'success');
       return true;
     }
     log('Cannot input prompt - textarea not found', 'error');
@@ -66,32 +96,59 @@
   }
 
   function clickUploadButton() {
-    // Tim nut upload (+) bang SVG path
+    // Tim tat ca button, khong check visibility
     const btns = document.querySelectorAll('button');
+
+    // Tim theo SVG path (plus icon)
     for (const b of btns) {
       const svg = b.querySelector('svg');
       if (svg) {
         const paths = svg.querySelectorAll('path');
         for (const p of paths) {
           const d = p.getAttribute('d') || '';
-          if (d.includes('M12 6') || d.includes('M12 5')) {
+          // Plus icon patterns
+          if (d.includes('M12 6') || d.includes('M12 5') || d.includes('M12 4')) {
             b.click();
-            log('Upload button clicked!', 'success');
+            log('Upload button clicked (SVG)!', 'success');
             return true;
           }
         }
       }
     }
 
-    // Fallback: tim theo aria-label
-    const uploadBtn = document.querySelector('button[aria-label*="upload" i], button[aria-label*="attach" i], button[aria-label*="Add" i]');
-    if (uploadBtn) {
-      uploadBtn.click();
-      log('Upload button clicked (aria-label)!', 'success');
-      return true;
+    // Tim theo aria-label
+    const labels = ['upload', 'attach', 'add', 'plus', 'image'];
+    for (const label of labels) {
+      const btn = document.querySelector(`button[aria-label*="${label}" i]`);
+      if (btn) {
+        btn.click();
+        log(`Upload button clicked (${label})!`, 'success');
+        return true;
+      }
+    }
+
+    // Tim theo title
+    for (const label of labels) {
+      const btn = document.querySelector(`button[title*="${label}" i]`);
+      if (btn) {
+        btn.click();
+        log(`Upload button clicked (title: ${label})!`, 'success');
+        return true;
+      }
     }
 
     log('Upload button not found', 'warning');
+    return false;
+  }
+
+  function triggerFileInput() {
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+      fileInput.click();
+      log('File input triggered', 'success');
+      return true;
+    }
+    log('File input not found', 'warning');
     return false;
   }
 
@@ -99,41 +156,47 @@
     const ta = findTextarea();
     if (ta) {
       ta.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true,
-      });
-      ta.dispatchEvent(event);
+
+      // Method 1: KeyboardEvent
+      const events = ['keydown', 'keypress', 'keyup'];
+      for (const eventType of events) {
+        ta.dispatchEvent(new KeyboardEvent(eventType, {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+
       log('Enter pressed', 'success');
       return true;
     }
-    log('Cannot press Enter - textarea not found', 'error');
+    log('Cannot press Enter', 'error');
     return false;
   }
 
   function clickSubmitButton() {
-    // Tim nut submit/generate
+    // Tim button submit
     const selectors = [
       'button[type="submit"]',
       'button[aria-label*="submit" i]',
       'button[aria-label*="generate" i]',
       'button[aria-label*="create" i]',
+      'button[aria-label*="send" i]',
     ];
 
     for (const sel of selectors) {
       const btn = document.querySelector(sel);
       if (btn) {
         btn.click();
-        log('Submit button clicked!', 'success');
+        log('Submit clicked', 'success');
         return true;
       }
     }
 
-    // Fallback: tim button co icon arrow/send
+    // Tim theo SVG arrow/send icon
     const btns = document.querySelectorAll('button');
     for (const b of btns) {
       const svg = b.querySelector('svg');
@@ -141,10 +204,9 @@
         const paths = svg.querySelectorAll('path');
         for (const p of paths) {
           const d = p.getAttribute('d') || '';
-          // Arrow right hoac send icon
-          if (d.includes('M5 12h14') || d.includes('M22 2L11 13') || d.includes('m12.586')) {
+          if (d.includes('M5 12h14') || d.includes('M22 2') || d.includes('l7 7')) {
             b.click();
-            log('Submit button clicked (arrow)!', 'success');
+            log('Submit clicked (arrow)', 'success');
             return true;
           }
         }
@@ -152,18 +214,6 @@
     }
 
     log('Submit button not found', 'warning');
-    return false;
-  }
-
-  function triggerFileInput() {
-    // Tim input[type="file"] va click de mo file dialog
-    const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) {
-      fileInput.click();
-      log('File input triggered - dialog should open', 'success');
-      return true;
-    }
-    log('File input not found', 'warning');
     return false;
   }
 
@@ -181,18 +231,17 @@
   }
 
   function checkStatus() {
-    // Check video
     const videoUrl = getVideoUrl();
     if (videoUrl) {
       return { status: 'done', videoUrl };
     }
 
-    // Check loading
-    const spinners = document.querySelectorAll('[class*="animate-spin"], [class*="loading"]');
-    for (const s of spinners) {
-      if (s.offsetParent !== null) {
-        return { status: 'loading' };
-      }
+    // Check loading - khong check offsetParent
+    const loadingIndicators = document.querySelectorAll(
+      '[class*="animate-spin"], [class*="loading"], [class*="spinner"], [role="progressbar"]'
+    );
+    if (loadingIndicators.length > 0) {
+      return { status: 'loading' };
     }
 
     return { status: 'waiting' };
@@ -204,13 +253,13 @@
       const check = () => {
         const status = checkStatus();
         if (status.status === 'done') {
-          log(`Video ready! ${status.videoUrl.substring(0, 50)}...`, 'success');
+          log(`Video ready!`, 'success');
           resolve(status);
           return;
         }
 
         if (Date.now() - startTime > timeout * 1000) {
-          log('Timeout waiting for video', 'error');
+          log('Timeout', 'error');
           resolve({ status: 'timeout' });
           return;
         }
@@ -234,26 +283,20 @@
     waitForVideo,
     getState: () => state,
 
-    // Upload flow: click upload button -> doi dialog -> Python paste path
+    // Upload flow
     async startUpload() {
-      log('Starting upload flow...');
-      const clicked = clickUploadButton();
-      if (!clicked) {
-        // Fallback: trigger file input directly
-        return triggerFileInput();
-      }
-      // Doi 1s de menu xuat hien (neu co)
-      await new Promise(r => setTimeout(r, 1000));
-      // Trigger file input
+      log('Starting upload...');
+      clickUploadButton();
+      await new Promise(r => setTimeout(r, 500));
       return triggerFileInput();
     },
 
-    // Shortcut: tao video tu prompt (khong co anh)
+    // Tao video (khong co anh)
     async createVideo(prompt) {
-      log(`Creating video: ${prompt.substring(0, 30)}...`);
+      log(`Creating: ${prompt.substring(0, 30)}...`);
 
       clickTextarea();
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 300));
 
       inputPrompt(prompt);
       await new Promise(r => setTimeout(r, 500));
@@ -263,27 +306,87 @@
       return waitForVideo();
     },
 
-    // Tao video voi anh (Python se xu ly file dialog)
+    // Tao video voi anh
     async createVideoWithImage(prompt) {
-      log(`Creating video with image: ${prompt.substring(0, 30)}...`);
+      log(`With image: ${prompt.substring(0, 30)}...`);
 
-      // 1. Nhap prompt
       clickTextarea();
-      await new Promise(r => setTimeout(r, 300));
-      inputPrompt(prompt);
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 200));
 
-      // 2. Click upload - Python se paste path vao dialog
+      inputPrompt(prompt);
+      await new Promise(r => setTimeout(r, 200));
+
       clickUploadButton();
 
-      // Return de Python biet can paste path
-      return { status: 'waiting_for_file', message: 'Click upload done, waiting for file path' };
+      return { status: 'waiting_for_file' };
+    },
+
+    // Debug: list all buttons
+    debugButtons() {
+      const btns = document.querySelectorAll('button');
+      btns.forEach((b, i) => {
+        const label = b.getAttribute('aria-label') || '';
+        const title = b.getAttribute('title') || '';
+        const svg = b.querySelector('svg');
+        const path = svg?.querySelector('path')?.getAttribute('d')?.substring(0, 20) || '';
+        console.log(i, { label, title, path, text: b.textContent?.substring(0, 20) });
+      });
+    },
+
+    // Debug: list all inputs
+    debugInputs() {
+      document.querySelectorAll('textarea, input').forEach((el, i) => {
+        console.log(i, el.tagName, el.type, el.placeholder || el.className);
+      });
     }
   };
 
-  log('SORA_HELPER ready!', 'success');
+  // ========== MESSAGE HANDLER ==========
+  // Nhan message tu content script
+  window.addEventListener('message', (event) => {
+    if (event.data?.type !== 'SORA_CONTENT_TO_INJECT') return;
 
-  // Notify qua custom event
+    const { id, action, data } = event.data;
+    let result = { success: false };
+
+    switch (action) {
+      case 'CLICK_TEXTAREA':
+        result = { success: clickTextarea() };
+        break;
+      case 'INPUT_PROMPT':
+        result = { success: inputPrompt(data.text) };
+        break;
+      case 'CLICK_UPLOAD':
+        result = { success: clickUploadButton() };
+        break;
+      case 'TRIGGER_FILE_INPUT':
+        result = { success: triggerFileInput() };
+        break;
+      case 'PRESS_ENTER':
+        result = { success: pressEnter() };
+        break;
+      case 'CLICK_SUBMIT':
+        result = { success: clickSubmitButton() };
+        break;
+      case 'GET_STATUS':
+        result = checkStatus();
+        break;
+      case 'GET_VIDEO_URL':
+        result = { url: getVideoUrl(), ready: state.videoReady };
+        break;
+      default:
+        result = { error: 'Unknown action' };
+    }
+
+    // Send response back
+    window.postMessage({
+      type: 'SORA_INJECT_TO_CONTENT',
+      id,
+      result
+    }, '*');
+  });
+
+  log('SORA_HELPER ready!', 'success');
   window.dispatchEvent(new CustomEvent('SORA_HELPER_READY'));
 
 })();

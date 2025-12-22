@@ -479,7 +479,7 @@ class SoraAutomation:
     def download_video(self, video_url: str, output_path: str) -> bool:
         """Download video từ URL."""
         try:
-            self.log("📥 Downloading video...")
+            self.log("Downloading video...")
 
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -517,20 +517,20 @@ class SoraAutomation:
         Flow: Nhập prompt → Upload ảnh → Enter → Đợi video → Download
         """
         if not HAS_PAG:
-            console.print("[red]❌ Chưa cài pyautogui![/]")
+            console.print("[red]Chưa cài pyautogui![/]")
             return SoraResult(False, error="Missing pyautogui")
 
         if not HAS_CLIP:
-            console.print("[red]❌ Chưa cài pyperclip![/]")
+            console.print("[red]Chưa cài pyperclip![/]")
             return SoraResult(False, error="Missing pyperclip")
 
         try:
-            self.log(f"\n🎬 SORA: Tạo video...")
+            self.log(f"\nSORA: Tạo video...")
             self.log(f"   Ảnh: {Path(image_path).name if image_path else 'Không có'}")
             self.log(f"   Prompt: {prompt[:50]}..." if prompt else "   Prompt: (không có)")
 
             # Mở Chrome
-            self.log("🌐 Mở Chrome...")
+            self.log("Mở Chrome...")
             if not self.open_chrome(self.SORA_URL):
                 return SoraResult(False, error="Không mở được Chrome")
             time.sleep(5)
@@ -543,7 +543,7 @@ class SoraAutomation:
 
             # Upload ảnh (nếu có)
             if image_path and os.path.exists(image_path):
-                self.log(f"📷 Upload ảnh: {Path(image_path).name}")
+                self.log(f"Upload ảnh: {Path(image_path).name}")
                 if self.click_upload_button():
                     self.upload_file(image_path)
                     # Đợi ảnh load xong
@@ -584,7 +584,7 @@ class SoraAutomation:
             if not self.download_video(video_url, final_path):
                 return SoraResult(False, error="Không download được video")
 
-            console.print(f"[green]✅ Video SORA: {final_name}[/]")
+            console.print(f"[green]Video SORA: {final_name}[/]")
             return SoraResult(True, video_path=final_path, video_url=video_url)
 
         except Exception as e:
@@ -608,7 +608,7 @@ class SoraAutomation:
             return SoraResult(False, error="Missing dependencies")
 
         try:
-            self.log(f"\n🎬 SORA: Tạo video tiếp...")
+            self.log(f"\nSORA: Tạo video tiếp...")
 
             # Refresh trang
             pag.press("f5")
@@ -622,7 +622,7 @@ class SoraAutomation:
 
             # Upload ảnh (nếu có)
             if image_path and os.path.exists(image_path):
-                self.log(f"📷 Upload ảnh: {Path(image_path).name}")
+                self.log(f"Upload ảnh: {Path(image_path).name}")
                 if self.click_upload_button():
                     self.upload_file(image_path)
                     # Đợi ảnh load xong

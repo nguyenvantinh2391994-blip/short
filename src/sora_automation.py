@@ -84,6 +84,9 @@ class SoraAutomation:
             return False
 
         try:
+            # Focus vào Chrome trước
+            self._focus_chrome_window()
+
             # Mở DevTools Console
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
@@ -111,6 +114,9 @@ class SoraAutomation:
             return None
 
         try:
+            # Focus vào Chrome trước
+            self._focus_chrome_window()
+
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(1.5)
 
@@ -135,12 +141,18 @@ class SoraAutomation:
         try:
             cmd = [self.chrome_path]
 
+            self.log(f"   Profile path: {self.profile_path}")
+
             if self.profile_path and Path(self.profile_path).exists():
                 profile = Path(self.profile_path)
+                self.log(f"   user-data-dir: {profile.parent}")
+                self.log(f"   profile-directory: {profile.name}")
                 cmd.extend([
                     f"--user-data-dir={profile.parent}",
                     f"--profile-directory={profile.name}"
                 ])
+            else:
+                self.log_warn(f"Profile không tồn tại: {self.profile_path}")
 
             cmd.extend([
                 "--window-size=1200,800",
@@ -148,11 +160,42 @@ class SoraAutomation:
                 url
             ])
 
+            self.log(f"   CMD: {' '.join(cmd[:5])}...")
             self.chrome_process = subprocess.Popen(cmd, shell=False)
             self.log_ok(f"Chrome PID: {self.chrome_process.pid}")
+
+            # Chờ Chrome mở và focus vào nó
+            time.sleep(3)
+            self._focus_chrome_window()
+
             return True
         except Exception as e:
             self.log_err(f"Lỗi mở Chrome: {e}")
+            return False
+
+    def _focus_chrome_window(self) -> bool:
+        """Focus vào cửa sổ Chrome vừa mở."""
+        try:
+            import pygetwindow as gw
+            # Tìm cửa sổ có "Sora" hoặc "ChatGPT" trong title
+            windows = gw.getWindowsWithTitle('Sora')
+            if not windows:
+                windows = gw.getWindowsWithTitle('ChatGPT')
+            if not windows:
+                # Fallback: tìm Chrome window mới nhất
+                windows = gw.getWindowsWithTitle('Chrome')
+
+            if windows:
+                win = windows[0]
+                if win.isMinimized:
+                    win.restore()
+                win.activate()
+                time.sleep(0.5)
+                self.log_ok(f"Đã focus: {win.title[:30]}...")
+                return True
+            return False
+        except Exception as e:
+            self.log_warn(f"Không focus được: {e}")
             return False
 
     def click_and_type_prompt(self, prompt: str) -> bool:

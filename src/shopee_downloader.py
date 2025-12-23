@@ -617,42 +617,41 @@ class ShopeeDownloader:
             console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
             console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
 
-            # Setup Chrome options
-            options = Options()
-
-            # Đường dẫn Chrome
-            if chrome_path and Path(chrome_path).exists():
-                options.binary_location = chrome_path
-
-            # Nếu chạy ẩn: đẩy window ra ngoài màn hình (không dùng headless vì hay lỗi)
-            if is_headless:
-                options.add_argument("--window-size=1200,800")
-                options.add_argument("--window-position=-2000,-2000")  # Ngoài màn hình
-            else:
-                options.add_argument("--window-size=1920,1080")
-
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-blink-features=AutomationControlled")
-
-            # Chrome preferences - tự động cho phép download, không hỏi lại
-            prefs = {
-                "download.prompt_for_download": False,
-                "download.directory_upgrade": True,
-                "safebrowsing.enabled": True,
-                "profile.default_content_setting_values.automatic_downloads": 1,  # Allow multiple downloads
-                "profile.default_content_setting_values.notifications": 2,  # Block notifications
-            }
-            options.add_experimental_option("prefs", prefs)
-            # Không dùng excludeSwitches/useAutomationExtension vì uc.Chrome tự xử lý
-
             # Luôn dùng undetected-chromedriver để tránh CAPTCHA (như Grok)
             try:
                 import undetected_chromedriver as uc
                 console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
 
-                # Xử lý profile path cho uc.Chrome
+                # Dùng uc.ChromeOptions giống Grok
+                options = uc.ChromeOptions()
+
+                # Các argument giống Grok
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                options.add_argument("--disable-extensions")
+                options.add_argument("--disable-popup-blocking")
+                options.add_argument("--disable-infobars")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
+
+                # Window size
+                if is_headless:
+                    options.add_argument("--window-size=800,600")
+                    options.add_argument("--window-position=-2000,-2000")
+                else:
+                    options.add_argument("--window-size=1920,1080")
+
+                # Prefs giống Grok
+                prefs = {
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": True,
+                    "profile.default_content_setting_values.automatic_downloads": 1,
+                    "profile.default_content_setting_values.notifications": 2,
+                }
+                options.add_experimental_option("prefs", prefs)
+
+                # Xử lý profile path
                 user_data_dir = None
                 if profile_path:
                     profile = Path(profile_path)
@@ -669,6 +668,10 @@ class ShopeeDownloader:
                 )
             except ImportError:
                 console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
+                from selenium import webdriver
+                from selenium.webdriver.chrome.options import Options
+                options = Options()
+                options.add_argument("--window-size=1920,1080")
                 self.driver = webdriver.Chrome(options=options)
 
             # Ẩn khỏi taskbar nếu headless (Windows)
@@ -958,18 +961,22 @@ class ShopeeDownloader:
                     progress.update(task, advance=1)
 
         if downloaded:
-            console.print(f"[green]✅ Đã tải {len(downloaded)} ảnh vào {folder}[/]")
+            console.print(f"[green]Đã tải {len(downloaded)} ảnh vào {folder}[/]")
 
             # Crop ảnh về 9:16
             try:
-                from .image_processor import crop_folder_to_9_16
+                try:
+                    from .image_processor import crop_folder_to_9_16
+                except ImportError:
+                    from src.image_processor import crop_folder_to_9_16
+
                 cropped = crop_folder_to_9_16(str(folder))
                 if cropped > 0:
-                    console.print(f"[green]✂️ Đã crop {cropped} ảnh về 9:16[/]")
-            except ImportError:
-                pass  # Module chưa có
+                    console.print(f"[green]Đã crop {cropped} ảnh về 9:16[/]")
+            except ImportError as e:
+                console.print(f"[yellow]Không tìm thấy module crop: {e}[/]")
             except Exception as e:
-                console.print(f"[yellow]⚠️ Lỗi crop: {e}[/]")
+                console.print(f"[yellow]Lỗi crop: {e}[/]")
 
         return downloaded
 

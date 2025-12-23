@@ -168,6 +168,21 @@ class MainTab:
         )
         self.shopee_btn.pack(side="left", padx=(0, 10))
 
+        # Nút Tách SP (Gemini) - Cyan/Teal
+        self.extract_btn = ctk.CTkButton(
+            btn_frame,
+            text="Tách SP",
+            command=self.start_extract_process,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#0891B2",  # Cyan
+            hover_color="#0E7490",
+            text_color="white"
+        )
+        self.extract_btn.pack(side="left", padx=(0, 10))
+
         # Nút Lọc ảnh - Pink (sau Tải ảnh)
         self.filter_btn = ctk.CTkButton(
             btn_frame,
@@ -1179,6 +1194,148 @@ class MainTab:
         self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
+    # ===== GEMINI PRODUCT EXTRACTION =====
+
+    def start_extract_process(self):
+        """Bat dau tach san pham bang Gemini"""
+        if self.is_running:
+            self.add_log("Dang chay task khac...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.extract_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+
+        self.add_log("Bat dau tach san pham (Gemini)...")
+
+        thread = threading.Thread(target=self._run_extract_process, daemon=True)
+        thread.start()
+
+    def _run_extract_process(self):
+        """Background thread tach san pham"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...gemini_extract import GeminiExtract, get_images_in_folder
+
+            self.after_safe(lambda: self.add_log("Ket noi Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("Khong the ket noi Google Sheets!"))
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Khong co san pham nao can xu ly"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"Tim thay {n} san pham"))
+
+            # Tao tasks
+            for item in pending:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # Lay browser profile
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+
+            # Khoi tao Gemini Extract
+            gemini = GeminiExtract(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                output_folder=str(output_folder),
+                headless=True,
+            )
+            self.current_gemini = gemini
+
+            first_extract = True
+
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                code_folder = input_folder / code
+
+                # Lay danh sach anh
+                images = get_images_in_folder(str(code_folder))
+                if not images:
+                    self.after_safe(lambda c=code: self.add_log(f"  {c}: Khong co anh"))
+                    continue
+
+                self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
+
+                # Output folder cho anh da tach
+                extract_folder = code_folder / "extracted"
+
+                # Tach san pham
+                if first_extract:
+                    result = gemini.extract_product(
+                        image_paths=images,
+                        output_folder=str(extract_folder),
+                        product_code=code
+                    )
+                    first_extract = False
+                else:
+                    result = gemini.extract_product_continue(
+                        image_paths=images,
+                        output_folder=str(extract_folder),
+                        product_code=code
+                    )
+
+                if result and result.success:
+                    self.after_safe(lambda c=code, n=len(result.images):
+                        self.add_log(f"  {c}: Da tach {n} anh"))
+                else:
+                    error = result.error if result else "Loi"
+                    self.after_safe(lambda c=code, e=error:
+                        self.add_log(f"  {c}: {e}"))
+
+            self.after_safe(lambda: self.add_log("\nHoan thanh tach san pham!"))
+
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"Loi: {e}"))
+            import traceback
+            traceback.print_exc()
+
+        finally:
+            self.after_safe(self._on_extract_complete)
+
+    def _on_extract_complete(self):
+        """Callback khi hoan thanh extract"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.extract_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
     # ===== SORA VIDEO CREATION =====
 
     def start_sora_process(self):
@@ -1380,15 +1537,28 @@ class MainTab:
                 self.current_sora.toggle_chrome_visibility()
                 is_hidden = getattr(self.current_sora, '_is_hidden', False)
                 if is_hidden:
-                    self.add_log("Đã ẩn browser (SORA)")
+                    self.add_log("Da an browser (SORA)")
                 else:
-                    self.add_log("Đã hiện browser (SORA)")
+                    self.add_log("Da hien browser (SORA)")
                 toggled = True
             except Exception as e:
-                self.add_log(f"Lỗi toggle SORA browser: {e}")
+                self.add_log(f"Loi toggle SORA browser: {e}")
+
+        # Toggle Gemini browser
+        if hasattr(self, 'current_gemini') and self.current_gemini:
+            try:
+                self.current_gemini.toggle_chrome_visibility()
+                is_hidden = getattr(self.current_gemini, '_is_hidden', False)
+                if is_hidden:
+                    self.add_log("Da an browser (Gemini)")
+                else:
+                    self.add_log("Da hien browser (Gemini)")
+                toggled = True
+            except Exception as e:
+                self.add_log(f"Loi toggle Gemini browser: {e}")
 
         if not toggled:
-            self.add_log("Không có browser nào đang chạy")
+            self.add_log("Khong co browser nao dang chay")
 
     def create_scripts(self):
         """Tạo kịch bản và voice cho các sản phẩm"""

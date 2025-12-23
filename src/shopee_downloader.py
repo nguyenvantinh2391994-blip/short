@@ -138,7 +138,7 @@ class ShopeeDownloader:
             url: Link có thể là rút gọn hoặc đầy đủ
 
         Returns:
-            Link đầy đủ sau khi follow redirect
+            Link đầy đủ sau khi follow redirect (đã clean params)
         """
         if not url:
             return url
@@ -164,11 +164,31 @@ class ShopeeDownloader:
             )
 
             final_url = response.url
+
+            # Clean URL: bỏ __mobile__ và các tracking params
+            final_url = self._clean_shopee_url(final_url)
+
             console.print(f"[green]Resolved: {final_url[:80]}...[/]")
             return final_url
 
         except Exception as e:
             console.print(f"[yellow]Không resolve được short URL: {e}[/]")
+            return url
+
+    def _clean_shopee_url(self, url: str) -> str:
+        """Bỏ params không cần thiết khỏi URL Shopee"""
+        try:
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+
+            # Chỉ giữ các params cần thiết
+            keep_params = ['shopid', 'itemid']
+            cleaned_params = {k: v[0] for k, v in params.items() if k in keep_params}
+
+            # Build URL mới chỉ với path (không cần params vì đã có shop_id/item_id trong path)
+            clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            return clean_url
+        except:
             return url
 
     def parse_shopee_url(self, url: str) -> Tuple[Optional[int], Optional[int]]:

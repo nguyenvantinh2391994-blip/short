@@ -206,10 +206,10 @@ class GeminiExtract:
             return False
 
     def upload_files(self, image_paths: List[str]) -> bool:
-        """Upload files - click buttons roi dung PyAutoGUI cho file dialog"""
+        """Upload files - dung Tab + Enter de navigate menu (hoat dong khi an)"""
         self.log(f"Upload {len(image_paths)} files...")
 
-        # Click nut upload menu
+        # Click nut upload menu bang JS
         js1 = '''
         (function() {
             var btn = document.querySelector('.upload-card-button');
@@ -224,17 +224,15 @@ class GeminiExtract:
 
         time.sleep(0.8)
 
-        # Click "Tai tep len" - dung hidden button selector
-        js2 = '''
-        (function() {
-            var btn = document.querySelector('.hidden-local-file-image-selector-button');
-            if (!btn) btn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
-            if (!btn) btn = document.querySelectorAll('button[mat-list-item]')[0];
-            if (btn) { btn.click(); copy('OK'); }
-            else { copy('ERROR'); }
-        })();
-        '''
-        result = self.run_js(js2)
+        # Dong DevTools truoc khi dung keyboard
+        self._focus_chrome_window()
+        time.sleep(0.3)
+
+        # Dung Tab de navigate den "Tai tep len" roi Enter
+        # Menu da mo, Tab 1 lan de focus vao item dau tien, Enter de click
+        pag.press("tab")
+        time.sleep(0.2)
+        pag.press("enter")
 
         # Cho file dialog mo
         time.sleep(1.5)

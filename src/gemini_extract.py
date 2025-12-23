@@ -248,35 +248,27 @@ class GeminiExtract:
         """Click upload va chon files"""
         self.log("Click upload...")
 
-        # Click nut upload (+)
-        js1 = '''
+        # Gop 2 click vao 1 lenh JS de tranh menu dong khi DevTools dong/mo
+        js = '''
         (function() {
-            var btn = document.querySelector('.upload-card-button');
-            if (btn) { btn.click(); copy('OK'); }
-            else { copy('ERROR'); }
+            var uploadBtn = document.querySelector('.upload-card-button');
+            if (!uploadBtn) { copy('ERROR_UPLOAD'); return; }
+            uploadBtn.click();
+            setTimeout(function() {
+                var fileBtn = document.querySelectorAll('button[mat-list-item]')[0];
+                if (fileBtn) {
+                    fileBtn.click();
+                    copy('OK');
+                } else {
+                    copy('ERROR_FILE');
+                }
+            }, 800);
         })();
         '''
-        result = self.run_js(js1)
-        if not result or 'OK' not in result:
-            self.log_err("Khong tim thay nut upload")
-            return False
+        result = self.run_js(js)
 
-        time.sleep(1)
-
-        # Click "Tai tep len" - dung hidden button
-        js2 = '''
-        (function() {
-            var btn = document.querySelector('.hidden-local-file-image-selector-button');
-            if (btn) { btn.click(); copy('OK'); }
-            else { copy('ERROR'); }
-        })();
-        '''
-        result = self.run_js(js2)
-        if not result or 'OK' not in result:
-            self.log_err("Khong tim thay nut Tai tep len")
-            return False
-
-        time.sleep(1)
+        # Doi them de dam bao dialog mo
+        time.sleep(2)
 
         # Nhap duong dan file vao dialog Open
         # Cac file cach nhau boi dau " (Windows)

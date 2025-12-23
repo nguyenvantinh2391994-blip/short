@@ -1,25 +1,26 @@
 """
 Gemini Product Extraction - Tách sản phẩm từ ảnh sử dụng Gemini
 
-Sử dụng PyAutoGUI để điều khiển browser, tương tự SORA automation.
+Sử dụng Selenium với undetected_chromedriver để hỗ trợ headless và chạy song song.
 """
 
 import os
 import time
-import subprocess
 import requests
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List
 
 try:
-    import pyautogui as pag
-    import pyperclip
-    HAS_PAG = True
+    import undetected_chromedriver as uc
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.keys import Keys
+    HAS_SELENIUM = True
 except ImportError:
-    HAS_PAG = False
-    pag = None
-    pyperclip = None
+    HAS_SELENIUM = False
+    uc = None
 
 try:
     from rich.console import Console
@@ -69,7 +70,7 @@ Final rule: You must return ONLY the edited image. Do NOT return any text."""
 
 
 class GeminiExtract:
-    """Tách sản phẩm từ ảnh sử dụng Gemini"""
+    """Tách sản phẩm từ ảnh sử dụng Gemini với Selenium"""
 
     GEMINI_URL = "https://gemini.google.com/app"
 
@@ -85,7 +86,7 @@ class GeminiExtract:
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.headless = headless
-        self.chrome_process = None
+        self.driver = None
         self._is_hidden = False
 
     def log(self, msg: str):
@@ -97,344 +98,300 @@ class GeminiExtract:
     def log_err(self, msg: str):
         console.print(f"[red]   Loi: {msg}[/]")
 
-    def _hide_chrome_window(self):
-        """An Chrome window"""
+    def _setup_driver(self) -> bool:
+        """Khoi tao Selenium driver"""
+        if not HAS_SELENIUM:
+            self.log_err("Thieu undetected_chromedriver. Cai bang: pip install undetected-chromedriver")
+            return False
+
         try:
-            import pygetwindow as gw
-            windows = gw.getWindowsWithTitle('Gemini')
-            if not windows:
-                windows = gw.getWindowsWithTitle('Google')
-            if windows:
-                windows[0].minimize()
-                self._is_hidden = True
-                self.log("   Da an Chrome")
-        except:
-            pass
+            options = uc.ChromeOptions()
 
-    def show_chrome_window(self):
-        """Hien Chrome window"""
-        try:
-            import pygetwindow as gw
-            windows = gw.getWindowsWithTitle('Gemini')
-            if not windows:
-                windows = gw.getWindowsWithTitle('Google')
-            if windows:
-                win = windows[0]
-                win.restore()
-                win.maximize()
-                win.activate()
-                self._is_hidden = False
-                self.log("   Da hien Chrome")
-        except:
-            pass
+            # Profile path
+            if self.profile_path:
+                profile = Path(self.profile_path)
+                if profile.exists():
+                    options.add_argument(f"--user-data-dir={profile.parent}")
+                    options.add_argument(f"--profile-directory={profile.name}")
 
-    def toggle_chrome_visibility(self):
-        """Toggle an/hien"""
-        if self._is_hidden:
-            self.show_chrome_window()
-        else:
-            self._hide_chrome_window()
+            # Headless mode
+            if self.headless:
+                options.add_argument("--headless=new")
 
-    def _focus_chrome_window(self) -> bool:
-        """Focus vao cua so Chrome"""
-        try:
-            import pygetwindow as gw
-            windows = gw.getWindowsWithTitle('Gemini')
-            if not windows:
-                windows = gw.getWindowsWithTitle('Google')
-            if windows:
-                win = windows[0]
-                win.activate()
-                time.sleep(0.3)
-                return True
-        except:
-            pass
-        return False
+            # Cac option chong detect
+            options.add_argument("--no-first-run")
+            options.add_argument("--no-default-browser-check")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--start-maximized")
 
-    def open_chrome(self, url: str) -> bool:
-        """Mo Chrome voi profile"""
-        try:
-            cmd = [self.chrome_path]
+            self.driver = uc.Chrome(
+                options=options,
+                browser_executable_path=self.chrome_path if os.path.exists(self.chrome_path) else None,
+            )
 
-            profile_path = self.profile_path
-            if profile_path:
-                profile = Path(profile_path)
-                if not profile.name.startswith("Profile") and profile.name != "Default":
-                    profile_path = str(profile / "Default")
-
-            if profile_path and Path(profile_path).exists():
-                profile = Path(profile_path)
-                cmd.extend([
-                    f"--user-data-dir={profile.parent}",
-                    f"--profile-directory={profile.name}"
-                ])
-
-            cmd.append("--start-maximized")
-            cmd.append(url)
-
-            self.chrome_process = subprocess.Popen(cmd, shell=False)
-            self.log_ok(f"Chrome PID: {self.chrome_process.pid}")
-
-            time.sleep(4)
-            self._focus_chrome_window()
+            self.log_ok("Da khoi tao Chrome driver")
             return True
 
         except Exception as e:
-            self.log_err(f"Loi mo Chrome: {e}")
+            self.log_err(f"Loi khoi tao driver: {e}")
             return False
 
-    def run_js(self, js: str) -> Optional[str]:
-        """Chay JS qua DevTools Console"""
-        if not pag or not pyperclip:
-            return None
-
+    def open_gemini(self) -> bool:
+        """Mo trang Gemini"""
         try:
-            self._focus_chrome_window()
+            self.driver.get(self.GEMINI_URL)
+            time.sleep(3)
 
-            # Mo DevTools Console
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
-
-            # Copy JS
-            pyperclip.copy(js)
-            time.sleep(0.1)
-
-            # Paste va chay
-            pag.hotkey("ctrl", "v")
-            time.sleep(0.2)
-            pag.press("enter")
-            time.sleep(0.5)
-
-            # Lay ket qua tu clipboard
-            result = pyperclip.paste()
-
-            # Dong DevTools
-            pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.3)
-
-            return result
+            # Doi trang load xong
+            WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".ql-editor"))
+            )
+            self.log_ok("Da mo Gemini")
+            return True
 
         except Exception as e:
-            self.log_err(f"Loi run JS: {e}")
-            return None
+            self.log_err(f"Loi mo Gemini: {e}")
+            return False
 
     def type_prompt(self) -> bool:
         """Nhap prompt vao textarea"""
         self.log("Nhap prompt...")
 
-        # Dung textContent thay vi innerHTML (do TrustedHTML policy)
-        escaped_prompt = EXTRACT_PROMPT.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        try:
+            editor = self.driver.find_element(By.CSS_SELECTOR, ".ql-editor")
+            editor.click()
+            time.sleep(0.3)
 
-        js = f'''
-        (function() {{
-            var editor = document.querySelector('.ql-editor');
-            if (!editor) {{ copy('ERROR'); return; }}
-            editor.focus();
-            editor.textContent = `{escaped_prompt}`;
-            editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            copy('OK');
-        }})();
-        '''
+            # Dung JavaScript de set text (vi textContent/innerHTML bi block)
+            self.driver.execute_script(
+                "arguments[0].textContent = arguments[1];",
+                editor,
+                EXTRACT_PROMPT
+            )
 
-        result = self.run_js(js)
-        if result and 'OK' in result:
+            # Trigger input event
+            self.driver.execute_script(
+                "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));",
+                editor
+            )
+
             self.log_ok("Da nhap prompt")
             return True
-        else:
-            self.log_err("Khong nhap duoc prompt")
+
+        except Exception as e:
+            self.log_err(f"Loi nhap prompt: {e}")
             return False
 
-    def click_upload_and_select_files(self, image_paths: List[str]) -> bool:
-        """Click upload va chon files"""
-        self.log("Click upload...")
-
-        # Dong DevTools neu dang mo
-        pag.hotkey("ctrl", "shift", "j")
-        time.sleep(0.3)
-        pag.hotkey("ctrl", "shift", "j")
-        time.sleep(0.3)
-
-        self._focus_chrome_window()
-        time.sleep(0.5)
-
-        # Tim va click nut upload (+) bang JS lay toa do
-        js1 = '''
-        (function() {
-            var btn = document.querySelector('.upload-card-button');
-            if (btn) {
-                var rect = btn.getBoundingClientRect();
-                copy(JSON.stringify({x: rect.x + rect.width/2, y: rect.y + rect.height/2}));
-            } else {
-                copy('ERROR');
-            }
-        })();
-        '''
-        result = self.run_js(js1)
-        if not result or 'ERROR' in result:
-            self.log_err("Khong tim thay nut upload")
-            return False
+    def upload_files(self, image_paths: List[str]) -> bool:
+        """Upload files bang cach tao input[type=file] an va trigger"""
+        self.log(f"Upload {len(image_paths)} files...")
 
         try:
-            import json
-            pos = json.loads(result)
-            # Click vao nut upload bang PyAutoGUI
-            pag.click(int(pos['x']), int(pos['y']))
-            self.log_ok(f"Click upload tai ({pos['x']}, {pos['y']})")
-        except:
-            self.log_err("Khong parse duoc toa do upload")
+            # Click nut upload menu
+            upload_btn = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, ".upload-card-button"))
+            )
+            upload_btn.click()
+            time.sleep(0.5)
+
+            # Doi menu xuat hien va click "Tai tep len"
+            file_btn = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-test-id="local-images-files-uploader-button"]'))
+            )
+
+            # Tao input[type=file] an de upload
+            # Inject hidden file input
+            self.driver.execute_script("""
+                var input = document.createElement('input');
+                input.type = 'file';
+                input.id = 'selenium-file-input';
+                input.multiple = true;
+                input.accept = 'image/*';
+                input.style.display = 'none';
+                document.body.appendChild(input);
+            """)
+
+            # Tim input vua tao
+            file_input = self.driver.find_element(By.ID, "selenium-file-input")
+
+            # Gui file paths vao input (phan cach bang \n)
+            file_paths_str = "\n".join(image_paths)
+            file_input.send_keys(file_paths_str)
+
+            time.sleep(1)
+
+            # Lay files tu input va dispatch vao Gemini
+            # Su dung DataTransfer API
+            self.driver.execute_script("""
+                var input = document.getElementById('selenium-file-input');
+                var files = input.files;
+
+                // Tim nut upload thuc su va trigger
+                var uploadBtn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
+                if (uploadBtn) {
+                    // Tao DataTransfer object
+                    var dt = new DataTransfer();
+                    for (var i = 0; i < files.length; i++) {
+                        dt.items.add(files[i]);
+                    }
+
+                    // Tim hidden input trong component
+                    var hiddenInputs = document.querySelectorAll('input[type="file"]');
+                    if (hiddenInputs.length > 0) {
+                        hiddenInputs[0].files = dt.files;
+                        hiddenInputs[0].dispatchEvent(new Event('change', {bubbles: true}));
+                    }
+                }
+
+                // Xoa input tam
+                input.remove();
+            """)
+
+            time.sleep(2)
+
+            # Kiem tra xem co anh duoc upload khong
+            # Neu khong co input[type=file], thu cach khac: drag & drop
+            uploaded = self.driver.execute_script("""
+                var previews = document.querySelectorAll('.preview-image, .uploaded-image, img[src*="blob:"]');
+                return previews.length;
+            """)
+
+            if uploaded > 0:
+                self.log_ok(f"Da upload {uploaded} files")
+                return True
+
+            # Neu cach tren khong duoc, thu drag & drop
+            self.log("Thu upload bang drag & drop...")
+            return self._upload_via_drag_drop(image_paths)
+
+        except Exception as e:
+            self.log_err(f"Loi upload: {e}")
             return False
 
-        time.sleep(1)
-
-        # Tim va click nut "Tai tep len" bang PyAutoGUI
-        js2 = '''
-        (function() {
-            var btn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
-            if (btn) {
-                var rect = btn.getBoundingClientRect();
-                copy(JSON.stringify({x: rect.x + rect.width/2, y: rect.y + rect.height/2}));
-            } else {
-                copy('ERROR');
-            }
-        })();
-        '''
-        result = self.run_js(js2)
-        if not result or 'ERROR' in result:
-            self.log_err("Khong tim thay nut Tai tep len")
-            return False
-
+    def _upload_via_drag_drop(self, image_paths: List[str]) -> bool:
+        """Upload bang cach mo phong drag & drop"""
         try:
-            pos = json.loads(result)
-            # Click vao nut "Tai tep len" bang PyAutoGUI
-            pag.click(int(pos['x']), int(pos['y']))
-            self.log_ok(f"Click Tai tep len tai ({pos['x']}, {pos['y']})")
-        except:
-            self.log_err("Khong parse duoc toa do Tai tep len")
+            # Tao input file moi
+            self.driver.execute_script("""
+                var input = document.createElement('input');
+                input.type = 'file';
+                input.id = 'selenium-drop-input';
+                input.multiple = true;
+                input.style.position = 'fixed';
+                input.style.top = '0';
+                input.style.left = '0';
+                input.style.opacity = '0';
+                document.body.appendChild(input);
+            """)
+
+            file_input = self.driver.find_element(By.ID, "selenium-drop-input")
+            file_paths_str = "\n".join(image_paths)
+            file_input.send_keys(file_paths_str)
+
+            # Simulate drop event vao editor
+            self.driver.execute_script("""
+                var input = document.getElementById('selenium-drop-input');
+                var files = input.files;
+                var editor = document.querySelector('.ql-editor');
+
+                if (editor && files.length > 0) {
+                    var dt = new DataTransfer();
+                    for (var i = 0; i < files.length; i++) {
+                        dt.items.add(files[i]);
+                    }
+
+                    var dropEvent = new DragEvent('drop', {
+                        bubbles: true,
+                        cancelable: true,
+                        dataTransfer: dt
+                    });
+
+                    editor.dispatchEvent(dropEvent);
+                }
+
+                input.remove();
+            """)
+
+            time.sleep(2)
+            self.log_ok("Da thu drag & drop")
+            return True
+
+        except Exception as e:
+            self.log_err(f"Loi drag & drop: {e}")
             return False
-
-        time.sleep(1)
-
-        # Nhap duong dan file vao dialog Open
-        # Cac file cach nhau boi dau " (Windows)
-        if len(image_paths) == 1:
-            file_str = image_paths[0]
-        else:
-            # Nhieu file: "file1" "file2" "file3"
-            file_str = ' '.join([f'"{p}"' for p in image_paths])
-
-        self.log(f"   Chon {len(image_paths)} file...")
-        pyperclip.copy(file_str)
-        time.sleep(0.3)
-
-        # Paste vao dialog
-        pag.hotkey("ctrl", "v")
-        time.sleep(0.5)
-
-        # Nhan Enter de xac nhan
-        pag.press("enter")
-        time.sleep(2)
-
-        self.log_ok("Da upload files")
-        return True
 
     def send_prompt(self) -> bool:
         """Gui prompt"""
         self.log("Gui prompt...")
 
-        # Click nut gui tin nhan
-        js = '''
-        (function() {
-            var btn = document.querySelector('button[aria-label="Gửi tin nhắn"]');
-            if (!btn) btn = document.querySelector('.send-button');
-            if (btn) { btn.click(); copy('OK'); }
-            else { copy('ERROR'); }
-        })();
-        '''
-        result = self.run_js(js)
-        if result and 'OK' in result:
+        try:
+            # Tim va click nut gui
+            send_btn = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label="Gửi tin nhắn"], .send-button'))
+            )
+            send_btn.click()
+
             self.log_ok("Da gui prompt")
             return True
-        else:
-            self.log_err("Khong gui duoc prompt")
+
+        except Exception as e:
+            self.log_err(f"Loi gui: {e}")
             return False
 
-    def is_generating(self) -> bool:
-        """Check dang tao anh (co icon stop)"""
-        js = '''
-        (function() {
-            var stop = document.querySelector('mat-icon[fonticon="stop"]');
-            copy(stop ? 'YES' : 'NO');
-        })();
-        '''
-        result = self.run_js(js)
-        return result and 'YES' in result
-
-    def is_complete(self) -> bool:
-        """Check da xong (co icon mic, khong co stop)"""
-        js = '''
-        (function() {
-            var mic = document.querySelector('.text-input-field mat-icon[fonticon="mic"]');
-            var stop = document.querySelector('mat-icon[fonticon="stop"]');
-            copy((mic && !stop) ? 'DONE' : 'WAIT');
-        })();
-        '''
-        result = self.run_js(js)
-        return result and 'DONE' in result
-
     def wait_for_completion(self, timeout: int = 180) -> bool:
-        """Doi tao anh xong (toi da 3 phut)"""
+        """Doi Gemini tao anh xong"""
         self.log(f"Doi tao anh... (toi da {timeout}s)")
 
-        if self.headless:
-            self._hide_chrome_window()
-
         start = time.time()
-        check_interval = 10
+        check_interval = 5
 
         while time.time() - start < timeout:
             time.sleep(check_interval)
             elapsed = int(time.time() - start)
 
-            if self.headless:
-                self.show_chrome_window()
-                time.sleep(0.5)
+            # Check xem con dang loading khong
+            is_loading = self.driver.execute_script("""
+                var stop = document.querySelector('mat-icon[fonticon="stop"]');
+                var loading = document.querySelector('[data-test-id="loading-indicator"]');
+                return !!(stop || loading);
+            """)
 
-            self.log(f"   {elapsed}s - Check...")
+            if not is_loading:
+                # Check co anh ket qua khong
+                has_images = self.driver.execute_script("""
+                    var imgs = document.querySelectorAll('generated-image img.image');
+                    return imgs.length > 0;
+                """)
 
-            if self.is_complete():
-                self.log_ok(f"Hoan thanh! ({elapsed}s)")
-                return True
+                if has_images:
+                    self.log_ok(f"Hoan thanh! ({elapsed}s)")
+                    return True
 
-            if self.headless:
-                self._hide_chrome_window()
+            self.log(f"   {elapsed}s - Dang xu ly...")
 
         self.log_err(f"Timeout sau {timeout}s")
         return False
 
     def get_generated_images(self) -> List[str]:
         """Lay URL cac anh da tao"""
-        js = '''
-        (function() {
-            var imgs = document.querySelectorAll('generated-image img.image');
-            var urls = [];
-            imgs.forEach(function(img) {
-                if (img.src && img.src.includes('googleusercontent')) {
-                    urls.push(img.src);
-                }
-            });
-            copy(JSON.stringify(urls));
-        })();
-        '''
-        result = self.run_js(js)
-        if result:
-            try:
-                import json
-                urls = json.loads(result)
-                self.log(f"   Tim thay {len(urls)} anh")
-                return urls
-            except:
-                pass
-        return []
+        try:
+            urls = self.driver.execute_script("""
+                var imgs = document.querySelectorAll('generated-image img.image');
+                var urls = [];
+                imgs.forEach(function(img) {
+                    if (img.src && img.src.includes('googleusercontent')) {
+                        urls.push(img.src);
+                    }
+                });
+                return urls;
+            """)
+
+            self.log(f"   Tim thay {len(urls)} anh")
+            return urls or []
+
+        except Exception as e:
+            self.log_err(f"Loi lay URL anh: {e}")
+            return []
 
     def download_images(self, urls: List[str], output_folder: Path, prefix: str = "extracted") -> List[str]:
         """Download cac anh tu URL"""
@@ -457,6 +414,15 @@ class GeminiExtract:
 
         return saved
 
+    def close(self):
+        """Dong driver"""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+            self.driver = None
+
     def extract_product(
         self,
         image_paths: List[str],
@@ -474,8 +440,8 @@ class GeminiExtract:
         Returns:
             ExtractResult
         """
-        if not HAS_PAG:
-            return ExtractResult(False, error="Thieu pyautogui/pyperclip")
+        if not HAS_SELENIUM:
+            return ExtractResult(False, error="Thieu selenium. Cai: pip install undetected-chromedriver selenium")
 
         if not image_paths:
             return ExtractResult(False, error="Khong co anh")
@@ -484,11 +450,13 @@ class GeminiExtract:
             self.log(f"\n=== GEMINI EXTRACT: {product_code or 'images'} ===")
             self.log(f"   {len(image_paths)} anh can xu ly")
 
-            # Mo Gemini
-            if not self.open_chrome(self.GEMINI_URL):
-                return ExtractResult(False, error="Khong mo duoc Chrome")
+            # Khoi tao driver
+            if not self._setup_driver():
+                return ExtractResult(False, error="Khong khoi tao duoc driver")
 
-            time.sleep(3)
+            # Mo Gemini
+            if not self.open_gemini():
+                return ExtractResult(False, error="Khong mo duoc Gemini")
 
             # Nhap prompt
             if not self.type_prompt():
@@ -497,7 +465,7 @@ class GeminiExtract:
             time.sleep(1)
 
             # Upload files
-            if not self.click_upload_and_select_files(image_paths):
+            if not self.upload_files(image_paths):
                 return ExtractResult(False, error="Khong upload duoc files")
 
             time.sleep(2)
@@ -532,70 +500,8 @@ class GeminiExtract:
             traceback.print_exc()
             return ExtractResult(False, error=str(e))
 
-    def extract_product_continue(
-        self,
-        image_paths: List[str],
-        output_folder: str,
-        product_code: str = ""
-    ) -> ExtractResult:
-        """
-        Tach san pham (tiep tuc, khong mo Chrome moi)
-        """
-        if not HAS_PAG:
-            return ExtractResult(False, error="Thieu pyautogui/pyperclip")
-
-        if not image_paths:
-            return ExtractResult(False, error="Khong co anh")
-
-        try:
-            self.log(f"\n=== GEMINI EXTRACT (continue): {product_code or 'images'} ===")
-
-            # Focus Chrome
-            self._focus_chrome_window()
-            time.sleep(1)
-
-            # Refresh trang
-            pag.press("f5")
-            time.sleep(4)
-
-            # Nhap prompt
-            if not self.type_prompt():
-                return ExtractResult(False, error="Khong nhap duoc prompt")
-
-            time.sleep(1)
-
-            # Upload files
-            if not self.click_upload_and_select_files(image_paths):
-                return ExtractResult(False, error="Khong upload duoc files")
-
-            time.sleep(2)
-
-            # Gui prompt
-            if not self.send_prompt():
-                return ExtractResult(False, error="Khong gui duoc prompt")
-
-            # Doi hoan thanh
-            if not self.wait_for_completion(timeout=180):
-                return ExtractResult(False, error="Timeout")
-
-            # Lay URL anh
-            urls = self.get_generated_images()
-            if not urls:
-                return ExtractResult(False, error="Khong tim thay anh da tao")
-
-            # Download anh
-            out_folder = Path(output_folder)
-            prefix = product_code or "extracted"
-            saved = self.download_images(urls, out_folder, prefix)
-
-            if saved:
-                return ExtractResult(True, images=saved)
-            else:
-                return ExtractResult(False, error="Khong download duoc anh")
-
-        except Exception as e:
-            self.log_err(f"Exception: {e}")
-            return ExtractResult(False, error=str(e))
+        finally:
+            self.close()
 
 
 def get_images_in_folder(folder: str) -> List[str]:

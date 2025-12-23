@@ -130,6 +130,47 @@ class ShopeeDownloader:
         else:
             return self._hide_chrome_window()
 
+    def resolve_short_url(self, url: str) -> str:
+        """
+        Resolve link rút gọn Shopee (s.shopee.vn) thành link đầy đủ
+
+        Args:
+            url: Link có thể là rút gọn hoặc đầy đủ
+
+        Returns:
+            Link đầy đủ sau khi follow redirect
+        """
+        if not url:
+            return url
+
+        url = url.strip()
+
+        # Chỉ xử lý link rút gọn s.shopee.vn
+        if 's.shopee.vn' not in url and 'shp.ee' not in url:
+            return url
+
+        try:
+            import requests
+            console.print(f"[dim]Resolving short URL: {url}[/]")
+
+            # Follow redirect để lấy URL thật
+            response = requests.head(
+                url,
+                allow_redirects=True,
+                timeout=10,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            )
+
+            final_url = response.url
+            console.print(f"[green]Resolved: {final_url[:80]}...[/]")
+            return final_url
+
+        except Exception as e:
+            console.print(f"[yellow]Không resolve được short URL: {e}[/]")
+            return url
+
     def parse_shopee_url(self, url: str) -> Tuple[Optional[int], Optional[int]]:
         """
         Parse link Shopee để lấy shop_id và item_id
@@ -137,7 +178,9 @@ class ShopeeDownloader:
         Formats được hỗ trợ:
         - https://shopee.vn/product-name-i.123456.789012
         - https://shopee.vn/-i.123456.789012
+        - https://shopee.vn/product/123456/789012 (từ link rút gọn)
         - https://shopee.vn/product?shopid=123456&itemid=789012
+        - https://shopee.vn/shop/123456/product/789012
         - https://vn.xiapibuy.com/... (redirect từ app)
 
         Returns:
@@ -154,7 +197,13 @@ class ShopeeDownloader:
         if match:
             return int(match.group(1)), int(match.group(2))
 
-        # Pattern 2: URL params ?shopid=xxx&itemid=xxx
+        # Pattern 2: /product/{shop_id}/{item_id} (từ link rút gọn s.shopee.vn)
+        pattern2 = r'/product/(\d+)/(\d+)'
+        match = re.search(pattern2, url)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+
+        # Pattern 3: URL params ?shopid=xxx&itemid=xxx
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
         if 'shopid' in params and 'itemid' in params:
@@ -163,9 +212,9 @@ class ShopeeDownloader:
             except (ValueError, IndexError):
                 pass
 
-        # Pattern 3: shopee.vn/shop/{shop_id}/product/{item_id}
-        pattern3 = r'/shop/(\d+)/product/(\d+)'
-        match = re.search(pattern3, url)
+        # Pattern 4: shopee.vn/shop/{shop_id}/product/{item_id}
+        pattern4 = r'/shop/(\d+)/product/(\d+)'
+        match = re.search(pattern4, url)
         if match:
             return int(match.group(1)), int(match.group(2))
 
@@ -928,13 +977,16 @@ class ShopeeDownloader:
         Lấy thông tin sản phẩm và download ảnh từ link Shopee
 
         Args:
-            url: Link sản phẩm Shopee
+            url: Link sản phẩm Shopee (hỗ trợ cả link rút gọn s.shopee.vn)
             folder_name: Tên thư mục lưu
             skip_existing: Bỏ qua nếu đã có ảnh
 
         Returns:
             Tuple (ShopeeProduct, List đường dẫn ảnh)
         """
+        # Resolve link rút gọn trước
+        url = self.resolve_short_url(url)
+
         # Parse URL
         shop_id, item_id = self.parse_shopee_url(url)
 

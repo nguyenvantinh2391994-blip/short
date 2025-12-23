@@ -525,17 +525,6 @@ class ShopeeDownloader:
             # Setup Chrome options
             options = Options()
 
-            # Sử dụng browser profile có sẵn (đã đăng nhập Shopee)
-            if profile_path:
-                profile = Path(profile_path)
-                console.print(f"[dim]DEBUG: profile.exists()={profile.exists()}[/]")
-                if profile.exists():
-                    console.print(f"[cyan]Sử dụng profile: {profile}[/]")
-                    # profile_path là thư mục user-data-dir (chứa Default, Profile 1, ...)
-                    options.add_argument(f"--user-data-dir={profile}")
-                else:
-                    console.print(f"[yellow]⚠️ Profile không tồn tại: {profile}[/]")
-
             # Đường dẫn Chrome
             if chrome_path and Path(chrome_path).exists():
                 options.binary_location = chrome_path
@@ -564,18 +553,28 @@ class ShopeeDownloader:
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option('useAutomationExtension', False)
 
-            # Thử dùng undetected-chromedriver nếu KHÔNG có profile
-            # (undetected_chromedriver không hoạt động tốt với existing profile)
-            if not profile_path:
-                try:
-                    import undetected_chromedriver as uc
-                    console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
-                    self.driver = uc.Chrome(headless=False)  # Không dùng headless, dùng window position
-                except ImportError:
-                    self.driver = webdriver.Chrome(options=options)
-            else:
-                # Dùng selenium thường với profile có sẵn
-                console.print(f"[dim]Sử dụng Selenium với profile đã đăng nhập...[/]")
+            # Luôn dùng undetected-chromedriver để tránh CAPTCHA (như Grok)
+            try:
+                import undetected_chromedriver as uc
+                console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
+
+                # Xử lý profile path cho uc.Chrome
+                user_data_dir = None
+                if profile_path:
+                    profile = Path(profile_path)
+                    if profile.exists():
+                        user_data_dir = str(profile)
+                        console.print(f"[cyan]Profile: {user_data_dir}[/]")
+
+                self.driver = uc.Chrome(
+                    options=options,
+                    headless=False,
+                    user_data_dir=user_data_dir,
+                    use_subprocess=True,
+                    version_main=None
+                )
+            except ImportError:
+                console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
                 self.driver = webdriver.Chrome(options=options)
 
             # Ẩn khỏi taskbar nếu headless (Windows)

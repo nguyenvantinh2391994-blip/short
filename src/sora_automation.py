@@ -113,8 +113,10 @@ class SoraAutomation:
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.timeout = timeout
+        self.headless = headless  # Chế độ ẩn (minimize khi chờ)
         self.maximize = maximize
         self.chrome_process = None
+        self._is_hidden = False
 
     def log(self, msg: str):
         console.print(f"[cyan]{msg}[/]")
@@ -127,6 +129,44 @@ class SoraAutomation:
 
     def log_warn(self, msg: str):
         console.print(f"[yellow]   ⚠ {msg}[/]")
+
+    def _hide_chrome_window(self):
+        """Ẩn Chrome window bằng cách minimize"""
+        try:
+            import pygetwindow as gw
+            windows = gw.getWindowsWithTitle('Sora')
+            if not windows:
+                windows = gw.getWindowsWithTitle('ChatGPT')
+            if windows:
+                windows[0].minimize()
+                self._is_hidden = True
+                self.log("   Da an Chrome window")
+        except Exception as e:
+            self.log(f"   Loi an window: {e}")
+
+    def show_chrome_window(self):
+        """Hien Chrome window"""
+        try:
+            import pygetwindow as gw
+            windows = gw.getWindowsWithTitle('Sora')
+            if not windows:
+                windows = gw.getWindowsWithTitle('ChatGPT')
+            if windows:
+                win = windows[0]
+                win.restore()
+                win.maximize()
+                win.activate()
+                self._is_hidden = False
+                self.log("   Da hien Chrome window")
+        except Exception as e:
+            self.log(f"   Loi hien window: {e}")
+
+    def toggle_chrome_visibility(self):
+        """Toggle an/hien Chrome window"""
+        if self._is_hidden:
+            self.show_chrome_window()
+        else:
+            self._hide_chrome_window()
 
     def run_js(self, js: str, close_devtools: bool = True) -> bool:
         """Chạy JS qua DevTools Console."""
@@ -459,12 +499,22 @@ class SoraAutomation:
 
         - Đợi 30s trước khi bắt đầu check
         - Sau đó check mỗi 30s
+        - Nếu headless=True, ẩn Chrome khi chờ
         """
         self.log(f"   Đang chờ video... (tối đa {timeout//60} phút)")
+
+        # Ẩn Chrome nếu headless mode
+        if self.headless:
+            self._hide_chrome_window()
 
         # Đợi 30s trước khi bắt đầu check
         self.log("   Đợi 30s trước khi check...")
         time.sleep(30)
+
+        # Hiện Chrome để check (cần focus để run JS)
+        if self.headless:
+            self.show_chrome_window()
+            time.sleep(0.5)
 
         # Check lần đầu
         status = self.check_video_status()
@@ -473,12 +523,21 @@ class SoraAutomation:
             return True
         self.log(f"   30s - Status: {status}")
 
+        # Ẩn lại nếu headless
+        if self.headless:
+            self._hide_chrome_window()
+
         # Tiếp tục check mỗi 30s
         check_interval = 30
         remaining = timeout - 30
         for i in range(remaining // check_interval):
             time.sleep(check_interval)
             elapsed = 30 + (i + 1) * check_interval
+
+            # Hiện để check
+            if self.headless:
+                self.show_chrome_window()
+                time.sleep(0.5)
 
             self.log(f"   {elapsed}s - Đang check...")
             status = self.check_video_status()
@@ -488,6 +547,10 @@ class SoraAutomation:
                 return True
 
             self.log(f"   Status: {status}")
+
+            # Ẩn lại
+            if self.headless:
+                self._hide_chrome_window()
 
         self.log_err(f"Timeout sau {timeout}s")
         return False

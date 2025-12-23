@@ -1252,12 +1252,14 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Khởi tạo SORA automation (giống Grok)
+            # Khởi tạo SORA automation (headless như Grok)
             sora = SoraAutomation(
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
+                headless=True,
             )
+            self.current_sora = sora  # Lưu để toggle visibility
 
             first_video = True  # Track xem đã mở Chrome chưa
 
@@ -1365,12 +1367,25 @@ class MainTab:
                 self.shopee_downloader.toggle_browser_visibility()
                 is_hidden = getattr(self.shopee_downloader, '_is_hidden', False)
                 if is_hidden:
-                    self.add_log("🙈 Đã ẩn browser (Shopee)")
+                    self.add_log("Đã ẩn browser (Shopee)")
                 else:
-                    self.add_log("👁️ Đã hiện browser (Shopee)")
+                    self.add_log("Đã hiện browser (Shopee)")
                 toggled = True
             except Exception as e:
-                self.add_log(f"⚠️ Lỗi toggle Shopee browser: {e}")
+                self.add_log(f"Lỗi toggle Shopee browser: {e}")
+
+        # Toggle SORA browser
+        if hasattr(self, 'current_sora') and self.current_sora:
+            try:
+                self.current_sora.toggle_chrome_visibility()
+                is_hidden = getattr(self.current_sora, '_is_hidden', False)
+                if is_hidden:
+                    self.add_log("Đã ẩn browser (SORA)")
+                else:
+                    self.add_log("Đã hiện browser (SORA)")
+                toggled = True
+            except Exception as e:
+                self.add_log(f"Lỗi toggle SORA browser: {e}")
 
         if not toggled:
             self.add_log("Không có browser nào đang chạy")
@@ -1965,12 +1980,14 @@ class MainTab:
                     chrome_path = first_profile.get("chrome_path")
                     profile_path = first_profile.get("profile_path")
 
-                # Khởi tạo SORA
+                # Khởi tạo SORA (headless=True để ẩn khi chờ video)
                 sora = SoraAutomation(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
                     output_folder=str(output_folder),
+                    headless=True,
                 )
+                self.current_sora = sora  # Lưu để toggle visibility
 
                 # Refresh data từ sheet
                 fresh_values = reader.sheet.get_all_values()

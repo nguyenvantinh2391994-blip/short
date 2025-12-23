@@ -222,12 +222,15 @@ class GeminiExtract:
         """Nhap prompt vao textarea"""
         self.log("Nhap prompt...")
 
+        # Prepare prompt - replace newlines with <br> and escape quotes
+        escaped_prompt = EXTRACT_PROMPT.replace("\n", "<br>").replace("'", "\\'")
+
         js = f'''
         (function() {{
             var editor = document.querySelector('.ql-editor');
             if (!editor) {{ copy('ERROR'); return; }}
             editor.focus();
-            editor.innerHTML = '<p>{EXTRACT_PROMPT.replace(chr(10), "<br>").replace("'", "\\'")}';
+            editor.innerHTML = '<p>{escaped_prompt}';
             editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
             copy('OK');
         }})();

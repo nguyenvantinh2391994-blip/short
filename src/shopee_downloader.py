@@ -600,8 +600,7 @@ class ShopeeDownloader:
                 "profile.default_content_setting_values.notifications": 2,  # Block notifications
             }
             options.add_experimental_option("prefs", prefs)
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
+            # Không dùng excludeSwitches/useAutomationExtension vì uc.Chrome tự xử lý
 
             # Luôn dùng undetected-chromedriver để tránh CAPTCHA (như Grok)
             try:

@@ -177,13 +177,13 @@ class ShopeeDownloader:
 
     def _clean_shopee_url(self, url: str) -> str:
         """
-        Clean và convert URL Shopee về format chuẩn -i.{shop_id}.{item_id}
-        Format này load page đầy đủ với ảnh
+        Clean URL Shopee - convert về format product-i.xxx.xxx
+        Format này load page đầy đủ với gallery ảnh
         """
         try:
             import re
 
-            # Tìm shop_id và item_id từ URL
+            # Tìm shop_id và item_id
             shop_id = None
             item_id = None
 
@@ -192,26 +192,20 @@ class ShopeeDownloader:
             if match:
                 shop_id, item_id = match.group(1), match.group(2)
 
-            # Pattern 2: /product/{shop_id}/{item_id} hoặc /{anything}/{shop_id}/{item_id}
+            # Pattern 2: /{anything}/{shop_id}/{item_id}
             if not shop_id:
                 match = re.search(r'shopee\.vn/[^/]+/(\d+)/(\d+)', url)
                 if match:
                     shop_id, item_id = match.group(1), match.group(2)
 
-            # Pattern 3: ?shopid=xxx&itemid=xxx
-            if not shop_id:
-                parsed = urlparse(url)
-                params = parse_qs(parsed.query)
-                if 'shopid' in params and 'itemid' in params:
-                    shop_id = params['shopid'][0]
-                    item_id = params['itemid'][0]
-
-            # Convert sang format chuẩn -i.{shop_id}.{item_id}
+            # Nếu tìm được, dùng format product-i.xxx.xxx
             if shop_id and item_id:
-                clean_url = f"https://shopee.vn/-i.{shop_id}.{item_id}"
+                # Format này load gallery ảnh đúng
+                clean_url = f"https://shopee.vn/product-i.{shop_id}.{item_id}"
                 console.print(f"[dim]Converted to: {clean_url}[/]")
                 return clean_url
 
+            # Giữ nguyên nếu không parse được
             return url
         except:
             return url

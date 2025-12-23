@@ -197,8 +197,9 @@ class ShopeeDownloader:
         if match:
             return int(match.group(1)), int(match.group(2))
 
-        # Pattern 2: /product/{shop_id}/{item_id} (từ link rút gọn s.shopee.vn)
-        pattern2 = r'/product/(\d+)/(\d+)'
+        # Pattern 2: /{anything}/{shop_id}/{item_id} (từ link rút gọn s.shopee.vn)
+        # Ví dụ: /product/123/456 hoặc /opaanlp/123/456
+        pattern2 = r'shopee\.vn/[^/]+/(\d+)/(\d+)'
         match = re.search(pattern2, url)
         if match:
             return int(match.group(1)), int(match.group(2))

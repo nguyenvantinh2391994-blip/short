@@ -336,28 +336,54 @@ class GeminiExtract:
         return []
 
     def download_images(self, urls: List[str], output_folder: Path, prefix: str = "extracted") -> List[str]:
-        """Download cac anh tu URL"""
+        """Download cac anh tu URL - dung JS fetch de co cookies"""
         saved = []
         output_folder.mkdir(parents=True, exist_ok=True)
 
         for i, url in enumerate(urls):
             try:
                 self.log(f"   Download anh {i+1}/{len(urls)}...")
-                # Them headers de tranh bi block
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': 'https://gemini.google.com/'
-                }
-                response = requests.get(url, timeout=30, headers=headers)
-                if response.status_code == 200:
+
+                # Dung JS fetch de download voi cookies cua browser
+                js = f'''
+                (async function() {{
+                    try {{
+                        var response = await fetch("{url}");
+                        var blob = await response.blob();
+                        var reader = new FileReader();
+                        reader.onloadend = function() {{
+                            copy(reader.result);
+                        }};
+                        reader.readAsDataURL(blob);
+                    }} catch(e) {{
+                        copy('ERROR:' + e.message);
+                    }}
+                }})();
+                '''
+                result = self.run_js(js)
+                time.sleep(1)  # Doi async fetch xong
+
+                # Lay ket qua tu clipboard
+                result = pyperclip.paste()
+
+                if result and result.startswith('data:'):
+                    # Decode base64
+                    import base64
+                    # data:image/png;base64,xxxxx
+                    header, data = result.split(',', 1)
+                    img_data = base64.b64decode(data)
+
                     filename = f"{prefix}_{i+1}.png"
                     filepath = output_folder / filename
                     with open(filepath, 'wb') as f:
-                        f.write(response.content)
+                        f.write(img_data)
                     saved.append(str(filepath))
                     self.log_ok(f"Saved: {filename}")
+                elif result and 'ERROR' in result:
+                    self.log_err(f"JS fetch error: {result}")
                 else:
-                    self.log_err(f"HTTP {response.status_code}")
+                    self.log_err(f"Khong lay duoc anh")
+
             except Exception as e:
                 self.log_err(f"Loi download: {e}")
 
@@ -398,6 +424,10 @@ class GeminiExtract:
 
             time.sleep(2)
 
+            # Luu URLs cu truoc khi gui prompt
+            old_urls = set(self.get_generated_images())
+            self.log(f"   URLs cu: {len(old_urls)}")
+
             # Gui prompt
             if not self.send_prompt():
                 return ExtractResult(False, error="Khong gui duoc prompt")
@@ -410,10 +440,13 @@ class GeminiExtract:
             self.log("   Doi 5s cho anh on dinh...")
             time.sleep(5)
 
-            # Lay URL anh
-            urls = self.get_generated_images()
+            # Lay URL anh moi (chi lay nhung URL chua co truoc do)
+            all_urls = self.get_generated_images()
+            urls = [u for u in all_urls if u not in old_urls]
+            self.log(f"   URLs moi: {len(urls)} (tong: {len(all_urls)})")
+
             if not urls:
-                return ExtractResult(False, error="Khong tim thay anh da tao")
+                return ExtractResult(False, error="Khong tim thay anh moi")
 
             # Download anh - luu vao input/{code}/
             out_folder = Path(output_folder)
@@ -466,6 +499,10 @@ class GeminiExtract:
 
             time.sleep(2)
 
+            # Luu URLs cu truoc khi gui prompt
+            old_urls = set(self.get_generated_images())
+            self.log(f"   URLs cu: {len(old_urls)}")
+
             # Gui prompt
             if not self.send_prompt():
                 return ExtractResult(False, error="Khong gui duoc prompt")
@@ -478,10 +515,13 @@ class GeminiExtract:
             self.log("   Doi 5s cho anh on dinh...")
             time.sleep(5)
 
-            # Lay URL anh
-            urls = self.get_generated_images()
+            # Lay URL anh moi (chi lay nhung URL chua co truoc do)
+            all_urls = self.get_generated_images()
+            urls = [u for u in all_urls if u not in old_urls]
+            self.log(f"   URLs moi: {len(urls)} (tong: {len(all_urls)})")
+
             if not urls:
-                return ExtractResult(False, error="Khong tim thay anh da tao")
+                return ExtractResult(False, error="Khong tim thay anh moi")
 
             # Download anh - luu vao input/{code}/
             out_folder = Path(output_folder)

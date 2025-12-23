@@ -552,10 +552,20 @@ class GeminiExtract:
             self.log(f"\n=== GEMINI EXTRACT (continue): {product_code or 'images'} ===")
             self.log(f"   {len(image_paths)} anh can xu ly")
 
-            # Focus Chrome va refresh
+            # Navigate den URL moi de tao conversation moi
             self._focus_chrome_window()
-            pag.press("f5")
-            time.sleep(4)
+            new_url = f"https://gemini.google.com/app?hl=vi&t={int(time.time())}"
+            self.log(f"   Mo conversation moi...")
+
+            # Dung JS de navigate
+            js = f'''
+            (function() {{
+                window.location.href = "{new_url}";
+                copy('OK');
+            }})();
+            '''
+            self.run_js(js)
+            time.sleep(5)  # Doi page load
 
             # Nhap prompt
             if not self.type_prompt():

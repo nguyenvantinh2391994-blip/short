@@ -248,27 +248,37 @@ class GeminiExtract:
         """Click upload va chon files"""
         self.log("Click upload...")
 
-        # Gop 2 click vao 1 lenh JS de tranh menu dong khi DevTools dong/mo
-        js = '''
+        # Click nut upload (+)
+        js1 = '''
         (function() {
-            var uploadBtn = document.querySelector('.upload-card-button');
-            if (!uploadBtn) { copy('ERROR_UPLOAD'); return; }
-            uploadBtn.click();
-            setTimeout(function() {
-                var fileBtn = document.querySelectorAll('button[mat-list-item]')[0];
-                if (fileBtn) {
-                    fileBtn.click();
-                    copy('OK');
-                } else {
-                    copy('ERROR_FILE');
-                }
-            }, 800);
+            var btn = document.querySelector('.upload-card-button');
+            if (btn) { btn.click(); copy('OK'); }
+            else { copy('ERROR'); }
         })();
         '''
-        result = self.run_js(js)
+        result = self.run_js(js1)
+        if not result or 'OK' not in result:
+            self.log_err("Khong tim thay nut upload")
+            return False
 
-        # Doi them de dam bao dialog mo
-        time.sleep(2)
+        time.sleep(1)
+
+        # Click "Tai tep len" button - thu nhieu selector
+        js2 = '''
+        (function() {
+            var btn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
+            if (!btn) btn = document.querySelector('.hidden-local-file-image-selector-button');
+            if (!btn) btn = document.querySelectorAll('button[mat-list-item]')[0];
+            if (btn) { btn.click(); copy('OK'); }
+            else { copy('ERROR'); }
+        })();
+        '''
+        result = self.run_js(js2)
+        if not result or 'OK' not in result:
+            self.log_err("Khong tim thay nut Tai tep len")
+            return False
+
+        time.sleep(1)
 
         # Nhap duong dan file vao dialog Open
         # Cac file cach nhau boi dau " (Windows)

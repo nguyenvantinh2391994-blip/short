@@ -7,7 +7,6 @@ Sử dụng PyAutoGUI để điều khiển browser, tương tự SORA/Grok auto
 import os
 import time
 import subprocess
-import requests
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List
@@ -71,7 +70,8 @@ Final rule: You must return ONLY the edited image. Do NOT return any text."""
 class GeminiExtract:
     """Tách sản phẩm từ ảnh sử dụng Gemini - PyAutoGUI approach"""
 
-    GEMINI_URL = "https://gemini.google.com/app"
+    # Dung URL moi de tao conversation moi moi lan
+    GEMINI_URL = "https://gemini.google.com/app?hl=vi"
 
     def __init__(
         self,
@@ -335,57 +335,133 @@ class GeminiExtract:
                 pass
         return []
 
-    def download_images(self, urls: List[str], output_folder: Path, prefix: str = "extracted") -> List[str]:
-        """Download cac anh tu URL - dung JS fetch de co cookies"""
-        saved = []
+    def create_new_conversation(self) -> bool:
+        """Tao conversation moi trong Gemini"""
+        self.log("Tao conversation moi...")
+
+        js = '''
+        (function() {
+            // Tim nut New chat
+            var newBtn = document.querySelector('a[aria-label*="chat"]') ||
+                         document.querySelector('button[aria-label*="New"]') ||
+                         document.querySelector('.new-chat-button');
+            if (newBtn) {
+                newBtn.click();
+                copy('OK');
+            } else {
+                // Fallback: navigate to new URL
+                window.location.href = 'https://gemini.google.com/app?hl=vi&t=' + Date.now();
+                copy('NAVIGATE');
+            }
+        })();
+        '''
+        result = self.run_js(js)
+        time.sleep(3)
+
+        if result and ('OK' in result or 'NAVIGATE' in result):
+            self.log_ok("Da tao conversation moi")
+            return True
+        return False
+
+    def click_download_buttons(self, count: int = 0) -> int:
+        """Click tat ca nut download trong Gemini UI"""
+        self.log("Click nut download...")
+
+        # Dem so nut download
+        js_count = '''
+        (function() {
+            var icons = document.querySelectorAll('mat-icon[fonticon="download"]');
+            copy(String(icons.length));
+        })();
+        '''
+        result = self.run_js(js_count)
+
+        try:
+            num_buttons = int(result) if result else 0
+        except:
+            num_buttons = 0
+
+        if num_buttons == 0:
+            self.log_err("Khong tim thay nut download")
+            return 0
+
+        self.log(f"   Tim thay {num_buttons} nut download")
+
+        # Click tung nut download
+        js_click = '''
+        (function() {
+            var icons = document.querySelectorAll('mat-icon[fonticon="download"]');
+            var clicked = 0;
+            icons.forEach(function(icon, i) {
+                setTimeout(function() {
+                    var btn = icon.closest('button');
+                    if (btn) btn.click();
+                    else icon.click();
+                }, i * 500);
+                clicked++;
+            });
+            copy(String(clicked));
+        })();
+        '''
+        result = self.run_js(js_click)
+
+        # Cho download hoan thanh (500ms * so anh + 2s buffer)
+        wait_time = num_buttons * 0.5 + 2
+        self.log(f"   Doi {wait_time}s cho download...")
+        time.sleep(wait_time)
+
+        try:
+            clicked = int(result) if result else 0
+            self.log_ok(f"Da click {clicked} nut download")
+            return clicked
+        except:
+            return num_buttons
+
+    def move_downloads_to_folder(self, output_folder: Path, prefix: str, count: int) -> List[str]:
+        """Di chuyen anh tu Downloads sang output folder"""
+        import shutil
+        from pathlib import Path
+
+        # Tim thu muc Downloads
+        home = Path.home()
+        downloads = home / "Downloads"
+        if not downloads.exists():
+            downloads = home / "Tải xuống"  # Vietnamese
+        if not downloads.exists():
+            self.log_err("Khong tim thay thu muc Downloads")
+            return []
+
         output_folder.mkdir(parents=True, exist_ok=True)
+        saved = []
 
-        for i, url in enumerate(urls):
+        # Tim cac file anh moi nhat trong Downloads (trong 60s gan day)
+        import time as time_module
+        now = time_module.time()
+        recent_files = []
+
+        for f in downloads.iterdir():
+            if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}:
+                # Chi lay file duoc tao trong 60s gan day
+                if now - f.stat().st_mtime < 60:
+                    recent_files.append(f)
+
+        # Sap xep theo thoi gian tao
+        recent_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+        # Lay so file can thiet
+        files_to_move = recent_files[:count] if count > 0 else recent_files
+
+        self.log(f"   Tim thay {len(files_to_move)} file moi trong Downloads")
+
+        for i, src_file in enumerate(files_to_move):
             try:
-                self.log(f"   Download anh {i+1}/{len(urls)}...")
-
-                # Dung JS fetch de download voi cookies cua browser
-                js = f'''
-                (async function() {{
-                    try {{
-                        var response = await fetch("{url}");
-                        var blob = await response.blob();
-                        var reader = new FileReader();
-                        reader.onloadend = function() {{
-                            copy(reader.result);
-                        }};
-                        reader.readAsDataURL(blob);
-                    }} catch(e) {{
-                        copy('ERROR:' + e.message);
-                    }}
-                }})();
-                '''
-                result = self.run_js(js)
-                time.sleep(1)  # Doi async fetch xong
-
-                # Lay ket qua tu clipboard
-                result = pyperclip.paste()
-
-                if result and result.startswith('data:'):
-                    # Decode base64
-                    import base64
-                    # data:image/png;base64,xxxxx
-                    header, data = result.split(',', 1)
-                    img_data = base64.b64decode(data)
-
-                    filename = f"{prefix}_{i+1}.png"
-                    filepath = output_folder / filename
-                    with open(filepath, 'wb') as f:
-                        f.write(img_data)
-                    saved.append(str(filepath))
-                    self.log_ok(f"Saved: {filename}")
-                elif result and 'ERROR' in result:
-                    self.log_err(f"JS fetch error: {result}")
-                else:
-                    self.log_err(f"Khong lay duoc anh")
-
+                filename = f"{prefix}_{i+1}{src_file.suffix}"
+                dst_file = output_folder / filename
+                shutil.move(str(src_file), str(dst_file))
+                saved.append(str(dst_file))
+                self.log_ok(f"Moved: {src_file.name} -> {filename}")
             except Exception as e:
-                self.log_err(f"Loi download: {e}")
+                self.log_err(f"Loi move file: {e}")
 
         return saved
 
@@ -424,10 +500,6 @@ class GeminiExtract:
 
             time.sleep(2)
 
-            # Luu URLs cu truoc khi gui prompt
-            old_urls = set(self.get_generated_images())
-            self.log(f"   URLs cu: {len(old_urls)}")
-
             # Gui prompt
             if not self.send_prompt():
                 return ExtractResult(False, error="Khong gui duoc prompt")
@@ -440,24 +512,22 @@ class GeminiExtract:
             self.log("   Doi 5s cho anh on dinh...")
             time.sleep(5)
 
-            # Lay URL anh moi (chi lay nhung URL chua co truoc do)
-            all_urls = self.get_generated_images()
-            urls = [u for u in all_urls if u not in old_urls]
-            self.log(f"   URLs moi: {len(urls)} (tong: {len(all_urls)})")
+            # Click nut download trong Gemini UI
+            num_downloaded = self.click_download_buttons()
 
-            if not urls:
-                return ExtractResult(False, error="Khong tim thay anh moi")
+            if num_downloaded == 0:
+                return ExtractResult(False, error="Khong tim thay nut download")
 
-            # Download anh - luu vao input/{code}/
+            # Di chuyen file tu Downloads sang output folder
             out_folder = Path(output_folder)
             prefix = product_code or "extracted"
-            saved = self.download_images(urls, out_folder, prefix)
+            saved = self.move_downloads_to_folder(out_folder, prefix, num_downloaded)
 
             if saved:
                 self.log_ok(f"Da luu {len(saved)} anh vao {out_folder}")
                 return ExtractResult(True, images=saved)
             else:
-                return ExtractResult(False, error="Khong download duoc anh")
+                return ExtractResult(False, error="Khong move duoc file tu Downloads")
 
         except Exception as e:
             self.log_err(f"Exception: {e}")
@@ -499,10 +569,6 @@ class GeminiExtract:
 
             time.sleep(2)
 
-            # Luu URLs cu truoc khi gui prompt
-            old_urls = set(self.get_generated_images())
-            self.log(f"   URLs cu: {len(old_urls)}")
-
             # Gui prompt
             if not self.send_prompt():
                 return ExtractResult(False, error="Khong gui duoc prompt")
@@ -515,24 +581,22 @@ class GeminiExtract:
             self.log("   Doi 5s cho anh on dinh...")
             time.sleep(5)
 
-            # Lay URL anh moi (chi lay nhung URL chua co truoc do)
-            all_urls = self.get_generated_images()
-            urls = [u for u in all_urls if u not in old_urls]
-            self.log(f"   URLs moi: {len(urls)} (tong: {len(all_urls)})")
+            # Click nut download trong Gemini UI
+            num_downloaded = self.click_download_buttons()
 
-            if not urls:
-                return ExtractResult(False, error="Khong tim thay anh moi")
+            if num_downloaded == 0:
+                return ExtractResult(False, error="Khong tim thay nut download")
 
-            # Download anh - luu vao input/{code}/
+            # Di chuyen file tu Downloads sang output folder
             out_folder = Path(output_folder)
             prefix = product_code or "extracted"
-            saved = self.download_images(urls, out_folder, prefix)
+            saved = self.move_downloads_to_folder(out_folder, prefix, num_downloaded)
 
             if saved:
                 self.log_ok(f"Da luu {len(saved)} anh vao {out_folder}")
                 return ExtractResult(True, images=saved)
             else:
-                return ExtractResult(False, error="Khong download duoc anh")
+                return ExtractResult(False, error="Khong move duoc file tu Downloads")
 
         except Exception as e:
             self.log_err(f"Exception: {e}")

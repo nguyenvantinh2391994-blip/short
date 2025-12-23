@@ -1290,8 +1290,8 @@ class MainTab:
 
                 self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
 
-                # Output folder cho anh da tach
-                extract_folder = code_folder / "extracted"
+                # Output folder cho anh da tach - luu thang vao input/{code}/
+                extract_folder = code_folder
 
                 # Tach san pham
                 if first_extract:

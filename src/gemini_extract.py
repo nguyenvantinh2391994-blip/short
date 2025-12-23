@@ -313,10 +313,11 @@ class GeminiExtract:
         """Lay URL cac anh da tao"""
         js = '''
         (function() {
-            var imgs = document.querySelectorAll('generated-image img.image');
+            // Tim tat ca img co class "image" hoac "image loaded" va src googleusercontent
+            var imgs = document.querySelectorAll('img.image');
             var urls = [];
             imgs.forEach(function(img) {
-                if (img.src && img.src.includes('googleusercontent')) {
+                if (img.src && img.src.includes('googleusercontent') && img.src.includes('gg-dl')) {
                     urls.push(img.src);
                 }
             });
@@ -342,7 +343,12 @@ class GeminiExtract:
         for i, url in enumerate(urls):
             try:
                 self.log(f"   Download anh {i+1}/{len(urls)}...")
-                response = requests.get(url, timeout=30)
+                # Them headers de tranh bi block
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://gemini.google.com/'
+                }
+                response = requests.get(url, timeout=30, headers=headers)
                 if response.status_code == 200:
                     filename = f"{prefix}_{i+1}.png"
                     filepath = output_folder / filename
@@ -350,6 +356,8 @@ class GeminiExtract:
                         f.write(response.content)
                     saved.append(str(filepath))
                     self.log_ok(f"Saved: {filename}")
+                else:
+                    self.log_err(f"HTTP {response.status_code}")
             except Exception as e:
                 self.log_err(f"Loi download: {e}")
 
@@ -398,12 +406,16 @@ class GeminiExtract:
             if not self.wait_for_completion(timeout=180):
                 return ExtractResult(False, error="Timeout")
 
+            # Doi them 5s de anh on dinh
+            self.log("   Doi 5s cho anh on dinh...")
+            time.sleep(5)
+
             # Lay URL anh
             urls = self.get_generated_images()
             if not urls:
                 return ExtractResult(False, error="Khong tim thay anh da tao")
 
-            # Download anh
+            # Download anh - luu vao input/{code}/
             out_folder = Path(output_folder)
             prefix = product_code or "extracted"
             saved = self.download_images(urls, out_folder, prefix)
@@ -462,12 +474,16 @@ class GeminiExtract:
             if not self.wait_for_completion(timeout=180):
                 return ExtractResult(False, error="Timeout")
 
+            # Doi them 5s de anh on dinh
+            self.log("   Doi 5s cho anh on dinh...")
+            time.sleep(5)
+
             # Lay URL anh
             urls = self.get_generated_images()
             if not urls:
                 return ExtractResult(False, error="Khong tim thay anh da tao")
 
-            # Download anh
+            # Download anh - luu vao input/{code}/
             out_folder = Path(output_folder)
             prefix = product_code or "extracted"
             saved = self.download_images(urls, out_folder, prefix)

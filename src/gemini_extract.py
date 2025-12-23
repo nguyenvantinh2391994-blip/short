@@ -222,15 +222,15 @@ class GeminiExtract:
         """Nhap prompt vao textarea"""
         self.log("Nhap prompt...")
 
-        # Prepare prompt - replace newlines with <br> and escape quotes
-        escaped_prompt = EXTRACT_PROMPT.replace("\n", "<br>").replace("'", "\\'")
+        # Dung textContent thay vi innerHTML (do TrustedHTML policy)
+        escaped_prompt = EXTRACT_PROMPT.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
 
         js = f'''
         (function() {{
             var editor = document.querySelector('.ql-editor');
             if (!editor) {{ copy('ERROR'); return; }}
             editor.focus();
-            editor.innerHTML = '<p>{escaped_prompt}';
+            editor.textContent = `{escaped_prompt}`;
             editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
             copy('OK');
         }})();
@@ -248,10 +248,10 @@ class GeminiExtract:
         """Click upload va chon files"""
         self.log("Click upload...")
 
-        # Click nut upload
+        # Click nut upload (+)
         js1 = '''
         (function() {
-            var btn = document.querySelector('button.upload-card-button');
+            var btn = document.querySelector('.upload-card-button');
             if (btn) { btn.click(); copy('OK'); }
             else { copy('ERROR'); }
         })();
@@ -261,12 +261,12 @@ class GeminiExtract:
             self.log_err("Khong tim thay nut upload")
             return False
 
-        time.sleep(0.8)
+        time.sleep(1)
 
-        # Click "Tai tep len"
+        # Click "Tai tep len" - dung hidden button
         js2 = '''
         (function() {
-            var btn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
+            var btn = document.querySelector('.hidden-local-file-image-selector-button');
             if (btn) { btn.click(); copy('OK'); }
             else { copy('ERROR'); }
         })();
@@ -302,18 +302,25 @@ class GeminiExtract:
         return True
 
     def send_prompt(self) -> bool:
-        """Gui prompt (Enter)"""
+        """Gui prompt"""
         self.log("Gui prompt...")
 
-        self._focus_chrome_window()
-        time.sleep(0.3)
-
-        # Nhan Enter de gui
-        pag.press("enter")
-        time.sleep(1)
-
-        self.log_ok("Da gui prompt")
-        return True
+        # Click nut gui tin nhan
+        js = '''
+        (function() {
+            var btn = document.querySelector('button[aria-label="Gửi tin nhắn"]');
+            if (!btn) btn = document.querySelector('.send-button');
+            if (btn) { btn.click(); copy('OK'); }
+            else { copy('ERROR'); }
+        })();
+        '''
+        result = self.run_js(js)
+        if result and 'OK' in result:
+            self.log_ok("Da gui prompt")
+            return True
+        else:
+            self.log_err("Khong gui duoc prompt")
+            return False
 
     def is_generating(self) -> bool:
         """Check dang tao anh (co icon stop)"""

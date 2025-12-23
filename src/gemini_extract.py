@@ -248,34 +248,68 @@ class GeminiExtract:
         """Click upload va chon files"""
         self.log("Click upload...")
 
-        # Click nut upload (+)
+        # Dong DevTools neu dang mo
+        pag.hotkey("ctrl", "shift", "j")
+        time.sleep(0.3)
+        pag.hotkey("ctrl", "shift", "j")
+        time.sleep(0.3)
+
+        self._focus_chrome_window()
+        time.sleep(0.5)
+
+        # Tim va click nut upload (+) bang JS lay toa do
         js1 = '''
         (function() {
             var btn = document.querySelector('.upload-card-button');
-            if (btn) { btn.click(); copy('OK'); }
-            else { copy('ERROR'); }
+            if (btn) {
+                var rect = btn.getBoundingClientRect();
+                copy(JSON.stringify({x: rect.x + rect.width/2, y: rect.y + rect.height/2}));
+            } else {
+                copy('ERROR');
+            }
         })();
         '''
         result = self.run_js(js1)
-        if not result or 'OK' not in result:
+        if not result or 'ERROR' in result:
             self.log_err("Khong tim thay nut upload")
+            return False
+
+        try:
+            import json
+            pos = json.loads(result)
+            # Click vao nut upload bang PyAutoGUI
+            pag.click(int(pos['x']), int(pos['y']))
+            self.log_ok(f"Click upload tai ({pos['x']}, {pos['y']})")
+        except:
+            self.log_err("Khong parse duoc toa do upload")
             return False
 
         time.sleep(1)
 
-        # Click "Tai tep len" button - thu nhieu selector
+        # Tim va click nut "Tai tep len" bang PyAutoGUI
         js2 = '''
         (function() {
             var btn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
-            if (!btn) btn = document.querySelector('.hidden-local-file-image-selector-button');
-            if (!btn) btn = document.querySelectorAll('button[mat-list-item]')[0];
-            if (btn) { btn.click(); copy('OK'); }
-            else { copy('ERROR'); }
+            if (btn) {
+                var rect = btn.getBoundingClientRect();
+                copy(JSON.stringify({x: rect.x + rect.width/2, y: rect.y + rect.height/2}));
+            } else {
+                copy('ERROR');
+            }
         })();
         '''
         result = self.run_js(js2)
-        if not result or 'OK' not in result:
+        if not result or 'ERROR' in result:
             self.log_err("Khong tim thay nut Tai tep len")
+            return False
+
+        try:
+            pos = json.loads(result)
+            # Click vao nut "Tai tep len" bang PyAutoGUI
+            pag.click(int(pos['x']), int(pos['y']))
+            self.log_ok(f"Click Tai tep len tai ({pos['x']}, {pos['y']})")
+        except:
+            self.log_err("Khong parse duoc toa do Tai tep len")
             return False
 
         time.sleep(1)

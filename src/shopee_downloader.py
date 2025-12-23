@@ -176,18 +176,43 @@ class ShopeeDownloader:
             return url
 
     def _clean_shopee_url(self, url: str) -> str:
-        """Bỏ params không cần thiết khỏi URL Shopee"""
+        """
+        Clean và convert URL Shopee về format chuẩn -i.{shop_id}.{item_id}
+        Format này load page đầy đủ với ảnh
+        """
         try:
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
+            import re
 
-            # Chỉ giữ các params cần thiết
-            keep_params = ['shopid', 'itemid']
-            cleaned_params = {k: v[0] for k, v in params.items() if k in keep_params}
+            # Tìm shop_id và item_id từ URL
+            shop_id = None
+            item_id = None
 
-            # Build URL mới chỉ với path (không cần params vì đã có shop_id/item_id trong path)
-            clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-            return clean_url
+            # Pattern 1: -i.{shop_id}.{item_id}
+            match = re.search(r'-i\.(\d+)\.(\d+)', url)
+            if match:
+                shop_id, item_id = match.group(1), match.group(2)
+
+            # Pattern 2: /product/{shop_id}/{item_id} hoặc /{anything}/{shop_id}/{item_id}
+            if not shop_id:
+                match = re.search(r'shopee\.vn/[^/]+/(\d+)/(\d+)', url)
+                if match:
+                    shop_id, item_id = match.group(1), match.group(2)
+
+            # Pattern 3: ?shopid=xxx&itemid=xxx
+            if not shop_id:
+                parsed = urlparse(url)
+                params = parse_qs(parsed.query)
+                if 'shopid' in params and 'itemid' in params:
+                    shop_id = params['shopid'][0]
+                    item_id = params['itemid'][0]
+
+            # Convert sang format chuẩn -i.{shop_id}.{item_id}
+            if shop_id and item_id:
+                clean_url = f"https://shopee.vn/-i.{shop_id}.{item_id}"
+                console.print(f"[dim]Converted to: {clean_url}[/]")
+                return clean_url
+
+            return url
         except:
             return url
 
@@ -1004,8 +1029,11 @@ class ShopeeDownloader:
         Returns:
             Tuple (ShopeeProduct, List đường dẫn ảnh)
         """
-        # Resolve link rút gọn trước
+        # Resolve link rút gọn trước (nếu có)
         url = self.resolve_short_url(url)
+
+        # Clean URL về format chuẩn -i.{shop_id}.{item_id}
+        url = self._clean_shopee_url(url)
 
         # Parse URL
         shop_id, item_id = self.parse_shopee_url(url)

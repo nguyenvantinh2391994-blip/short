@@ -183,10 +183,13 @@ class GeminiExtract:
             return False
 
     def upload_files(self, image_paths: List[str]) -> bool:
-        """Upload files bang cach tao input[type=file] an va trigger"""
+        """Upload files bang CDP file chooser interception"""
         self.log(f"Upload {len(image_paths)} files...")
 
         try:
+            # Enable file chooser interception
+            self.driver.execute_cdp_cmd('Page.setInterceptFileChooserDialog', {'enabled': True})
+
             # Click nut upload menu
             upload_btn = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, ".upload-card-button"))
@@ -194,65 +197,26 @@ class GeminiExtract:
             upload_btn.click()
             time.sleep(0.5)
 
-            # Doi menu xuat hien va click "Tai tep len"
+            # Click "Tai tep len" - se trigger file chooser
             file_btn = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-test-id="local-images-files-uploader-button"]'))
             )
+            file_btn.click()
+            time.sleep(0.5)
 
-            # Tao input[type=file] an de upload
-            # Inject hidden file input
-            self.driver.execute_script("""
-                var input = document.createElement('input');
-                input.type = 'file';
-                input.id = 'selenium-file-input';
-                input.multiple = true;
-                input.accept = 'image/*';
-                input.style.display = 'none';
-                document.body.appendChild(input);
-            """)
-
-            # Tim input vua tao
-            file_input = self.driver.find_element(By.ID, "selenium-file-input")
-
-            # Gui file paths vao input (phan cach bang \n)
-            file_paths_str = "\n".join(image_paths)
-            file_input.send_keys(file_paths_str)
-
-            time.sleep(1)
-
-            # Lay files tu input va dispatch vao Gemini
-            # Su dung DataTransfer API
-            self.driver.execute_script("""
-                var input = document.getElementById('selenium-file-input');
-                var files = input.files;
-
-                // Tim nut upload thuc su va trigger
-                var uploadBtn = document.querySelector('button[data-test-id="local-images-files-uploader-button"]');
-                if (uploadBtn) {
-                    // Tao DataTransfer object
-                    var dt = new DataTransfer();
-                    for (var i = 0; i < files.length; i++) {
-                        dt.items.add(files[i]);
-                    }
-
-                    // Tim hidden input trong component
-                    var hiddenInputs = document.querySelectorAll('input[type="file"]');
-                    if (hiddenInputs.length > 0) {
-                        hiddenInputs[0].files = dt.files;
-                        hiddenInputs[0].dispatchEvent(new Event('change', {bubbles: true}));
-                    }
-                }
-
-                // Xoa input tam
-                input.remove();
-            """)
+            # Set files via CDP
+            # Convert paths to absolute paths
+            abs_paths = [str(Path(p).resolve()) for p in image_paths]
+            self.driver.execute_cdp_cmd('Page.handleFileChooser', {
+                'action': 'accept',
+                'files': abs_paths
+            })
 
             time.sleep(2)
 
             # Kiem tra xem co anh duoc upload khong
-            # Neu khong co input[type=file], thu cach khac: drag & drop
             uploaded = self.driver.execute_script("""
-                var previews = document.querySelectorAll('.preview-image, .uploaded-image, img[src*="blob:"]');
+                var previews = document.querySelectorAll('.preview-image, .uploaded-image, img[src*="blob:"], .attachment-preview');
                 return previews.length;
             """)
 
@@ -260,13 +224,17 @@ class GeminiExtract:
                 self.log_ok(f"Da upload {uploaded} files")
                 return True
 
-            # Neu cach tren khong duoc, thu drag & drop
-            self.log("Thu upload bang drag & drop...")
+            # Neu CDP khong duoc, thu drag & drop
+            self.log("CDP khong thanh cong, thu drag & drop...")
             return self._upload_via_drag_drop(image_paths)
 
         except Exception as e:
             self.log_err(f"Loi upload: {e}")
-            return False
+            # Fallback to drag & drop
+            try:
+                return self._upload_via_drag_drop(image_paths)
+            except:
+                return False
 
     def _upload_via_drag_drop(self, image_paths: List[str]) -> bool:
         """Upload bang cach mo phong drag & drop"""
@@ -500,8 +468,78 @@ class GeminiExtract:
             traceback.print_exc()
             return ExtractResult(False, error=str(e))
 
-        finally:
-            self.close()
+    def extract_product_continue(
+        self,
+        image_paths: List[str],
+        output_folder: str,
+        product_code: str = ""
+    ) -> ExtractResult:
+        """
+        Tach san pham (tiep tuc, khong mo Chrome moi)
+        Refresh trang va lam lai
+        """
+        if not HAS_SELENIUM:
+            return ExtractResult(False, error="Thieu selenium")
+
+        if not image_paths:
+            return ExtractResult(False, error="Khong co anh")
+
+        try:
+            self.log(f"\n=== GEMINI EXTRACT (continue): {product_code or 'images'} ===")
+            self.log(f"   {len(image_paths)} anh can xu ly")
+
+            # Neu chua co driver, tao moi
+            if not self.driver:
+                if not self._setup_driver():
+                    return ExtractResult(False, error="Khong khoi tao duoc driver")
+                if not self.open_gemini():
+                    return ExtractResult(False, error="Khong mo duoc Gemini")
+            else:
+                # Refresh trang
+                self.driver.refresh()
+                time.sleep(3)
+
+            # Nhap prompt
+            if not self.type_prompt():
+                return ExtractResult(False, error="Khong nhap duoc prompt")
+
+            time.sleep(1)
+
+            # Upload files
+            if not self.upload_files(image_paths):
+                return ExtractResult(False, error="Khong upload duoc files")
+
+            time.sleep(2)
+
+            # Gui prompt
+            if not self.send_prompt():
+                return ExtractResult(False, error="Khong gui duoc prompt")
+
+            # Doi hoan thanh
+            if not self.wait_for_completion(timeout=180):
+                return ExtractResult(False, error="Timeout")
+
+            # Lay URL anh
+            urls = self.get_generated_images()
+            if not urls:
+                return ExtractResult(False, error="Khong tim thay anh da tao")
+
+            # Download anh
+            out_folder = Path(output_folder)
+            prefix = product_code or "extracted"
+            saved = self.download_images(urls, out_folder, prefix)
+
+            if saved:
+                self.log_ok(f"Da luu {len(saved)} anh vao {out_folder}")
+                return ExtractResult(True, images=saved)
+            else:
+                return ExtractResult(False, error="Khong download duoc anh")
+
+        except Exception as e:
+            self.log_err(f"Exception: {e}")
+            import traceback
+            traceback.print_exc()
+            return ExtractResult(False, error=str(e))
 
 
 def get_images_in_folder(folder: str) -> List[str]:

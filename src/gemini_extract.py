@@ -554,15 +554,14 @@ class GeminiExtract:
 
             # Navigate den URL moi de tao conversation moi
             self._focus_chrome_window()
-            new_url = f"https://gemini.google.com/app?hl=vi&t={int(time.time())}"
             self.log(f"   Mo conversation moi...")
 
             # Dung JS de navigate
-            js = f'''
-            (function() {{
-                window.location.href = "{new_url}";
+            js = '''
+            (function() {
+                window.location.href = "https://gemini.google.com/app?hl=vi";
                 copy('OK');
-            }})();
+            })();
             '''
             self.run_js(js)
             time.sleep(5)  # Doi page load

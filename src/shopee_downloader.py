@@ -793,10 +793,16 @@ class ShopeeDownloader:
             if description:
                 console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
 
-            # Đóng tab (Ctrl+W) - giữ Chrome mở cho sản phẩm tiếp theo
-            import pyautogui as pag
-            pag.hotkey("ctrl", "w")
-            time.sleep(0.3)
+            # Chỉ đóng tab nếu đây KHÔNG phải sản phẩm đầu tiên (tab mở bằng Ctrl+T)
+            # Tab đầu tiên giữ nguyên để Chrome không bị đóng
+            if not self._is_first_product:
+                import pyautogui as pag
+                pag.hotkey("ctrl", "w")
+                time.sleep(0.3)
+                console.print(f"[dim]Đã đóng tab, quay lại tab chính[/]")
+            else:
+                # Đánh dấu đã xử lý xong sản phẩm đầu tiên
+                self._is_first_product = False
 
             if image_urls:
                 # Extract hash từ URLs

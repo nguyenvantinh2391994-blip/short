@@ -754,19 +754,13 @@ class MainTab:
                 profile_path = first_profile.get("profile_path")
                 self.after_safe(lambda: self.add_log(f"📱 Dùng profile: {first_profile.get('name', 'Default')}"))
 
-            # Tạo downloader
+            # Tạo downloader - dùng Browser Profile từ Settings
             self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                headless=not getattr(self.app.config, 'show_chrome', True)
             )
-
-            # Tạo thư mục profile nếu chưa có
-            if profile_path:
-                from pathlib import Path
-                Path(profile_path).mkdir(parents=True, exist_ok=True)
-                self.after_safe(lambda: self.add_log(f"📁 Profile path: {profile_path}"))
 
             # Dùng undetected_chromedriver để bypass captcha
             options = uc.ChromeOptions()
@@ -889,11 +883,12 @@ class MainTab:
                 chrome_path = first_profile.get("chrome_path")
                 profile_path = first_profile.get("profile_path")
 
+            # Tạo downloader - dùng Browser Profile từ Settings
             self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
             for item in pending:
@@ -955,6 +950,9 @@ class MainTab:
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
         finally:
+            # Đóng Chrome sau khi xong tất cả sản phẩm
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
+                self.shopee_downloader.close_browser()
             self.after_safe(self._on_process_complete)
 
     def start_process(self):
@@ -1052,7 +1050,7 @@ class MainTab:
                 stop_flag=self.stop_flag,
                 on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(msg)),
                 on_progress=lambda cur, tot, msg: None,
-                headless=False,
+                headless=not getattr(self.app.config, 'show_chrome', True),
             )
 
             self.current_worker = worker
@@ -1115,7 +1113,7 @@ class MainTab:
             output_dir=self.app.config.input_folder,
             chrome_path=chrome_path,
             profile_path=profile_path,
-            headless=False
+            headless=not getattr(self.app.config, 'show_chrome', True)
         )
 
         input_folder = Path(self.app.config.input_folder)
@@ -1262,7 +1260,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=False,
+                headless=not getattr(self.app.config, 'show_chrome', True),
             )
             self.current_gemini = gemini
 
@@ -1275,6 +1273,16 @@ class MainTab:
                 code = item["code"]
                 code_folder = input_folder / code
 
+                # Output folder cho anh da tach
+                extract_folder = code_folder / "extracted"
+
+                # Kiểm tra xem đã tách chưa (thư mục extracted đã có ảnh)
+                if extract_folder.exists():
+                    existing_extracted = list(extract_folder.glob("*.png")) + list(extract_folder.glob("*.jpg")) + list(extract_folder.glob("*.webp"))
+                    if existing_extracted:
+                        self.after_safe(lambda c=code, n=len(existing_extracted): self.add_log(f"  {c}: Đã tách ({n} ảnh) - bỏ qua"))
+                        continue
+
                 # Lay danh sach anh
                 images = get_images_in_folder(str(code_folder))
                 if not images:
@@ -1282,9 +1290,6 @@ class MainTab:
                     continue
 
                 self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
-
-                # Output folder cho anh da tach
-                extract_folder = code_folder / "extracted"
 
                 # Tach san pham
                 if first_extract:
@@ -1402,12 +1407,12 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Khởi tạo SORA automation (headless như Grok)
+            # Khởi tạo SORA automation (dùng cài đặt show_chrome từ Settings)
             sora = SoraAutomation(
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=False,
+                headless=not getattr(self.app.config, 'show_chrome', True),
             )
             self.current_sora = sora  # Lưu để toggle visibility
 
@@ -1844,7 +1849,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
             input_folder = Path(self.app.config.input_folder)
@@ -2080,7 +2085,7 @@ class MainTab:
                     stop_flag=self.stop_flag,
                     on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(f"  [Video] {msg}")),
                     on_progress=lambda cur, tot, msg: None,
-                    headless=False,
+                    headless=not getattr(self.app.config, 'show_chrome', True),
                 )
 
                 self.current_worker = worker
@@ -2143,12 +2148,12 @@ class MainTab:
                     chrome_path = first_profile.get("chrome_path")
                     profile_path = first_profile.get("profile_path")
 
-                # Khởi tạo SORA (headless=False để hiện Chrome)
+                # Khởi tạo SORA (dùng cài đặt show_chrome từ Settings)
                 sora = SoraAutomation(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
                     output_folder=str(output_folder),
-                    headless=False,
+                    headless=not getattr(self.app.config, 'show_chrome', True),
                 )
                 self.current_sora = sora  # Lưu để toggle visibility
 

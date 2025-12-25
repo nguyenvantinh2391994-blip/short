@@ -435,12 +435,32 @@ class SettingsTab:
 
         # Max retries
         retry_row = ctk.CTkFrame(frame, fg_color="transparent")
-        retry_row.pack(anchor="w", padx=15, pady=(5, 15))
+        retry_row.pack(anchor="w", padx=15, pady=5)
 
         ctk.CTkLabel(retry_row, text="Số lần thử lại:").pack(side="left")
         self.retry_entry = ctk.CTkEntry(retry_row, width=60)
         self.retry_entry.pack(side="left", padx=10)
         self.retry_entry.insert(0, str(self.app.config.max_retries))
+
+        # Chrome visibility toggle
+        chrome_row = ctk.CTkFrame(frame, fg_color="transparent")
+        chrome_row.pack(anchor="w", padx=15, pady=(10, 15))
+
+        self.show_chrome_var = ctk.BooleanVar(value=getattr(self.app.config, 'show_chrome', True))
+        self.show_chrome_checkbox = ctk.CTkCheckBox(
+            chrome_row,
+            text="Hiện Chrome khi chạy",
+            variable=self.show_chrome_var,
+            font=ctk.CTkFont(size=13)
+        )
+        self.show_chrome_checkbox.pack(side="left")
+
+        ctk.CTkLabel(
+            chrome_row,
+            text="(Bỏ tích để chạy ẩn, tiết kiệm tài nguyên)",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        ).pack(side="left", padx=10)
 
     def setup_save_button(self):
         """Save button"""
@@ -493,6 +513,9 @@ class SettingsTab:
         except ValueError:
             messagebox.showerror("Lỗi", "Giá trị số không hợp lệ!")
             return
+
+        # Chrome visibility
+        self.app.config.show_chrome = self.show_chrome_var.get()
 
         # Save
         self.app.save_config()

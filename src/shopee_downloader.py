@@ -15,6 +15,8 @@ import requests
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
+from .chrome_manager import chrome_manager
+
 console = Console()
 
 
@@ -82,6 +84,9 @@ class ShopeeDownloader:
         self.profile_path = profile_path
         self.headless = headless
         self.driver = None  # Lưu driver để có thể show/hide
+        self.chrome_process = None  # Process Chrome mở bằng subprocess
+        self._is_first_product = True  # Flag để biết có phải sản phẩm đầu tiên không
+        self._main_window = None  # Lưu handle của window chính
         self.session = requests.Session()
         self.session.headers.update(self.DEFAULT_HEADERS)
 
@@ -115,6 +120,11 @@ class ShopeeDownloader:
         except Exception as e:
             console.print(f"[yellow]Lỗi hiện browser: {e}[/]")
             return False
+
+    def close_browser(self):
+        """Không đóng Chrome vì dùng chung với các tính năng khác"""
+        # chrome_manager quản lý Chrome chung
+        console.print("[dim]Giữ Chrome mở để dùng cho các tính năng khác[/]")
 
     def toggle_browser_visibility(self):
         """Toggle ẩn/hiện browser"""
@@ -568,6 +578,71 @@ class ShopeeDownloader:
             console.print(f"[yellow]⚠️ Lỗi kiểm tra captcha: {e}[/]")
             return True  # Tiếp tục nếu không kiểm tra được
 
+    def _focus_chrome_window(self) -> bool:
+        """Focus vào cửa sổ Chrome"""
+        try:
+            import pygetwindow as gw
+            windows = gw.getWindowsWithTitle('Shopee')
+            if not windows:
+                windows = gw.getWindowsWithTitle('Chrome')
+            if windows:
+                win = windows[0]
+                win.activate()
+                time.sleep(0.3)
+                return True
+        except:
+            pass
+        return False
+
+    def _run_js(self, js: str) -> str:
+        """Chạy JS qua DevTools Console và lấy kết quả qua clipboard"""
+        try:
+            import pyautogui as pag
+            import pyperclip
+        except ImportError:
+            console.print("[yellow]Cần cài: pip install pyautogui pyperclip pygetwindow[/]")
+            return ""
+
+        try:
+            self._focus_chrome_window()
+            time.sleep(0.3)
+
+            # Clear clipboard trước
+            pyperclip.copy("")
+
+            # Mở DevTools Console
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(1)  # Chờ DevTools mở
+
+            # Copy JS
+            pyperclip.copy(js)
+            time.sleep(0.2)
+
+            # Paste và chạy
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.3)
+            pag.press("enter")
+            time.sleep(1.5)  # Chờ JS chạy xong và copy() hoàn thành
+
+            # Lấy kết quả từ clipboard
+            result = pyperclip.paste()
+
+            # Debug
+            if result and result != js:
+                console.print(f"[dim]JS result: {result[:100]}...[/]" if len(result) > 100 else f"[dim]JS result: {result}[/]")
+            else:
+                console.print(f"[yellow]JS không trả về kết quả[/]")
+
+            # Đóng DevTools
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.3)
+
+            return result if result != js else ""
+
+        except Exception as e:
+            console.print(f"[yellow]Lỗi run_js: {e}[/]")
+            return ""
+
     def _get_product_selenium(
         self,
         shop_id: int,
@@ -576,129 +651,93 @@ class ShopeeDownloader:
         chrome_path: str = None,
         profile_path: str = None,
         original_url: str = None,
+        max_retries: int = 3,
     ) -> Optional[ShopeeProduct]:
         """
-        Fallback cuối: Sử dụng Selenium để crawl trang sản phẩm
-        Sử dụng selector 'picture.UkIsx8 img' và bỏ resize param để tránh 403
+        Dùng Chrome trực tiếp (subprocess) + PyAutoGUI để lấy ảnh sản phẩm
+        Tự động retry nếu thất bại.
 
         Args:
             shop_id: Shopee shop ID
             item_id: Shopee item ID
-            headless: Chạy ở chế độ ẩn browser (None = dùng self.headless)
-            chrome_path: Đường dẫn đến Chrome executable (tùy chọn)
-            profile_path: Đường dẫn đến Chrome profile (tùy chọn, dùng profile có sẵn)
-            original_url: Link Shopee gốc (ưu tiên dùng thay vì build từ shop_id/item_id)
+            headless: Không dùng (để tương thích API cũ)
+            chrome_path: Đường dẫn đến Chrome executable
+            profile_path: Đường dẫn đến Chrome profile (từ Settings)
+            original_url: Link Shopee gốc
+            max_retries: Số lần thử lại tối đa (mặc định 3)
         """
-        try:
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
-            from selenium.webdriver.chrome.service import Service
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-        except ImportError:
-            console.print("[yellow]⚠️ Selenium không được cài đặt. Chạy: pip install selenium[/]")
-            return None
-
-        # Dùng self.headless nếu không truyền param
-        is_headless = headless if headless is not None else self.headless
-
         # Ưu tiên dùng link gốc, nếu không có thì build từ shop_id/item_id
         url = original_url if original_url else f"https://shopee.vn/-i.{shop_id}.{item_id}"
 
-        try:
-            console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
-            console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
-            console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
+        for attempt in range(max_retries):
+            if attempt > 0:
+                console.print(f"[yellow]🔄 Thử lại lần {attempt + 1}/{max_retries}...[/]")
+                time.sleep(2)
 
-            # Luôn dùng undetected-chromedriver để tránh CAPTCHA (như Grok)
             try:
-                import undetected_chromedriver as uc
-                console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
-
-                # Dùng uc.ChromeOptions giống Grok
-                options = uc.ChromeOptions()
-
-                # Các argument giống Grok
-                options.add_argument("--no-first-run")
-                options.add_argument("--no-default-browser-check")
-                options.add_argument("--disable-extensions")
-                options.add_argument("--disable-popup-blocking")
-                options.add_argument("--disable-infobars")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
-
-                # Window size
-                if is_headless:
-                    options.add_argument("--window-size=800,600")
-                    options.add_argument("--window-position=-2000,-2000")
-                else:
-                    options.add_argument("--window-size=1920,1080")
-
-                # Prefs giống Grok
-                prefs = {
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "safebrowsing.enabled": True,
-                    "profile.default_content_setting_values.automatic_downloads": 1,
-                    "profile.default_content_setting_values.notifications": 2,
-                }
-                options.add_experimental_option("prefs", prefs)
-
-                # Xử lý profile path
-                user_data_dir = None
-                if profile_path:
-                    profile = Path(profile_path)
-                    if profile.exists():
-                        user_data_dir = str(profile)
-                        console.print(f"[cyan]Profile: {user_data_dir}[/]")
-
-                self.driver = uc.Chrome(
-                    options=options,
-                    headless=False,
-                    user_data_dir=user_data_dir,
-                    use_subprocess=True,
-                    version_main=None
+                result = self._fetch_product_data(
+                    url=url,
+                    shop_id=shop_id,
+                    item_id=item_id,
+                    chrome_path=chrome_path,
+                    profile_path=profile_path,
                 )
-            except ImportError:
-                console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
-                from selenium import webdriver
-                from selenium.webdriver.chrome.options import Options
-                options = Options()
-                options.add_argument("--window-size=1920,1080")
-                self.driver = webdriver.Chrome(options=options)
 
-            # Ẩn khỏi taskbar nếu headless (Windows)
-            if is_headless:
-                self._is_hidden = True
-                self._hide_chrome_window()
-            else:
-                self._is_hidden = False
+                # Kiểm tra kết quả - cần ít nhất có tên sản phẩm
+                if result and result.name:
+                    if not result.images:
+                        console.print(f"[yellow]⚠️ Có tên SP nhưng không có ảnh[/]")
+                    return result
+                else:
+                    console.print(f"[yellow]⚠️ Không lấy được tên sản phẩm[/]")
 
-            driver = self.driver  # Alias cho code cũ
+            except Exception as e:
+                console.print(f"[red]❌ Lỗi lần {attempt + 1}: {e}[/]")
 
-            # Nếu không có profile, load cookies từ file
-            if not profile_path:
-                driver.get("https://shopee.vn")
-                time.sleep(2)
-                self._load_cookies_from_file(driver)
-                driver.refresh()
-                time.sleep(2)
+        console.print(f"[red]❌ Thất bại sau {max_retries} lần thử[/]")
+        return None
 
-            # Vào trang sản phẩm
+    def _fetch_product_data(
+        self,
+        url: str,
+        shop_id: int,
+        item_id: int,
+        chrome_path: str = None,
+        profile_path: str = None,
+    ) -> Optional[ShopeeProduct]:
+        """Lấy dữ liệu sản phẩm từ trang Shopee - dùng chrome_manager chung"""
+        try:
+            import pyautogui as pag
+
+            # Cấu hình chrome_manager với profile
+            chrome_manager.set_profile(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+            )
+
+            # Mở Chrome (sẽ tự mở tab mới nếu đã có Chrome)
+            if not chrome_manager.open_chrome(url):
+                console.print(f"[red]Không mở được Chrome[/]")
+                return None
+
             console.print(f"[dim]Đang mở: {url}[/]")
-            driver.get(url)
 
             # Chờ trang load
             console.print(f"[dim]Chờ trang load...[/]")
-            time.sleep(8)
+            time.sleep(5)
 
-            # Debug: Đếm số img
-            debug_count = driver.execute_script("return document.querySelectorAll('picture.UkIsx8 img').length;")
-            console.print(f"[dim]Số img trong picture.UkIsx8: {debug_count}[/]")
+            # Scroll xuống để load thêm ảnh
+            chrome_manager._focus_chrome()
+            for _ in range(3):
+                pag.scroll(-3)
+                time.sleep(0.5)
+            pag.scroll(10)
+            time.sleep(2)
 
-            # Lấy tất cả URLs - chạy script giống hệt như thủ công
-            image_urls = driver.execute_script("""
+            console.print(f"[dim]Đang lấy ảnh...[/]")
+
+            # Lấy URLs bằng JavaScript qua DevTools
+            js_get_urls = '''(function() {
                 var hashes = new Set();
                 var urls = [];
                 document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
@@ -713,110 +752,83 @@ class ShopeeDownloader:
                         }
                     }
                 });
-                return urls;
-            """)
-
-            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh (unique)[/]")
-
-            # Nếu không tìm thấy, thử selector backup
-            if not image_urls:
-                console.print(f"[dim]Thử selector backup...[/]")
-
-                backup_js = """
-                var hashes = new Set();
-                var urls = [];
-                document.querySelectorAll('img[src*="susercontent.com/file/"]').forEach(img => {
-                    let src = img.src.split('@')[0];
-                    if (src) {
-                        let match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
-                        if (match && !hashes.has(match[1])) {
-                            hashes.add(match[1]);
-                            urls.push(src);
+                if (urls.length === 0) {
+                    document.querySelectorAll('img[src*="susercontent.com/file/"]').forEach(function(img) {
+                        var src = img.src.split('@')[0];
+                        if (src) {
+                            var match = src.match(/\\/file\\/([a-zA-Z0-9_-]+)/);
+                            if (match && !hashes.has(match[1])) {
+                                hashes.add(match[1]);
+                                urls.push(src);
+                            }
                         }
-                    }
-                });
-                return urls;
-                """
-                image_urls = driver.execute_script(backup_js)
-                console.print(f"[dim]Backup: Tìm thấy {len(image_urls)} ảnh[/]")
-
-            # Lấy tên sản phẩm - thử nhiều selector
-            name = ""
-            try:
-                # Selector mới: h1.vR6K3w trong div.WBVL_7
-                title_elem = driver.find_element(By.CSS_SELECTOR, "div.WBVL_7 h1.vR6K3w")
-                name = title_elem.text.strip()
-                console.print(f"[dim]Tên SP (h1.vR6K3w): {name[:50]}...[/]" if len(name) > 50 else f"[dim]Tên SP: {name}[/]")
-            except Exception:
-                try:
-                    # Selector cũ
-                    title_elem = driver.find_element(By.CSS_SELECTOR, "div.HLQqkk span")
-                    name = title_elem.text.strip()
-                except Exception:
-                    try:
-                        name = driver.title.replace(" | Shopee Việt Nam", "").strip()
-                    except Exception:
-                        pass
-
-            # Lấy mô tả sản phẩm - dùng JavaScript để lấy chính xác
-            description = ""
-            try:
-                description = driver.execute_script("""
-                    var descParts = [];
-                    document.querySelectorAll('div.e8lZp3 p.QN2lPu').forEach(function(p) {
-                        var text = p.innerText.trim();
-                        if (text) descParts.push(text);
                     });
-                    return descParts.join('\\n');
-                """)
-                if description:
-                    console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
-                else:
-                    console.print(f"[dim]Không tìm thấy mô tả[/]")
-            except Exception as e:
-                console.print(f"[dim]Không lấy được mô tả: {e}[/]")
+                }
+                copy(JSON.stringify(urls));
+            })();'''
+            result = chrome_manager.run_js(js_get_urls)
 
-            # Lưu cookies sau khi load thành công (để lần sau không bị captcha)
-            if image_urls:
-                self._save_cookies_to_file(driver)
+            image_urls = []
+            try:
+                image_urls = json.loads(result)
+            except:
+                pass
 
-            driver.quit()
-            driver = None
-            self.driver = None
+            console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh[/]")
 
-            if image_urls:
-                # Extract hash từ URLs
+            # Lấy tên sản phẩm
+            js_get_name = '''(function() {
+                var name = '';
+                var el = document.querySelector('div.WBVL_7 h1.vR6K3w') ||
+                         document.querySelector('div.HLQqkk span') ||
+                         document.querySelector('h1');
+                if (el) name = el.textContent.trim();
+                copy(name);
+            })();'''
+            name = chrome_manager.run_js(js_get_name) or ""
+            if name:
+                console.print(f"[dim]Tên SP: {name[:50]}{'...' if len(name) > 50 else ''}[/]")
+
+            # Lấy mô tả sản phẩm
+            js_get_desc = '''(function() {
+                var descParts = [];
+                document.querySelectorAll('div.e8lZp3 p.QN2lPu').forEach(function(p) {
+                    var text = p.innerText.trim();
+                    if (text) descParts.push(text);
+                });
+                copy(descParts.join('\\n'));
+            })();'''
+            description = chrome_manager.run_js(js_get_desc) or ""
+            if description:
+                console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
+
+            # Đóng tab hiện tại (chrome_manager xử lý việc giữ tab đầu)
+            chrome_manager.close_current_tab()
+
+            # Trả về product nếu có ít nhất tên hoặc ảnh
+            if name or image_urls:
                 images = []
-                for url in image_urls:
-                    hash_match = re.search(r'/file/([a-zA-Z0-9_-]+)', url)
+                for img_url in image_urls:
+                    hash_match = re.search(r'/file/([a-zA-Z0-9_-]+)', img_url)
                     if hash_match:
                         images.append(hash_match.group(1))
 
-                product = ShopeeProduct(
+                return ShopeeProduct(
                     shop_id=shop_id,
                     item_id=item_id,
                     name=name,
                     description=description,
                     images=images,
-                    image_urls_json=json.dumps(image_urls),  # Lưu direct URLs để download
+                    image_urls_json=json.dumps(image_urls),
                 )
-
-                return product
 
             return None
 
         except Exception as e:
-            console.print(f"[red]❌ Selenium failed: {e}[/]")
+            console.print(f"[red]❌ Lỗi: {e}[/]")
             import traceback
             traceback.print_exc()
             return None
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
-            self.driver = None
 
     def download_images(
         self,

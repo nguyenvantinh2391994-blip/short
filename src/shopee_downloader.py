@@ -657,10 +657,11 @@ class ShopeeDownloader:
         chrome_path: str = None,
         profile_path: str = None,
         original_url: str = None,
+        max_retries: int = 3,
     ) -> Optional[ShopeeProduct]:
         """
         Dùng Chrome trực tiếp (subprocess) + PyAutoGUI để lấy ảnh sản phẩm
-        Ổn định hơn Selenium nhiều.
+        Tự động retry nếu thất bại.
 
         Args:
             shop_id: Shopee shop ID
@@ -669,10 +670,48 @@ class ShopeeDownloader:
             chrome_path: Đường dẫn đến Chrome executable
             profile_path: Đường dẫn đến Chrome profile (từ Settings)
             original_url: Link Shopee gốc
+            max_retries: Số lần thử lại tối đa (mặc định 3)
         """
         # Ưu tiên dùng link gốc, nếu không có thì build từ shop_id/item_id
         url = original_url if original_url else f"https://shopee.vn/-i.{shop_id}.{item_id}"
 
+        for attempt in range(max_retries):
+            if attempt > 0:
+                console.print(f"[yellow]🔄 Thử lại lần {attempt + 1}/{max_retries}...[/]")
+                time.sleep(2)
+
+            try:
+                result = self._fetch_product_data(
+                    url=url,
+                    shop_id=shop_id,
+                    item_id=item_id,
+                    chrome_path=chrome_path,
+                    profile_path=profile_path,
+                )
+
+                # Kiểm tra kết quả - cần ít nhất có tên sản phẩm
+                if result and result.name:
+                    if not result.images:
+                        console.print(f"[yellow]⚠️ Có tên SP nhưng không có ảnh[/]")
+                    return result
+                else:
+                    console.print(f"[yellow]⚠️ Không lấy được tên sản phẩm[/]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Lỗi lần {attempt + 1}: {e}[/]")
+
+        console.print(f"[red]❌ Thất bại sau {max_retries} lần thử[/]")
+        return None
+
+    def _fetch_product_data(
+        self,
+        url: str,
+        shop_id: int,
+        item_id: int,
+        chrome_path: str = None,
+        profile_path: str = None,
+    ) -> Optional[ShopeeProduct]:
+        """Lấy dữ liệu sản phẩm từ trang Shopee (internal method)"""
         try:
             # Kiểm tra xem đã có Chrome process chưa
             if self.chrome_process is None:
@@ -706,18 +745,16 @@ class ShopeeDownloader:
                 import subprocess as sp
                 self.chrome_process = sp.Popen(cmd, shell=False)
                 console.print(f"[green]Chrome PID: {self.chrome_process.pid}[/]")
-                time.sleep(4)  # Chờ Chrome khởi động
+                time.sleep(4)
             else:
                 # Đã có Chrome, mở URL trong tab mới
                 console.print(f"[cyan]📑 Mở tab mới...[/]")
                 self._focus_chrome_window()
 
-                # Mở tab mới bằng Ctrl+T
                 import pyautogui as pag
                 pag.hotkey("ctrl", "t")
                 time.sleep(0.5)
 
-                # Nhập URL
                 import pyperclip
                 pyperclip.copy(url)
                 pag.hotkey("ctrl", "v")
@@ -733,18 +770,15 @@ class ShopeeDownloader:
             import pyautogui as pag
             self._focus_chrome_window()
             for _ in range(3):
-                pag.scroll(-3)  # Scroll xuống
+                pag.scroll(-3)
                 time.sleep(0.5)
-
-            # Scroll lên lại
             pag.scroll(10)
             time.sleep(2)
 
             console.print(f"[dim]Đang lấy ảnh...[/]")
 
             # Lấy URLs bằng JavaScript qua DevTools
-            js_get_urls = '''
-            (function() {
+            js_get_urls = '''(function() {
                 var hashes = new Set();
                 var urls = [];
                 document.querySelectorAll('picture.UkIsx8 img').forEach(function(img) {
@@ -759,7 +793,6 @@ class ShopeeDownloader:
                         }
                     }
                 });
-                // Fallback: tìm tất cả img có susercontent
                 if (urls.length === 0) {
                     document.querySelectorAll('img[src*="susercontent.com/file/"]').forEach(function(img) {
                         var src = img.src.split('@')[0];
@@ -773,13 +806,11 @@ class ShopeeDownloader:
                     });
                 }
                 copy(JSON.stringify(urls));
-            })();
-            '''
+            })();'''
             result = self._run_js(js_get_urls)
 
             image_urls = []
             try:
-                import json
                 image_urls = json.loads(result)
             except:
                 pass
@@ -787,55 +818,48 @@ class ShopeeDownloader:
             console.print(f"[cyan]📷 Tìm thấy {len(image_urls)} ảnh[/]")
 
             # Lấy tên sản phẩm
-            js_get_name = '''
-            (function() {
+            js_get_name = '''(function() {
                 var name = '';
                 var el = document.querySelector('div.WBVL_7 h1.vR6K3w') ||
                          document.querySelector('div.HLQqkk span') ||
                          document.querySelector('h1');
                 if (el) name = el.textContent.trim();
                 copy(name);
-            })();
-            '''
+            })();'''
             name = self._run_js(js_get_name) or ""
             if name:
                 console.print(f"[dim]Tên SP: {name[:50]}{'...' if len(name) > 50 else ''}[/]")
 
             # Lấy mô tả sản phẩm
-            js_get_desc = '''
-            (function() {
+            js_get_desc = '''(function() {
                 var descParts = [];
                 document.querySelectorAll('div.e8lZp3 p.QN2lPu').forEach(function(p) {
                     var text = p.innerText.trim();
                     if (text) descParts.push(text);
                 });
                 copy(descParts.join('\\n'));
-            })();
-            '''
+            })();'''
             description = self._run_js(js_get_desc) or ""
             if description:
                 console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
 
-            # Chỉ đóng tab nếu đây KHÔNG phải sản phẩm đầu tiên (tab mở bằng Ctrl+T)
-            # Tab đầu tiên giữ nguyên để Chrome không bị đóng
+            # Chỉ đóng tab nếu KHÔNG phải sản phẩm đầu tiên
             if not self._is_first_product:
-                import pyautogui as pag
                 pag.hotkey("ctrl", "w")
                 time.sleep(0.3)
-                console.print(f"[dim]Đã đóng tab, quay lại tab chính[/]")
+                console.print(f"[dim]Đã đóng tab[/]")
             else:
-                # Đánh dấu đã xử lý xong sản phẩm đầu tiên
                 self._is_first_product = False
 
-            if image_urls:
-                # Extract hash từ URLs
+            # Trả về product nếu có ít nhất tên hoặc ảnh
+            if name or image_urls:
                 images = []
                 for img_url in image_urls:
                     hash_match = re.search(r'/file/([a-zA-Z0-9_-]+)', img_url)
                     if hash_match:
                         images.append(hash_match.group(1))
 
-                product = ShopeeProduct(
+                return ShopeeProduct(
                     shop_id=shop_id,
                     item_id=item_id,
                     name=name,
@@ -843,7 +867,6 @@ class ShopeeDownloader:
                     images=images,
                     image_urls_json=json.dumps(image_urls),
                 )
-                return product
 
             return None
 

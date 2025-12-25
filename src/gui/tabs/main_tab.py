@@ -168,6 +168,21 @@ class MainTab:
         )
         self.shopee_btn.pack(side="left", padx=(0, 10))
 
+        # Nút Tách SP (Gemini) - Cyan/Teal
+        self.extract_btn = ctk.CTkButton(
+            btn_frame,
+            text="Tách SP",
+            command=self.start_extract_process,
+            width=80,
+            height=40,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#0891B2",  # Cyan
+            hover_color="#0E7490",
+            text_color="white"
+        )
+        self.extract_btn.pack(side="left", padx=(0, 10))
+
         # Nút Lọc ảnh - Pink (sau Tải ảnh)
         self.filter_btn = ctk.CTkButton(
             btn_frame,
@@ -1179,6 +1194,148 @@ class MainTab:
         self.edit_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
+    # ===== GEMINI PRODUCT EXTRACTION =====
+
+    def start_extract_process(self):
+        """Bat dau tach san pham bang Gemini"""
+        if self.is_running:
+            self.add_log("Dang chay task khac...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.extract_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+
+        self.add_log("Bat dau tach san pham (Gemini)...")
+
+        thread = threading.Thread(target=self._run_extract_process, daemon=True)
+        thread.start()
+
+    def _run_extract_process(self):
+        """Background thread tach san pham"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...gemini_extract import GeminiExtract, get_images_in_folder
+
+            self.after_safe(lambda: self.add_log("Ket noi Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("Khong the ket noi Google Sheets!"))
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+
+            if not pending:
+                self.after_safe(lambda: self.add_log("Khong co san pham nao can xu ly"))
+                return
+
+            self.after_safe(lambda n=len(pending): self.add_log(f"Tim thay {n} san pham"))
+
+            # Tao tasks
+            for item in pending:
+                code = item["code"]
+                task = TaskItem(code, item["row"])
+                self.tasks[code] = task
+                self.after_safe(lambda t=task: self.add_task_row(t))
+
+            # Lay browser profile
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+
+            # Khoi tao Gemini Extract
+            gemini = GeminiExtract(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                output_folder=str(output_folder),
+                headless=True,
+            )
+            self.current_gemini = gemini
+
+            first_extract = True
+
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                code_folder = input_folder / code
+
+                # Lay danh sach anh
+                images = get_images_in_folder(str(code_folder))
+                if not images:
+                    self.after_safe(lambda c=code: self.add_log(f"  {c}: Khong co anh"))
+                    continue
+
+                self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
+
+                # Output folder cho anh da tach
+                extract_folder = code_folder / "extracted"
+
+                # Tach san pham
+                if first_extract:
+                    result = gemini.extract_product(
+                        image_paths=images,
+                        output_folder=str(extract_folder),
+                        product_code=code
+                    )
+                    first_extract = False
+                else:
+                    result = gemini.extract_product_continue(
+                        image_paths=images,
+                        output_folder=str(extract_folder),
+                        product_code=code
+                    )
+
+                if result and result.success:
+                    self.after_safe(lambda c=code, n=len(result.images):
+                        self.add_log(f"  {c}: Da tach {n} anh"))
+                else:
+                    error = result.error if result else "Loi"
+                    self.after_safe(lambda c=code, e=error:
+                        self.add_log(f"  {c}: {e}"))
+
+            self.after_safe(lambda: self.add_log("\nHoan thanh tach san pham!"))
+
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"Loi: {e}"))
+            import traceback
+            traceback.print_exc()
+
+        finally:
+            self.after_safe(self._on_extract_complete)
+
+    def _on_extract_complete(self):
+        """Callback khi hoan thanh extract"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.extract_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+
     # ===== SORA VIDEO CREATION =====
 
     def start_sora_process(self):
@@ -1207,7 +1364,7 @@ class MainTab:
         """Background thread tạo video SORA"""
         try:
             from ...sheets_reader import SheetsReader
-            from ...sora_automation import SoraAutomation
+            from ...sora_automation import SoraAutomation, find_sora_image
 
             self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
 
@@ -1252,12 +1409,14 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Khởi tạo SORA automation (giống Grok)
+            # Khởi tạo SORA automation (headless như Grok)
             sora = SoraAutomation(
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
+                headless=True,
             )
+            self.current_sora = sora  # Lưu để toggle visibility
 
             first_video = True  # Track xem đã mở Chrome chưa
 
@@ -1276,15 +1435,14 @@ class MainTab:
                     self.set_task_video_status(code, TaskItem.STATUS_ERROR)
                     continue
 
-                # Tìm ảnh đầu tiên trong folder input/{code}/
-                code_folder = input_folder / code
-                image_path = None
-                if code_folder.exists():
-                    images = sorted(code_folder.glob("*.jpg")) + sorted(code_folder.glob("*.png")) + sorted(code_folder.glob("*.webp"))
-                    if images:
-                        image_path = str(images[0])  # Lấy ảnh đầu tiên
-                        self.after_safe(lambda c=code, p=images[0].name:
-                            self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+                # Tìm ảnh SORA trong folder input/sora/{code}.jpg
+                image_path = find_sora_image(str(input_folder), code)
+                if image_path:
+                    self.after_safe(lambda c=code, p=Path(image_path).name:
+                        self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+                else:
+                    self.after_safe(lambda c=code:
+                        self.add_log(f"  ⚠️ {c}: Không tìm thấy ảnh trong input/sora/"))
 
                 self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
@@ -1366,15 +1524,41 @@ class MainTab:
                 self.shopee_downloader.toggle_browser_visibility()
                 is_hidden = getattr(self.shopee_downloader, '_is_hidden', False)
                 if is_hidden:
-                    self.add_log("🙈 Đã ẩn browser (Shopee)")
+                    self.add_log("Đã ẩn browser (Shopee)")
                 else:
-                    self.add_log("👁️ Đã hiện browser (Shopee)")
+                    self.add_log("Đã hiện browser (Shopee)")
                 toggled = True
             except Exception as e:
-                self.add_log(f"⚠️ Lỗi toggle Shopee browser: {e}")
+                self.add_log(f"Lỗi toggle Shopee browser: {e}")
+
+        # Toggle SORA browser
+        if hasattr(self, 'current_sora') and self.current_sora:
+            try:
+                self.current_sora.toggle_chrome_visibility()
+                is_hidden = getattr(self.current_sora, '_is_hidden', False)
+                if is_hidden:
+                    self.add_log("Da an browser (SORA)")
+                else:
+                    self.add_log("Da hien browser (SORA)")
+                toggled = True
+            except Exception as e:
+                self.add_log(f"Loi toggle SORA browser: {e}")
+
+        # Toggle Gemini browser
+        if hasattr(self, 'current_gemini') and self.current_gemini:
+            try:
+                self.current_gemini.toggle_chrome_visibility()
+                is_hidden = getattr(self.current_gemini, '_is_hidden', False)
+                if is_hidden:
+                    self.add_log("Da an browser (Gemini)")
+                else:
+                    self.add_log("Da hien browser (Gemini)")
+                toggled = True
+            except Exception as e:
+                self.add_log(f"Loi toggle Gemini browser: {e}")
 
         if not toggled:
-            self.add_log("Không có browser nào đang chạy")
+            self.add_log("Khong co browser nao dang chay")
 
     def create_scripts(self):
         """Tạo kịch bản và voice cho các sản phẩm"""
@@ -1945,6 +2129,142 @@ class MainTab:
                         future.result()
                     except Exception as e:
                         self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi thread: {e}"))
+
+            if self.stop_flag.is_set():
+                self.after_safe(lambda: self.add_log("⏹️ Đã dừng"))
+                return
+
+            # === BƯỚC 5: SORA VIDEO (sau Grok) ===
+            self.after_safe(lambda: self.add_log("\n" + "="*40))
+            self.after_safe(lambda: self.add_log("🎬 BƯỚC 5: TẠO VIDEO SORA"))
+            self.after_safe(lambda: self.add_log("="*40))
+
+            try:
+                from ...sora_automation import SoraAutomation, find_sora_image
+
+                # Lấy browser profile
+                chrome_path = None
+                profile_path = None
+                if self.app.config.browser_profiles:
+                    first_profile = self.app.config.browser_profiles[0]
+                    chrome_path = first_profile.get("chrome_path")
+                    profile_path = first_profile.get("profile_path")
+
+                # Khởi tạo SORA (headless=True để ẩn khi chờ video)
+                sora = SoraAutomation(
+                    chrome_path=chrome_path,
+                    profile_path=profile_path,
+                    output_folder=str(output_folder),
+                    headless=True,
+                )
+                self.current_sora = sora  # Lưu để toggle visibility
+
+                # Refresh data từ sheet
+                fresh_values = reader.sheet.get_all_values()
+                first_sora = True
+
+                for item in valid_items:
+                    if self.stop_flag.is_set():
+                        break
+
+                    code = item["code"]
+                    row_idx = item["row"] - 1
+
+                    if row_idx >= len(fresh_values):
+                        continue
+
+                    row = fresh_values[row_idx]
+                    # Lấy SORA prompt từ cột E (index 4)
+                    sora_prompt = row[4].strip() if len(row) > 4 else ""
+
+                    if not sora_prompt:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: Không có SORA prompt"))
+                        continue
+
+                    # Tìm ảnh SORA
+                    image_path = find_sora_image(str(input_folder), code)
+                    if not image_path:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: Không có ảnh SORA"))
+                        continue
+
+                    self.after_safe(lambda c=code: self.add_log(f"  🎬 {c}: Tạo video SORA..."))
+
+                    # Tạo video SORA
+                    if first_sora:
+                        result = sora.create_video(
+                            image_path=image_path,
+                            prompt=sora_prompt,
+                            product_code=code
+                        )
+                        first_sora = False
+                    else:
+                        result = sora.create_video_continue(
+                            image_path=image_path,
+                            prompt=sora_prompt,
+                            product_code=code
+                        )
+
+                    if result and result.success:
+                        self.after_safe(lambda c=code: self.add_log(f"  ✓ {c}: Video SORA OK"))
+
+                        # Re-merge với SORA video
+                        self.after_safe(lambda c=code: self.add_log(f"  🔄 {c}: Re-merge với SORA..."))
+                        try:
+                            from ...video_merger import VideoMerger
+
+                            merger = VideoMerger(
+                                transition_type="crossfade",
+                                transition_duration=0.5,
+                                on_log=lambda msg: self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
+                            )
+
+                            temp_folder = output_folder / "_temp_videos" / code
+                            sora_video = temp_folder / f"00_sora_{code}.mp4"
+
+                            # Lấy Grok videos (không phải SORA)
+                            grok_videos = sorted([
+                                str(v) for v in temp_folder.glob("*.mp4")
+                                if "00_sora_" not in v.name
+                            ])
+
+                            if sora_video.exists() and grok_videos:
+                                # Lấy voice
+                                voice_path = None
+                                if self.app.config.voice_folder:
+                                    voice_folder = Path(self.app.config.voice_folder)
+                                    for ext in ['.mp3', '.wav']:
+                                        vp = voice_folder / f"{code}{ext}"
+                                        if vp.exists():
+                                            voice_path = str(vp)
+                                            break
+
+                                # Lấy music
+                                music_path = None
+                                if self.app.config.music_folder:
+                                    from ...video_merger import get_music_for_index
+                                    music_path = get_music_for_index(self.app.config.music_folder, 0)
+
+                                final_video = output_folder / f"{code}.mp4"
+                                success = merger.merge_with_sora(
+                                    sora_video=str(sora_video),
+                                    grok_videos=grok_videos,
+                                    output_path=str(final_video),
+                                    music_path=music_path,
+                                    voice_path=voice_path,
+                                    music_volume=0.6,
+                                    voice_volume=1.0,
+                                    mute_original=True
+                                )
+                                if success:
+                                    self.after_safe(lambda c=code: self.add_log(f"  ✓ {c}: Re-merge OK"))
+                        except Exception as me:
+                            self.after_safe(lambda c=code, e=str(me): self.add_log(f"  ⚠️ {c}: Re-merge lỗi: {e}"))
+                    else:
+                        error = result.error if result else "Timeout"
+                        self.after_safe(lambda c=code, e=error: self.add_log(f"  ✗ {c}: {e}"))
+
+            except Exception as e:
+                self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi SORA: {e}"))
 
             # === HOÀN THÀNH ===
             self.after_safe(lambda: self.add_log("\n" + "="*40))

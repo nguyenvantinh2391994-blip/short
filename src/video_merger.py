@@ -454,6 +454,162 @@ class VideoMerger:
                     pass
 
 
+    def merge_with_sora(
+        self,
+        sora_video: str,
+        grok_videos: List[str],
+        output_path: str,
+        music_path: Optional[str] = None,
+        voice_path: Optional[str] = None,
+        music_volume: float = 0.3,
+        voice_volume: float = 1.0,
+        mute_original: bool = True
+    ) -> bool:
+        """
+        Ghép video SORA + Grok, voice/music bắt đầu từ Grok
+
+        Args:
+            sora_video: Đường dẫn video SORA (ở đầu)
+            grok_videos: Danh sách video Grok
+            output_path: Đường dẫn output
+            music_path: Nhạc nền (bắt đầu từ Grok)
+            voice_path: Voice (bắt đầu từ Grok)
+            music_volume: Âm lượng nhạc
+            voice_volume: Âm lượng voice
+            mute_original: Tắt âm thanh gốc
+
+        Flow:
+            [SORA video - không có audio] + [Grok videos + voice + music]
+        """
+        clips = []
+        sora_duration = 0
+
+        try:
+            # 1. Load SORA video (ở đầu, không audio)
+            if sora_video and os.path.exists(sora_video):
+                self.log(f"Load SORA: {Path(sora_video).name}")
+                sora_clip = VideoFileClip(sora_video).without_audio()
+                sora_duration = sora_clip.duration
+                self.log(f"  SORA duration: {sora_duration:.1f}s")
+
+                # Fade out cuối SORA
+                sora_clip = sora_clip.fx(vfx.fadeout, self.transition_duration)
+                clips.append(sora_clip)
+            else:
+                self.log("Không có video SORA")
+
+            # 2. Load Grok videos
+            if not grok_videos:
+                self.log("Không có video Grok")
+                if not clips:
+                    return False
+
+            grok_clips = []
+            for i, path in enumerate(grok_videos):
+                if not os.path.exists(path):
+                    continue
+                self.log(f"Load Grok [{i+1}/{len(grok_videos)}]: {Path(path).name}")
+                clip = VideoFileClip(path)
+                if mute_original:
+                    clip = clip.without_audio()
+
+                # Fade in đầu clip đầu tiên (nối với SORA)
+                if i == 0 and sora_duration > 0:
+                    clip = clip.fx(vfx.fadein, self.transition_duration)
+                # Fade giữa các Grok clips
+                if i > 0:
+                    clip = clip.fx(vfx.fadein, self.transition_duration)
+                if i < len(grok_videos) - 1:
+                    clip = clip.fx(vfx.fadeout, self.transition_duration)
+
+                grok_clips.append(clip)
+
+            clips.extend(grok_clips)
+
+            if not clips:
+                self.log("Không có video hợp lệ")
+                return False
+
+            # 3. Ghép video
+            self.log("Ghép video...")
+            final_clip = concatenate_videoclips(clips, method="compose")
+            total_duration = final_clip.duration
+            grok_duration = total_duration - sora_duration
+
+            self.log(f"  Tổng: {total_duration:.1f}s (SORA: {sora_duration:.1f}s + Grok: {grok_duration:.1f}s)")
+
+            # 4. Xử lý audio (bắt đầu từ Grok, offset = sora_duration)
+            audio_clips = []
+            audio_offset = sora_duration  # Voice/music bắt đầu sau SORA
+
+            # Voice
+            if voice_path and os.path.exists(voice_path):
+                self.log(f"Thêm voice (offset {audio_offset:.1f}s): {Path(voice_path).name}")
+                voice_audio = AudioFileClip(voice_path)
+                voice_audio = voice_audio.volumex(voice_volume)
+                # Offset voice để bắt đầu sau SORA
+                voice_audio = voice_audio.set_start(audio_offset)
+                audio_clips.append(voice_audio)
+
+            # Nhạc nền
+            if music_path and os.path.exists(music_path):
+                self.log(f"Thêm nhạc (offset {audio_offset:.1f}s): {Path(music_path).name}")
+                music_audio = AudioFileClip(music_path)
+
+                # Loop nhạc nếu cần (cho phần Grok)
+                if music_audio.duration < grok_duration:
+                    loops_needed = int(grok_duration / music_audio.duration) + 1
+                    from moviepy.editor import concatenate_audioclips
+                    music_clips_list = [music_audio] * loops_needed
+                    music_audio = concatenate_audioclips(music_clips_list)
+
+                # Cắt nhạc = độ dài Grok
+                music_audio = music_audio.subclip(0, grok_duration)
+                music_audio = music_audio.volumex(music_volume)
+                music_audio = music_audio.fx(vfx.audio_fadeout, 2)
+                # Offset music để bắt đầu sau SORA
+                music_audio = music_audio.set_start(audio_offset)
+                audio_clips.append(music_audio)
+
+            # 5. Ghép audio
+            if audio_clips:
+                self.log("Ghép audio...")
+                final_audio = CompositeAudioClip(audio_clips)
+                final_clip = final_clip.set_audio(final_audio)
+
+            # 6. Export
+            self.log(f"Xuất video: {output_path}")
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                fps=30,
+                preset='medium',
+                threads=4,
+                logger=None
+            )
+
+            self.log(f"Hoàn thành: {output_path}")
+            return True
+
+        except Exception as e:
+            self.log(f"Lỗi merge_with_sora: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+        finally:
+            for clip in clips:
+                try:
+                    clip.close()
+                except:
+                    pass
+
+
 def get_music_for_index(music_folder: str, index: int) -> Optional[str]:
     """Lấy file nhạc theo thứ tự (lặp lại nếu hết)"""
     if not music_folder or not os.path.exists(music_folder):

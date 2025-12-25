@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Grok Video Debug Helper",
-  "version": "1.0.0",
-  "description": "Debug helper for Video Creator Tool - detects errors, captures video URLs, assists automation",
+  "name": "Video Debug Helper",
+  "version": "1.1.0",
+  "description": "Debug helper for Video Creator Tool - supports Grok & SORA automation",
 
   "permissions": [
     "activeTab",
@@ -15,7 +15,9 @@
 
   "host_permissions": [
     "https://grok.com/*",
-    "https://*.grok.com/*"
+    "https://*.grok.com/*",
+    "https://sora.chatgpt.com/*",
+    "https://*.openai.com/*"
   ],
 
   "background": {
@@ -26,6 +28,11 @@
     {
       "matches": ["https://grok.com/*", "https://*.grok.com/*"],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sora.chatgpt.com/*"],
+      "js": ["sora_content.js"],
       "run_at": "document_idle"
     }
   ],
@@ -49,6 +56,10 @@
     {
       "resources": ["inject.js"],
       "matches": ["https://grok.com/*"]
+    },
+    {
+      "resources": ["sora_inject.js"],
+      "matches": ["https://sora.chatgpt.com/*"]
     }
   ]
 }

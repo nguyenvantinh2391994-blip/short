@@ -130,6 +130,86 @@ class ShopeeDownloader:
         else:
             return self._hide_chrome_window()
 
+    def resolve_short_url(self, url: str) -> str:
+        """
+        Resolve link rút gọn Shopee (s.shopee.vn) thành link đầy đủ
+
+        Args:
+            url: Link có thể là rút gọn hoặc đầy đủ
+
+        Returns:
+            Link đầy đủ sau khi follow redirect (đã clean params)
+        """
+        if not url:
+            return url
+
+        url = url.strip()
+
+        # Chỉ xử lý link rút gọn s.shopee.vn
+        if 's.shopee.vn' not in url and 'shp.ee' not in url:
+            return url
+
+        try:
+            import requests
+            console.print(f"[dim]Resolving short URL: {url}[/]")
+
+            # Follow redirect để lấy URL thật
+            response = requests.head(
+                url,
+                allow_redirects=True,
+                timeout=10,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            )
+
+            final_url = response.url
+
+            # Clean URL: bỏ __mobile__ và các tracking params
+            final_url = self._clean_shopee_url(final_url)
+
+            console.print(f"[green]Resolved: {final_url[:80]}...[/]")
+            return final_url
+
+        except Exception as e:
+            console.print(f"[yellow]Không resolve được short URL: {e}[/]")
+            return url
+
+    def _clean_shopee_url(self, url: str) -> str:
+        """
+        Clean URL Shopee - convert về format product-i.xxx.xxx
+        Format này load page đầy đủ với gallery ảnh
+        """
+        try:
+            import re
+
+            # Tìm shop_id và item_id
+            shop_id = None
+            item_id = None
+
+            # Pattern 1: -i.{shop_id}.{item_id}
+            match = re.search(r'-i\.(\d+)\.(\d+)', url)
+            if match:
+                shop_id, item_id = match.group(1), match.group(2)
+
+            # Pattern 2: /{anything}/{shop_id}/{item_id}
+            if not shop_id:
+                match = re.search(r'shopee\.vn/[^/]+/(\d+)/(\d+)', url)
+                if match:
+                    shop_id, item_id = match.group(1), match.group(2)
+
+            # Nếu tìm được, dùng format product-i.xxx.xxx
+            if shop_id and item_id:
+                # Format này load gallery ảnh đúng
+                clean_url = f"https://shopee.vn/product-i.{shop_id}.{item_id}"
+                console.print(f"[dim]Converted to: {clean_url}[/]")
+                return clean_url
+
+            # Giữ nguyên nếu không parse được
+            return url
+        except:
+            return url
+
     def parse_shopee_url(self, url: str) -> Tuple[Optional[int], Optional[int]]:
         """
         Parse link Shopee để lấy shop_id và item_id
@@ -137,7 +217,9 @@ class ShopeeDownloader:
         Formats được hỗ trợ:
         - https://shopee.vn/product-name-i.123456.789012
         - https://shopee.vn/-i.123456.789012
+        - https://shopee.vn/product/123456/789012 (từ link rút gọn)
         - https://shopee.vn/product?shopid=123456&itemid=789012
+        - https://shopee.vn/shop/123456/product/789012
         - https://vn.xiapibuy.com/... (redirect từ app)
 
         Returns:
@@ -154,7 +236,14 @@ class ShopeeDownloader:
         if match:
             return int(match.group(1)), int(match.group(2))
 
-        # Pattern 2: URL params ?shopid=xxx&itemid=xxx
+        # Pattern 2: /{anything}/{shop_id}/{item_id} (từ link rút gọn s.shopee.vn)
+        # Ví dụ: /product/123/456 hoặc /opaanlp/123/456
+        pattern2 = r'shopee\.vn/[^/]+/(\d+)/(\d+)'
+        match = re.search(pattern2, url)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+
+        # Pattern 3: URL params ?shopid=xxx&itemid=xxx
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
         if 'shopid' in params and 'itemid' in params:
@@ -163,9 +252,9 @@ class ShopeeDownloader:
             except (ValueError, IndexError):
                 pass
 
-        # Pattern 3: shopee.vn/shop/{shop_id}/product/{item_id}
-        pattern3 = r'/shop/(\d+)/product/(\d+)'
-        match = re.search(pattern3, url)
+        # Pattern 4: shopee.vn/shop/{shop_id}/product/{item_id}
+        pattern4 = r'/shop/(\d+)/product/(\d+)'
+        match = re.search(pattern4, url)
         if match:
             return int(match.group(1)), int(match.group(2))
 
@@ -522,60 +611,61 @@ class ShopeeDownloader:
             console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
             console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
 
-            # Setup Chrome options
-            options = Options()
+            # Luôn dùng undetected-chromedriver để tránh CAPTCHA (như Grok)
+            try:
+                import undetected_chromedriver as uc
+                console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
 
-            # Sử dụng browser profile có sẵn (đã đăng nhập Shopee)
-            if profile_path:
-                profile = Path(profile_path)
-                console.print(f"[dim]DEBUG: profile.exists()={profile.exists()}[/]")
-                if profile.exists():
-                    console.print(f"[cyan]Sử dụng profile: {profile}[/]")
-                    # profile_path là thư mục user-data-dir (chứa Default, Profile 1, ...)
-                    options.add_argument(f"--user-data-dir={profile}")
+                # Dùng uc.ChromeOptions giống Grok
+                options = uc.ChromeOptions()
+
+                # Các argument giống Grok
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                options.add_argument("--disable-extensions")
+                options.add_argument("--disable-popup-blocking")
+                options.add_argument("--disable-infobars")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
+
+                # Window size
+                if is_headless:
+                    options.add_argument("--window-size=800,600")
+                    options.add_argument("--window-position=-2000,-2000")
                 else:
-                    console.print(f"[yellow]⚠️ Profile không tồn tại: {profile}[/]")
+                    options.add_argument("--window-size=1920,1080")
 
-            # Đường dẫn Chrome
-            if chrome_path and Path(chrome_path).exists():
-                options.binary_location = chrome_path
+                # Prefs giống Grok
+                prefs = {
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": True,
+                    "profile.default_content_setting_values.automatic_downloads": 1,
+                    "profile.default_content_setting_values.notifications": 2,
+                }
+                options.add_experimental_option("prefs", prefs)
 
-            # Nếu chạy ẩn: đẩy window ra ngoài màn hình (không dùng headless vì hay lỗi)
-            if is_headless:
-                options.add_argument("--window-size=1200,800")
-                options.add_argument("--window-position=-2000,-2000")  # Ngoài màn hình
-            else:
+                # Xử lý profile path
+                user_data_dir = None
+                if profile_path:
+                    profile = Path(profile_path)
+                    if profile.exists():
+                        user_data_dir = str(profile)
+                        console.print(f"[cyan]Profile: {user_data_dir}[/]")
+
+                self.driver = uc.Chrome(
+                    options=options,
+                    headless=False,
+                    user_data_dir=user_data_dir,
+                    use_subprocess=True,
+                    version_main=None
+                )
+            except ImportError:
+                console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
+                from selenium import webdriver
+                from selenium.webdriver.chrome.options import Options
+                options = Options()
                 options.add_argument("--window-size=1920,1080")
-
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-blink-features=AutomationControlled")
-
-            # Chrome preferences - tự động cho phép download, không hỏi lại
-            prefs = {
-                "download.prompt_for_download": False,
-                "download.directory_upgrade": True,
-                "safebrowsing.enabled": True,
-                "profile.default_content_setting_values.automatic_downloads": 1,  # Allow multiple downloads
-                "profile.default_content_setting_values.notifications": 2,  # Block notifications
-            }
-            options.add_experimental_option("prefs", prefs)
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
-
-            # Thử dùng undetected-chromedriver nếu KHÔNG có profile
-            # (undetected_chromedriver không hoạt động tốt với existing profile)
-            if not profile_path:
-                try:
-                    import undetected_chromedriver as uc
-                    console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
-                    self.driver = uc.Chrome(headless=False)  # Không dùng headless, dùng window position
-                except ImportError:
-                    self.driver = webdriver.Chrome(options=options)
-            else:
-                # Dùng selenium thường với profile có sẵn
-                console.print(f"[dim]Sử dụng Selenium với profile đã đăng nhập...[/]")
                 self.driver = webdriver.Chrome(options=options)
 
             # Ẩn khỏi taskbar nếu headless (Windows)
@@ -865,18 +955,22 @@ class ShopeeDownloader:
                     progress.update(task, advance=1)
 
         if downloaded:
-            console.print(f"[green]✅ Đã tải {len(downloaded)} ảnh vào {folder}[/]")
+            console.print(f"[green]Đã tải {len(downloaded)} ảnh vào {folder}[/]")
 
             # Crop ảnh về 9:16
             try:
-                from .image_processor import crop_folder_to_9_16
+                try:
+                    from .image_processor import crop_folder_to_9_16
+                except ImportError:
+                    from src.image_processor import crop_folder_to_9_16
+
                 cropped = crop_folder_to_9_16(str(folder))
                 if cropped > 0:
-                    console.print(f"[green]✂️ Đã crop {cropped} ảnh về 9:16[/]")
-            except ImportError:
-                pass  # Module chưa có
+                    console.print(f"[green]Đã crop {cropped} ảnh về 9:16[/]")
+            except ImportError as e:
+                console.print(f"[yellow]Không tìm thấy module crop: {e}[/]")
             except Exception as e:
-                console.print(f"[yellow]⚠️ Lỗi crop: {e}[/]")
+                console.print(f"[yellow]Lỗi crop: {e}[/]")
 
         return downloaded
 
@@ -929,13 +1023,19 @@ class ShopeeDownloader:
         Lấy thông tin sản phẩm và download ảnh từ link Shopee
 
         Args:
-            url: Link sản phẩm Shopee
+            url: Link sản phẩm Shopee (hỗ trợ cả link rút gọn s.shopee.vn)
             folder_name: Tên thư mục lưu
             skip_existing: Bỏ qua nếu đã có ảnh
 
         Returns:
             Tuple (ShopeeProduct, List đường dẫn ảnh)
         """
+        # Resolve link rút gọn trước (nếu có)
+        url = self.resolve_short_url(url)
+
+        # Clean URL về format chuẩn -i.{shop_id}.{item_id}
+        url = self._clean_shopee_url(url)
+
         # Parse URL
         shop_id, item_id = self.parse_shopee_url(url)
 

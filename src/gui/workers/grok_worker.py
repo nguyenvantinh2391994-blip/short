@@ -288,16 +288,35 @@ class GrokWorker:
             # Đường dẫn output
             final_video = self.output_folder / f"{code}.mp4"
 
-            # Ghép video với nhạc nền 60% volume (mute_original=True để tắt âm gốc)
-            success = merger.merge_videos(
-                video_paths=created_videos,
-                output_path=str(final_video),
-                music_path=music_path,
-                voice_path=voice_path,
-                music_volume=0.6,  # 60% volume
-                voice_volume=1.0,
-                mute_original=True  # Tắt âm thanh gốc của video
-            )
+            # Kiểm tra video SORA (00_sora_{code}.mp4)
+            sora_video_path = code_temp_folder / f"00_sora_{code}.mp4"
+            has_sora = sora_video_path.exists() and sora_video_path.stat().st_size > 50000
+
+            if has_sora:
+                self.log(f"[{profile_name}] Có video SORA - dùng merge_with_sora", "info")
+                # Filter out SORA from created_videos (chỉ giữ Grok videos)
+                grok_videos = [v for v in created_videos if "00_sora_" not in v]
+                success = merger.merge_with_sora(
+                    sora_video=str(sora_video_path),
+                    grok_videos=grok_videos,
+                    output_path=str(final_video),
+                    music_path=music_path,
+                    voice_path=voice_path,
+                    music_volume=0.6,
+                    voice_volume=1.0,
+                    mute_original=True
+                )
+            else:
+                # Ghép video thường (không có SORA)
+                success = merger.merge_videos(
+                    video_paths=created_videos,
+                    output_path=str(final_video),
+                    music_path=music_path,
+                    voice_path=voice_path,
+                    music_volume=0.6,  # 60% volume
+                    voice_volume=1.0,
+                    mute_original=True  # Tắt âm thanh gốc của video
+                )
 
             if success:
                 reader.update_status(row, "EDIT XONG", self.config.status_column)

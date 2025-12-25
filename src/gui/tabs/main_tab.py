@@ -893,7 +893,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=True
+                headless=False
             )
 
             for item in pending:
@@ -1052,7 +1052,7 @@ class MainTab:
                 stop_flag=self.stop_flag,
                 on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(msg)),
                 on_progress=lambda cur, tot, msg: None,
-                headless=True,
+                headless=False,
             )
 
             self.current_worker = worker
@@ -1115,7 +1115,7 @@ class MainTab:
             output_dir=self.app.config.input_folder,
             chrome_path=chrome_path,
             profile_path=profile_path,
-            headless=True
+            headless=False
         )
 
         input_folder = Path(self.app.config.input_folder)
@@ -1262,7 +1262,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=True,
+                headless=False,
             )
             self.current_gemini = gemini
 
@@ -1407,7 +1407,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=True,
+                headless=False,
             )
             self.current_sora = sora  # Lưu để toggle visibility
 
@@ -1844,7 +1844,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=True
+                headless=False
             )
 
             input_folder = Path(self.app.config.input_folder)
@@ -2080,7 +2080,7 @@ class MainTab:
                     stop_flag=self.stop_flag,
                     on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(f"  [Video] {msg}")),
                     on_progress=lambda cur, tot, msg: None,
-                    headless=True,
+                    headless=False,
                 )
 
                 self.current_worker = worker
@@ -2143,12 +2143,12 @@ class MainTab:
                     chrome_path = first_profile.get("chrome_path")
                     profile_path = first_profile.get("profile_path")
 
-                # Khởi tạo SORA (headless=True để ẩn khi chờ video)
+                # Khởi tạo SORA (headless=False để hiện Chrome)
                 sora = SoraAutomation(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
                     output_folder=str(output_folder),
-                    headless=True,
+                    headless=False,
                 )
                 self.current_sora = sora  # Lưu để toggle visibility
 

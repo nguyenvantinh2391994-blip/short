@@ -15,8 +15,6 @@ import requests
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-from .chrome_manager import chrome_manager
-
 console = Console()
 
 
@@ -123,9 +121,16 @@ class ShopeeDownloader:
 
     def close_browser(self):
         """Đóng Chrome hoàn toàn - gọi sau khi xử lý xong tất cả sản phẩm"""
-        # Không đóng Chrome vì dùng chung với các tính năng khác
-        # chrome_manager sẽ quản lý việc đóng Chrome
-        console.print("[dim]Giữ Chrome mở để dùng cho các tính năng khác[/]")
+        if self.chrome_process:
+            try:
+                self.chrome_process.terminate()
+                console.print("[dim]Đã đóng Chrome[/]")
+            except Exception as e:
+                console.print(f"[yellow]Lỗi đóng Chrome: {e}[/]")
+            finally:
+                self.chrome_process = None
+
+        self._is_first_product = True
 
     def toggle_browser_visibility(self):
         """Toggle ẩn/hiện browser"""
@@ -684,17 +689,13 @@ class ShopeeDownloader:
                     profile_path=profile_path,
                 )
 
-                # Kiểm tra kết quả - CẦN CẢ tên VÀ ảnh
-                if result and result.name and result.images:
-                    if not result.description:
-                        console.print(f"[dim]⚠️ Không có mô tả[/]")
+                # Kiểm tra kết quả - cần ít nhất có tên sản phẩm
+                if result and result.name:
+                    if not result.images:
+                        console.print(f"[yellow]⚠️ Có tên SP nhưng không có ảnh[/]")
                     return result
-                elif result and result.name:
-                    console.print(f"[yellow]⚠️ Có tên nhưng không có ảnh - thử lại[/]")
-                elif result and result.images:
-                    console.print(f"[yellow]⚠️ Có ảnh nhưng không có tên - thử lại[/]")
                 else:
-                    console.print(f"[yellow]⚠️ Không lấy được tên và ảnh - thử lại[/]")
+                    console.print(f"[yellow]⚠️ Không lấy được tên sản phẩm[/]")
 
             except Exception as e:
                 console.print(f"[red]❌ Lỗi lần {attempt + 1}: {e}[/]")
@@ -710,20 +711,54 @@ class ShopeeDownloader:
         chrome_path: str = None,
         profile_path: str = None,
     ) -> Optional[ShopeeProduct]:
-        """Lấy dữ liệu sản phẩm từ trang Shopee (internal method) - dùng chrome_manager chung"""
+        """Lấy dữ liệu sản phẩm từ trang Shopee (internal method)"""
         try:
-            import pyautogui as pag
+            # Kiểm tra xem đã có Chrome process chưa
+            if self.chrome_process is None:
+                # Mở Chrome mới
+                console.print(f"[cyan]🌐 Mở Chrome...[/]")
 
-            # Cấu hình chrome_manager với profile
-            chrome_manager.set_profile(
-                chrome_path=chrome_path,
-                profile_path=profile_path,
-            )
+                # Chrome path mặc định
+                if not chrome_path:
+                    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
-            # Mở Chrome (sẽ tự mở tab mới nếu đã có Chrome)
-            if not chrome_manager.open_chrome(url):
-                console.print(f"[red]Không mở được Chrome[/]")
-                return None
+                # Profile từ Settings hoặc mặc định
+                if profile_path:
+                    tool_profile = Path(profile_path)
+                else:
+                    home = Path.home()
+                    tool_profile = home / ".shopee_tool_profile"
+                tool_profile.mkdir(parents=True, exist_ok=True)
+
+                console.print(f"[dim]Chrome: {chrome_path}[/]")
+                console.print(f"[dim]Profile: {tool_profile}[/]")
+
+                cmd = [
+                    chrome_path,
+                    f"--user-data-dir={tool_profile}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--start-maximized",
+                    url
+                ]
+
+                import subprocess as sp
+                self.chrome_process = sp.Popen(cmd, shell=False)
+                console.print(f"[green]Chrome PID: {self.chrome_process.pid}[/]")
+                time.sleep(4)
+            else:
+                # Đã có Chrome, mở URL trong tab mới
+                console.print(f"[cyan]📑 Mở tab mới...[/]")
+                self._focus_chrome_window()
+
+                import pyautogui as pag
+                pag.hotkey("ctrl", "t")
+                time.sleep(0.5)
+
+                import pyperclip
+                pyperclip.copy(url)
+                pag.hotkey("ctrl", "v")
+                pag.press("enter")
 
             console.print(f"[dim]Đang mở: {url}[/]")
 
@@ -732,7 +767,8 @@ class ShopeeDownloader:
             time.sleep(5)
 
             # Scroll xuống để load thêm ảnh
-            chrome_manager._focus_chrome()
+            import pyautogui as pag
+            self._focus_chrome_window()
             for _ in range(3):
                 pag.scroll(-3)
                 time.sleep(0.5)
@@ -771,7 +807,7 @@ class ShopeeDownloader:
                 }
                 copy(JSON.stringify(urls));
             })();'''
-            result = chrome_manager.run_js(js_get_urls)
+            result = self._run_js(js_get_urls)
 
             image_urls = []
             try:
@@ -790,7 +826,7 @@ class ShopeeDownloader:
                 if (el) name = el.textContent.trim();
                 copy(name);
             })();'''
-            name = chrome_manager.run_js(js_get_name) or ""
+            name = self._run_js(js_get_name) or ""
             if name:
                 console.print(f"[dim]Tên SP: {name[:50]}{'...' if len(name) > 50 else ''}[/]")
 
@@ -803,12 +839,17 @@ class ShopeeDownloader:
                 });
                 copy(descParts.join('\\n'));
             })();'''
-            description = chrome_manager.run_js(js_get_desc) or ""
+            description = self._run_js(js_get_desc) or ""
             if description:
                 console.print(f"[dim]Mô tả: {len(description)} ký tự[/]")
 
-            # Đóng tab hiện tại (chrome_manager xử lý việc giữ tab đầu)
-            chrome_manager.close_current_tab()
+            # Chỉ đóng tab nếu KHÔNG phải sản phẩm đầu tiên
+            if not self._is_first_product:
+                pag.hotkey("ctrl", "w")
+                time.sleep(0.3)
+                console.print(f"[dim]Đã đóng tab[/]")
+            else:
+                self._is_first_product = False
 
             # Trả về product nếu có ít nhất tên hoặc ảnh
             if name or image_urls:

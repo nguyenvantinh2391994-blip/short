@@ -669,12 +669,8 @@ class ShopeeDownloader:
                     options.add_argument("--disable-infobars")
                     options.add_argument("--window-size=1920,1080")
 
-                    # Dùng profile nếu có
-                    if profile_path:
-                        profile = Path(profile_path)
-                        if profile.exists():
-                            options.add_argument(f"--user-data-dir={profile}")
-                            console.print(f"[cyan]Profile: {profile}[/]")
+                    # KHÔNG dùng profile để tránh conflict với Chrome khác
+                    # Shopee không cần login để xem ảnh sản phẩm
 
                     prefs = {
                         "download.prompt_for_download": False,
@@ -692,7 +688,7 @@ class ShopeeDownloader:
                     console.print(f"[yellow]Selenium lỗi: {selenium_err}[/]")
                     console.print(f"[dim]Thử undetected-chromedriver...[/]")
 
-                    # Fallback: undetected-chromedriver
+                    # Fallback: undetected-chromedriver (không dùng profile)
                     try:
                         import undetected_chromedriver as uc
 
@@ -701,16 +697,9 @@ class ShopeeDownloader:
                         options.add_argument("--no-default-browser-check")
                         options.add_argument("--window-size=1920,1080")
 
-                        user_data_dir = None
-                        if profile_path:
-                            profile = Path(profile_path)
-                            if profile.exists():
-                                user_data_dir = str(profile)
-
                         self.driver = uc.Chrome(
                             options=options,
                             headless=is_headless,
-                            user_data_dir=user_data_dir,
                             use_subprocess=True,
                         )
                         console.print(f"[green]Chrome đã mở (uc)![/]")

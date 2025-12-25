@@ -955,6 +955,9 @@ class MainTab:
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
         finally:
+            # Đóng Chrome sau khi xong tất cả sản phẩm
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
+                self.shopee_downloader.close_browser()
             self.after_safe(self._on_process_complete)
 
     def start_process(self):

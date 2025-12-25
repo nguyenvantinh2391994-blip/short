@@ -82,6 +82,8 @@ class ShopeeDownloader:
         self.profile_path = profile_path
         self.headless = headless
         self.driver = None  # Lưu driver để có thể show/hide
+        self._is_first_product = True  # Flag để biết có phải sản phẩm đầu tiên không
+        self._main_window = None  # Lưu handle của window chính
         self.session = requests.Session()
         self.session.headers.update(self.DEFAULT_HEADERS)
 
@@ -115,6 +117,19 @@ class ShopeeDownloader:
         except Exception as e:
             console.print(f"[yellow]Lỗi hiện browser: {e}[/]")
             return False
+
+    def close_browser(self):
+        """Đóng Chrome hoàn toàn - gọi sau khi xử lý xong tất cả sản phẩm"""
+        if self.driver:
+            try:
+                self.driver.quit()
+                console.print("[dim]Đã đóng browser[/]")
+            except Exception as e:
+                console.print(f"[yellow]Lỗi đóng browser: {e}[/]")
+            finally:
+                self.driver = None
+                self._is_first_product = True
+                self._main_window = None
 
     def toggle_browser_visibility(self):
         """Toggle ẩn/hiện browser"""
@@ -606,88 +621,109 @@ class ShopeeDownloader:
         # Ưu tiên dùng link gốc, nếu không có thì build từ shop_id/item_id
         url = original_url if original_url else f"https://shopee.vn/-i.{shop_id}.{item_id}"
 
+        # Flag để biết có mở tab mới không (để sau đó đóng tab thay vì quit)
+        opened_new_tab = False
+
         try:
-            console.print(f"[cyan]🌐 Mở browser để lấy ảnh từ Shopee...[/]")
-            console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
-            console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
+            # Kiểm tra xem đã có driver chưa
+            if self.driver is not None:
+                # Đã có Chrome, mở tab mới thay vì mở Chrome mới
+                console.print(f"[cyan]📑 Mở tab mới trong Chrome hiện có...[/]")
+                driver = self.driver
 
-            # Luôn dùng undetected-chromedriver để tránh CAPTCHA (như Grok)
-            try:
-                import undetected_chromedriver as uc
-                console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
+                # Lưu handle hiện tại
+                current_handles = driver.window_handles
 
-                # Dùng uc.ChromeOptions giống Grok
-                options = uc.ChromeOptions()
+                # Mở tab mới
+                driver.execute_script("window.open('');")
+                time.sleep(0.5)
 
-                # Các argument giống Grok
-                options.add_argument("--no-first-run")
-                options.add_argument("--no-default-browser-check")
-                options.add_argument("--disable-extensions")
-                options.add_argument("--disable-popup-blocking")
-                options.add_argument("--disable-infobars")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
+                # Chuyển sang tab mới
+                new_handles = driver.window_handles
+                new_tab = [h for h in new_handles if h not in current_handles][0]
+                driver.switch_to.window(new_tab)
+                opened_new_tab = True
 
-                # Window size
-                if is_headless:
-                    options.add_argument("--window-size=800,600")
-                    options.add_argument("--window-position=-2000,-2000")
-                else:
-                    options.add_argument("--window-size=1920,1080")
-
-                # Prefs giống Grok
-                prefs = {
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "safebrowsing.enabled": True,
-                    "profile.default_content_setting_values.automatic_downloads": 1,
-                    "profile.default_content_setting_values.notifications": 2,
-                }
-                options.add_experimental_option("prefs", prefs)
-
-                # Xử lý profile path
-                user_data_dir = None
-                if profile_path:
-                    profile = Path(profile_path)
-                    if profile.exists():
-                        user_data_dir = str(profile)
-                        console.print(f"[cyan]Profile: {user_data_dir}[/]")
-
-                self.driver = uc.Chrome(
-                    options=options,
-                    headless=False,
-                    user_data_dir=user_data_dir,
-                    use_subprocess=True,
-                    version_main=None
-                )
-            except ImportError:
-                console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
-                from selenium import webdriver
-                from selenium.webdriver.chrome.options import Options
-                options = Options()
-                options.add_argument("--window-size=1920,1080")
-                self.driver = webdriver.Chrome(options=options)
-
-            # Ẩn khỏi taskbar nếu headless (Windows)
-            if is_headless:
-                self._is_hidden = True
-                self._hide_chrome_window()
+                console.print(f"[dim]Đang mở: {url}[/]")
+                driver.get(url)
             else:
-                self._is_hidden = False
+                # Chưa có Chrome, tạo mới
+                console.print(f"[cyan]🌐 Mở Chrome mới...[/]")
+                console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
+                console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
 
-            driver = self.driver  # Alias cho code cũ
+                # Luôn dùng undetected-chromedriver để tránh CAPTCHA
+                try:
+                    import undetected_chromedriver as uc
+                    console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
 
-            # Nếu không có profile, load cookies từ file
-            if not profile_path:
-                driver.get("https://shopee.vn")
-                time.sleep(2)
-                self._load_cookies_from_file(driver)
-                driver.refresh()
-                time.sleep(2)
+                    options = uc.ChromeOptions()
+                    options.add_argument("--no-first-run")
+                    options.add_argument("--no-default-browser-check")
+                    options.add_argument("--disable-extensions")
+                    options.add_argument("--disable-popup-blocking")
+                    options.add_argument("--disable-infobars")
+                    options.add_argument("--disable-dev-shm-usage")
+                    options.add_argument("--disable-gpu")
 
-            # Vào trang sản phẩm
-            console.print(f"[dim]Đang mở: {url}[/]")
-            driver.get(url)
+                    if is_headless:
+                        options.add_argument("--window-size=800,600")
+                        options.add_argument("--window-position=-2000,-2000")
+                    else:
+                        options.add_argument("--window-size=1920,1080")
+
+                    prefs = {
+                        "download.prompt_for_download": False,
+                        "download.directory_upgrade": True,
+                        "safebrowsing.enabled": True,
+                        "profile.default_content_setting_values.automatic_downloads": 1,
+                        "profile.default_content_setting_values.notifications": 2,
+                    }
+                    options.add_experimental_option("prefs", prefs)
+
+                    user_data_dir = None
+                    if profile_path:
+                        profile = Path(profile_path)
+                        if profile.exists():
+                            user_data_dir = str(profile)
+                            console.print(f"[cyan]Profile: {user_data_dir}[/]")
+
+                    self.driver = uc.Chrome(
+                        options=options,
+                        headless=False,
+                        user_data_dir=user_data_dir,
+                        use_subprocess=True,
+                        version_main=None
+                    )
+                except ImportError:
+                    console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
+                    from selenium import webdriver
+                    from selenium.webdriver.chrome.options import Options
+                    options = Options()
+                    options.add_argument("--window-size=1920,1080")
+                    self.driver = webdriver.Chrome(options=options)
+
+                if is_headless:
+                    self._is_hidden = True
+                    self._hide_chrome_window()
+                else:
+                    self._is_hidden = False
+
+                driver = self.driver
+
+                # Lưu handle của window chính
+                self._main_window = driver.current_window_handle
+
+                # Nếu không có profile, load cookies từ file
+                if not profile_path:
+                    driver.get("https://shopee.vn")
+                    time.sleep(2)
+                    self._load_cookies_from_file(driver)
+                    driver.refresh()
+                    time.sleep(2)
+
+                console.print(f"[dim]Đang mở: {url}[/]")
+                driver.get(url)
 
             # Chờ trang load
             console.print(f"[dim]Chờ trang load...[/]")
@@ -780,9 +816,15 @@ class ShopeeDownloader:
             if image_urls:
                 self._save_cookies_to_file(driver)
 
-            driver.quit()
-            driver = None
-            self.driver = None
+            # Đóng tab thay vì quit Chrome (nếu mở tab mới)
+            if opened_new_tab:
+                # Đóng tab hiện tại
+                driver.close()
+                # Chuyển về tab chính
+                if self._main_window:
+                    driver.switch_to.window(self._main_window)
+                console.print(f"[dim]Đã đóng tab, giữ Chrome[/]")
+            # Không quit driver nữa - giữ Chrome mở
 
             if image_urls:
                 # Extract hash từ URLs
@@ -809,14 +851,17 @@ class ShopeeDownloader:
             console.print(f"[red]❌ Selenium failed: {e}[/]")
             import traceback
             traceback.print_exc()
-            return None
-        finally:
-            if driver:
+
+            # Nếu lỗi và đã mở tab mới, đóng tab đó
+            if opened_new_tab and self.driver:
                 try:
-                    driver.quit()
+                    self.driver.close()
+                    if self._main_window:
+                        self.driver.switch_to.window(self._main_window)
                 except Exception:
                     pass
-            self.driver = None
+
+            return None
 
     def download_images(
         self,

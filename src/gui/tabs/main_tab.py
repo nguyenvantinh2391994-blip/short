@@ -759,7 +759,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
             # Tạo thư mục profile nếu chưa có
@@ -893,7 +893,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
             for item in pending:
@@ -1055,7 +1055,7 @@ class MainTab:
                 stop_flag=self.stop_flag,
                 on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(msg)),
                 on_progress=lambda cur, tot, msg: None,
-                headless=False,
+                headless=not getattr(self.app.config, 'show_chrome', True),
             )
 
             self.current_worker = worker
@@ -1118,7 +1118,7 @@ class MainTab:
             output_dir=self.app.config.input_folder,
             chrome_path=chrome_path,
             profile_path=profile_path,
-            headless=False
+            headless=not getattr(self.app.config, 'show_chrome', True)
         )
 
         input_folder = Path(self.app.config.input_folder)
@@ -1265,7 +1265,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=False,
+                headless=not getattr(self.app.config, 'show_chrome', True),
             )
             self.current_gemini = gemini
 
@@ -1405,12 +1405,12 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Khởi tạo SORA automation (headless như Grok)
+            # Khởi tạo SORA automation (dùng cài đặt show_chrome từ Settings)
             sora = SoraAutomation(
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=False,
+                headless=not getattr(self.app.config, 'show_chrome', True),
             )
             self.current_sora = sora  # Lưu để toggle visibility
 
@@ -1847,7 +1847,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False
+                headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
             input_folder = Path(self.app.config.input_folder)
@@ -2083,7 +2083,7 @@ class MainTab:
                     stop_flag=self.stop_flag,
                     on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(f"  [Video] {msg}")),
                     on_progress=lambda cur, tot, msg: None,
-                    headless=False,
+                    headless=not getattr(self.app.config, 'show_chrome', True),
                 )
 
                 self.current_worker = worker
@@ -2146,12 +2146,12 @@ class MainTab:
                     chrome_path = first_profile.get("chrome_path")
                     profile_path = first_profile.get("profile_path")
 
-                # Khởi tạo SORA (headless=False để hiện Chrome)
+                # Khởi tạo SORA (dùng cài đặt show_chrome từ Settings)
                 sora = SoraAutomation(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
                     output_folder=str(output_folder),
-                    headless=False,
+                    headless=not getattr(self.app.config, 'show_chrome', True),
                 )
                 self.current_sora = sora  # Lưu để toggle visibility
 

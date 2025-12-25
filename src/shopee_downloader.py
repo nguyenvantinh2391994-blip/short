@@ -82,6 +82,7 @@ class ShopeeDownloader:
         self.profile_path = profile_path
         self.headless = headless
         self.driver = None  # Lưu driver để có thể show/hide
+        self.chrome_process = None  # Process Chrome mở bằng subprocess
         self._is_first_product = True  # Flag để biết có phải sản phẩm đầu tiên không
         self._main_window = None  # Lưu handle của window chính
         self.session = requests.Session()
@@ -123,13 +124,23 @@ class ShopeeDownloader:
         if self.driver:
             try:
                 self.driver.quit()
-                console.print("[dim]Đã đóng browser[/]")
+                console.print("[dim]Đã đóng Selenium driver[/]")
             except Exception as e:
-                console.print(f"[yellow]Lỗi đóng browser: {e}[/]")
+                console.print(f"[yellow]Lỗi đóng driver: {e}[/]")
             finally:
                 self.driver = None
-                self._is_first_product = True
-                self._main_window = None
+
+        if self.chrome_process:
+            try:
+                self.chrome_process.terminate()
+                console.print("[dim]Đã đóng Chrome process[/]")
+            except Exception as e:
+                console.print(f"[yellow]Lỗi đóng Chrome: {e}[/]")
+            finally:
+                self.chrome_process = None
+
+        self._is_first_product = True
+        self._main_window = None
 
     def toggle_browser_visibility(self):
         """Toggle ẩn/hiện browser"""
@@ -647,88 +658,60 @@ class ShopeeDownloader:
                 console.print(f"[dim]Đang mở: {url}[/]")
                 driver.get(url)
             else:
-                # Chưa có Chrome, tạo mới
-                console.print(f"[cyan]🌐 Mở Chrome mới...[/]")
-                console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
-                console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
+                # Chưa có Chrome, mở Chrome trực tiếp bằng subprocess
+                console.print(f"[cyan]🌐 Mở Chrome...[/]")
 
-                # Thử dùng selenium thường trước (nhanh hơn, ổn định hơn)
-                # Nếu bị CAPTCHA thì mới cần undetected-chromedriver
+                # Dùng Chrome path mặc định nếu không có
+                if not chrome_path:
+                    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+                # Dùng profile mặc định nếu không có
+                if not profile_path:
+                    profile_path = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Profile 4"
+
+                console.print(f"[dim]Chrome: {chrome_path}[/]")
+                console.print(f"[dim]Profile: {profile_path}[/]")
+
+                # Tách user-data-dir và profile-directory
+                profile = Path(profile_path)
+                user_data_dir = str(profile.parent)  # C:\Users\...\User Data
+                profile_dir = profile.name  # Profile 4
+
+                # Mở Chrome với remote debugging để Selenium kết nối
+                debug_port = 9222
+                cmd = [
+                    chrome_path,
+                    f"--user-data-dir={user_data_dir}",
+                    f"--profile-directory={profile_dir}",
+                    f"--remote-debugging-port={debug_port}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    url
+                ]
+
+                console.print(f"[dim]Mở Chrome với debugging port {debug_port}...[/]")
+
+                import subprocess
+                self.chrome_process = subprocess.Popen(cmd, shell=False)
+                time.sleep(3)  # Chờ Chrome khởi động
+
+                # Kết nối Selenium tới Chrome đang chạy
+                from selenium import webdriver
+                from selenium.webdriver.chrome.options import Options
+
+                options = Options()
+                options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
+
                 try:
-                    from selenium import webdriver
-                    from selenium.webdriver.chrome.options import Options
-                    from selenium.webdriver.chrome.service import Service
-
-                    console.print(f"[dim]Sử dụng Selenium...[/]")
-
-                    options = Options()
-                    options.add_argument("--no-first-run")
-                    options.add_argument("--no-default-browser-check")
-                    options.add_argument("--disable-extensions")
-                    options.add_argument("--disable-popup-blocking")
-                    options.add_argument("--disable-infobars")
-                    options.add_argument("--window-size=1920,1080")
-
-                    # KHÔNG dùng profile để tránh conflict với Chrome khác
-                    # Shopee không cần login để xem ảnh sản phẩm
-
-                    prefs = {
-                        "download.prompt_for_download": False,
-                        "download.directory_upgrade": True,
-                        "profile.default_content_setting_values.notifications": 2,
-                    }
-                    options.add_experimental_option("prefs", prefs)
-                    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-
-                    console.print(f"[dim]Khởi tạo Chrome...[/]")
                     self.driver = webdriver.Chrome(options=options)
-                    console.print(f"[green]Chrome đã mở![/]")
-
-                except Exception as selenium_err:
-                    console.print(f"[yellow]Selenium lỗi: {selenium_err}[/]")
-                    console.print(f"[dim]Thử undetected-chromedriver...[/]")
-
-                    # Fallback: undetected-chromedriver (không dùng profile)
-                    try:
-                        import undetected_chromedriver as uc
-
-                        options = uc.ChromeOptions()
-                        options.add_argument("--no-first-run")
-                        options.add_argument("--no-default-browser-check")
-                        options.add_argument("--window-size=1920,1080")
-
-                        self.driver = uc.Chrome(
-                            options=options,
-                            headless=is_headless,
-                            use_subprocess=True,
-                        )
-                        console.print(f"[green]Chrome đã mở (uc)![/]")
-                    except Exception as uc_err:
-                        console.print(f"[red]Không mở được Chrome: {uc_err}[/]")
-                        console.print(f"[yellow]Thử: taskkill /F /IM chrome.exe[/]")
-                        raise uc_err
-
-                if is_headless:
-                    self._is_hidden = True
-                    self._hide_chrome_window()
-                else:
-                    self._is_hidden = False
+                    console.print(f"[green]Đã kết nối Chrome![/]")
+                except Exception as e:
+                    console.print(f"[red]Lỗi kết nối: {e}[/]")
+                    console.print(f"[yellow]Đóng Chrome và thử lại[/]")
+                    raise e
 
                 driver = self.driver
-
-                # Lưu handle của window chính
                 self._main_window = driver.current_window_handle
-
-                # Nếu không có profile, load cookies từ file
-                if not profile_path:
-                    driver.get("https://shopee.vn")
-                    time.sleep(2)
-                    self._load_cookies_from_file(driver)
-                    driver.refresh()
-                    time.sleep(2)
-
-                console.print(f"[dim]Đang mở: {url}[/]")
-                driver.get(url)
 
             # Chờ trang load
             console.print(f"[dim]Chờ trang load...[/]")

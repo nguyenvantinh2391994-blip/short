@@ -688,13 +688,21 @@ class ShopeeDownloader:
                             user_data_dir = str(profile)
                             console.print(f"[cyan]Profile: {user_data_dir}[/]")
 
-                    self.driver = uc.Chrome(
-                        options=options,
-                        headless=False,
-                        user_data_dir=user_data_dir,
-                        use_subprocess=True,
-                        version_main=None
-                    )
+                    console.print(f"[dim]Khởi tạo Chrome... (có thể mất 10-30s lần đầu)[/]")
+
+                    try:
+                        self.driver = uc.Chrome(
+                            options=options,
+                            headless=is_headless,
+                            user_data_dir=user_data_dir,
+                            use_subprocess=True,
+                        )
+                        console.print(f"[green]Chrome đã mở![/]")
+                    except Exception as chrome_err:
+                        console.print(f"[red]Lỗi mở Chrome: {chrome_err}[/]")
+                        console.print(f"[yellow]Thử đóng tất cả Chrome rồi chạy lại[/]")
+                        raise chrome_err
+
                 except ImportError:
                     console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
                     from selenium import webdriver

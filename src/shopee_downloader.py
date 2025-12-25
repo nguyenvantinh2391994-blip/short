@@ -652,64 +652,72 @@ class ShopeeDownloader:
                 console.print(f"[dim]DEBUG: chrome_path={chrome_path}[/]")
                 console.print(f"[dim]DEBUG: profile_path={profile_path}[/]")
 
-                # Luôn dùng undetected-chromedriver để tránh CAPTCHA
+                # Thử dùng selenium thường trước (nhanh hơn, ổn định hơn)
+                # Nếu bị CAPTCHA thì mới cần undetected-chromedriver
                 try:
-                    import undetected_chromedriver as uc
-                    console.print(f"[dim]Sử dụng undetected-chromedriver...[/]")
+                    from selenium import webdriver
+                    from selenium.webdriver.chrome.options import Options
+                    from selenium.webdriver.chrome.service import Service
 
-                    options = uc.ChromeOptions()
+                    console.print(f"[dim]Sử dụng Selenium...[/]")
+
+                    options = Options()
                     options.add_argument("--no-first-run")
                     options.add_argument("--no-default-browser-check")
                     options.add_argument("--disable-extensions")
                     options.add_argument("--disable-popup-blocking")
                     options.add_argument("--disable-infobars")
-                    options.add_argument("--disable-dev-shm-usage")
-                    options.add_argument("--disable-gpu")
+                    options.add_argument("--window-size=1920,1080")
 
-                    if is_headless:
-                        options.add_argument("--window-size=800,600")
-                        options.add_argument("--window-position=-2000,-2000")
-                    else:
-                        options.add_argument("--window-size=1920,1080")
+                    # Dùng profile nếu có
+                    if profile_path:
+                        profile = Path(profile_path)
+                        if profile.exists():
+                            options.add_argument(f"--user-data-dir={profile}")
+                            console.print(f"[cyan]Profile: {profile}[/]")
 
                     prefs = {
                         "download.prompt_for_download": False,
                         "download.directory_upgrade": True,
-                        "safebrowsing.enabled": True,
-                        "profile.default_content_setting_values.automatic_downloads": 1,
                         "profile.default_content_setting_values.notifications": 2,
                     }
                     options.add_experimental_option("prefs", prefs)
+                    options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
-                    user_data_dir = None
-                    if profile_path:
-                        profile = Path(profile_path)
-                        if profile.exists():
-                            user_data_dir = str(profile)
-                            console.print(f"[cyan]Profile: {user_data_dir}[/]")
+                    console.print(f"[dim]Khởi tạo Chrome...[/]")
+                    self.driver = webdriver.Chrome(options=options)
+                    console.print(f"[green]Chrome đã mở![/]")
 
-                    console.print(f"[dim]Khởi tạo Chrome... (có thể mất 10-30s lần đầu)[/]")
+                except Exception as selenium_err:
+                    console.print(f"[yellow]Selenium lỗi: {selenium_err}[/]")
+                    console.print(f"[dim]Thử undetected-chromedriver...[/]")
 
+                    # Fallback: undetected-chromedriver
                     try:
+                        import undetected_chromedriver as uc
+
+                        options = uc.ChromeOptions()
+                        options.add_argument("--no-first-run")
+                        options.add_argument("--no-default-browser-check")
+                        options.add_argument("--window-size=1920,1080")
+
+                        user_data_dir = None
+                        if profile_path:
+                            profile = Path(profile_path)
+                            if profile.exists():
+                                user_data_dir = str(profile)
+
                         self.driver = uc.Chrome(
                             options=options,
                             headless=is_headless,
                             user_data_dir=user_data_dir,
                             use_subprocess=True,
                         )
-                        console.print(f"[green]Chrome đã mở![/]")
-                    except Exception as chrome_err:
-                        console.print(f"[red]Lỗi mở Chrome: {chrome_err}[/]")
-                        console.print(f"[yellow]Thử đóng tất cả Chrome rồi chạy lại[/]")
-                        raise chrome_err
-
-                except ImportError:
-                    console.print(f"[yellow]undetected-chromedriver not found, using selenium[/]")
-                    from selenium import webdriver
-                    from selenium.webdriver.chrome.options import Options
-                    options = Options()
-                    options.add_argument("--window-size=1920,1080")
-                    self.driver = webdriver.Chrome(options=options)
+                        console.print(f"[green]Chrome đã mở (uc)![/]")
+                    except Exception as uc_err:
+                        console.print(f"[red]Không mở được Chrome: {uc_err}[/]")
+                        console.print(f"[yellow]Thử: taskkill /F /IM chrome.exe[/]")
+                        raise uc_err
 
                 if is_headless:
                     self._is_hidden = True

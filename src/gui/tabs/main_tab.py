@@ -754,19 +754,20 @@ class MainTab:
                 profile_path = first_profile.get("profile_path")
                 self.after_safe(lambda: self.add_log(f"📱 Dùng profile: {first_profile.get('name', 'Default')}"))
 
-            # Tạo downloader
+            # Tạo downloader - dùng Shopee profile từ Settings
+            shopee_profile = getattr(self.app.config, 'shopee_profile_path', None)
             self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
-                profile_path=profile_path,
+                profile_path=shopee_profile,
                 headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
             # Tạo thư mục profile nếu chưa có
-            if profile_path:
+            if shopee_profile:
                 from pathlib import Path
-                Path(profile_path).mkdir(parents=True, exist_ok=True)
-                self.after_safe(lambda: self.add_log(f"📁 Profile path: {profile_path}"))
+                Path(shopee_profile).mkdir(parents=True, exist_ok=True)
+                self.after_safe(lambda: self.add_log(f"📁 Shopee profile: {shopee_profile}"))
 
             # Dùng undetected_chromedriver để bypass captcha
             options = uc.ChromeOptions()
@@ -887,12 +888,13 @@ class MainTab:
             if self.app.config.browser_profiles:
                 first_profile = self.app.config.browser_profiles[0]
                 chrome_path = first_profile.get("chrome_path")
-                profile_path = first_profile.get("profile_path")
 
+            # Dùng Shopee profile từ Settings
+            shopee_profile = getattr(self.app.config, 'shopee_profile_path', None)
             self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
-                profile_path=profile_path,
+                profile_path=shopee_profile,
                 headless=not getattr(self.app.config, 'show_chrome', True)
             )
 
@@ -1107,17 +1109,18 @@ class MainTab:
         link_col_idx = ord(shopee_link_column.upper()) - ord('A')
 
         chrome_path = None
-        profile_path = None
         if self.app.config.browser_profiles:
             first_profile = self.app.config.browser_profiles[0]
             chrome_path = first_profile.get("chrome_path")
-            profile_path = first_profile.get("profile_path")
+
+        # Dùng Shopee profile từ Settings
+        shopee_profile = getattr(self.app.config, 'shopee_profile_path', None)
 
         from ...shopee_downloader import ShopeeDownloader
         self.shopee_downloader = ShopeeDownloader(
             output_dir=self.app.config.input_folder,
             chrome_path=chrome_path,
-            profile_path=profile_path,
+            profile_path=shopee_profile,
             headless=not getattr(self.app.config, 'show_chrome', True)
         )
 
@@ -1837,16 +1840,16 @@ class MainTab:
 
             # Browser profile
             chrome_path = None
-            profile_path = None
             if self.app.config.browser_profiles:
                 first_profile = self.app.config.browser_profiles[0]
                 chrome_path = first_profile.get("chrome_path")
-                profile_path = first_profile.get("profile_path")
 
+            # Dùng Shopee profile từ Settings
+            shopee_profile = getattr(self.app.config, 'shopee_profile_path', None)
             self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
-                profile_path=profile_path,
+                profile_path=shopee_profile,
                 headless=not getattr(self.app.config, 'show_chrome', True)
             )
 

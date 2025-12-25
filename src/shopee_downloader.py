@@ -665,10 +665,12 @@ class ShopeeDownloader:
                 if not chrome_path:
                     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
-                # Tạo profile riêng cho tool (không dùng profile Chrome cá nhân)
-                # Profile này thuộc về tool, user có thể đăng nhập tài khoản riêng
-                home = Path.home()
-                tool_profile = home / ".shopee_tool_profile"
+                # Dùng profile từ config (Settings) hoặc mặc định
+                if profile_path:
+                    tool_profile = Path(profile_path)
+                else:
+                    home = Path.home()
+                    tool_profile = home / ".shopee_tool_profile"
                 tool_profile.mkdir(parents=True, exist_ok=True)
 
                 console.print(f"[dim]Chrome: {chrome_path}[/]")

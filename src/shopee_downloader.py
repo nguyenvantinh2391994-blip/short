@@ -611,29 +611,39 @@ class ShopeeDownloader:
 
         try:
             self._focus_chrome_window()
+            time.sleep(0.3)
+
+            # Clear clipboard trước
+            pyperclip.copy("")
 
             # Mở DevTools Console
             pag.hotkey("ctrl", "shift", "j")
-            time.sleep(0.5)
+            time.sleep(1)  # Chờ DevTools mở
 
             # Copy JS
             pyperclip.copy(js)
-            time.sleep(0.1)
+            time.sleep(0.2)
 
             # Paste và chạy
             pag.hotkey("ctrl", "v")
-            time.sleep(0.2)
+            time.sleep(0.3)
             pag.press("enter")
-            time.sleep(0.5)
+            time.sleep(1.5)  # Chờ JS chạy xong và copy() hoàn thành
 
             # Lấy kết quả từ clipboard
             result = pyperclip.paste()
+
+            # Debug
+            if result and result != js:
+                console.print(f"[dim]JS result: {result[:100]}...[/]" if len(result) > 100 else f"[dim]JS result: {result}[/]")
+            else:
+                console.print(f"[yellow]JS không trả về kết quả[/]")
 
             # Đóng DevTools
             pag.hotkey("ctrl", "shift", "j")
             time.sleep(0.3)
 
-            return result
+            return result if result != js else ""
 
         except Exception as e:
             console.print(f"[yellow]Lỗi run_js: {e}[/]")
@@ -717,7 +727,20 @@ class ShopeeDownloader:
 
             # Chờ trang load
             console.print(f"[dim]Chờ trang load...[/]")
-            time.sleep(8)
+            time.sleep(5)
+
+            # Scroll xuống để load thêm ảnh
+            import pyautogui as pag
+            self._focus_chrome_window()
+            for _ in range(3):
+                pag.scroll(-3)  # Scroll xuống
+                time.sleep(0.5)
+
+            # Scroll lên lại
+            pag.scroll(10)
+            time.sleep(2)
+
+            console.print(f"[dim]Đang lấy ảnh...[/]")
 
             # Lấy URLs bằng JavaScript qua DevTools
             js_get_urls = '''

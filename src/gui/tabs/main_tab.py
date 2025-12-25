@@ -2486,8 +2486,9 @@ class MainTab:
             product_codes = [p.get("code") for p in products if p.get("code")]
             self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(product_codes)} sản phẩm"))
 
-            # Khởi tạo Flow Generator
-            flow_gen = get_flow_generator(self.app.config.output_dir)
+            # Khởi tạo Flow Generator - dùng thư mục products
+            products_base = self.app.config.get("products.images_dir", "products")
+            flow_gen = get_flow_generator(products_base)
 
             # Set log callback
             def log_callback(msg):
@@ -2499,7 +2500,7 @@ class MainTab:
             self.after_safe(lambda: self.add_log("⚠️ Đang sử dụng chế độ không có token (có thể bị giới hạn)"))
 
             # Xử lý từng sản phẩm
-            products_dir = Path(self.app.config.output_dir)
+            products_dir = Path(products_base)
             processed = 0
             skipped = 0
 

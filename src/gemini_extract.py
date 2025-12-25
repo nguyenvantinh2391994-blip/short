@@ -2,7 +2,6 @@
 Gemini Product Extraction - Tách sản phẩm từ ảnh sử dụng Gemini
 
 Sử dụng PyAutoGUI để điều khiển browser, tương tự SORA/Grok automation.
-Dùng chrome_manager chung với Shopee download và các tính năng khác.
 """
 
 import os
@@ -29,8 +28,6 @@ except ImportError:
         def print(self, *args, **kwargs):
             print(*args)
     console = Console()
-
-from .chrome_manager import chrome_manager
 
 
 @dataclass
@@ -71,7 +68,7 @@ Final rule: You must return ONLY the edited image. Do NOT return any text."""
 
 
 class GeminiExtract:
-    """Tách sản phẩm từ ảnh sử dụng Gemini - dùng chrome_manager chung"""
+    """Tách sản phẩm từ ảnh sử dụng Gemini - PyAutoGUI approach"""
 
     # Dung URL moi de tao conversation moi moi lan
     GEMINI_URL = "https://gemini.google.com/app?hl=vi"
@@ -88,13 +85,8 @@ class GeminiExtract:
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.headless = headless
+        self.chrome_process = None
         self._is_hidden = False
-
-        # Cấu hình chrome_manager
-        chrome_manager.set_profile(
-            chrome_path=self.chrome_path,
-            profile_path=self.profile_path,
-        )
 
     def log(self, msg: str):
         console.print(f"[cyan]{msg}[/]")
@@ -106,16 +98,87 @@ class GeminiExtract:
         console.print(f"[red]   Loi: {msg}[/]")
 
     def _focus_chrome_window(self) -> bool:
-        """Focus vao cua so Chrome - dùng chrome_manager"""
-        return chrome_manager._focus_chrome()
+        """Focus vao cua so Chrome"""
+        try:
+            import pygetwindow as gw
+            windows = gw.getWindowsWithTitle('Gemini')
+            if not windows:
+                windows = gw.getWindowsWithTitle('Google')
+            if windows:
+                win = windows[0]
+                win.activate()
+                time.sleep(0.3)
+                return True
+        except:
+            pass
+        return False
 
     def open_chrome(self, url: str) -> bool:
-        """Mo Chrome voi profile - dùng chrome_manager chung"""
-        return chrome_manager.open_chrome(url)
+        """Mo Chrome voi profile"""
+        try:
+            cmd = [self.chrome_path]
+
+            profile_path = self.profile_path
+            if profile_path:
+                profile = Path(profile_path)
+                if not profile.name.startswith("Profile") and profile.name != "Default":
+                    profile_path = str(profile / "Default")
+
+            if profile_path and Path(profile_path).exists():
+                profile = Path(profile_path)
+                cmd.extend([
+                    f"--user-data-dir={profile.parent}",
+                    f"--profile-directory={profile.name}"
+                ])
+
+            cmd.append("--start-maximized")
+            cmd.append(url)
+
+            self.chrome_process = subprocess.Popen(cmd, shell=False)
+            self.log_ok(f"Chrome PID: {self.chrome_process.pid}")
+
+            time.sleep(4)
+            self._focus_chrome_window()
+            return True
+
+        except Exception as e:
+            self.log_err(f"Loi mo Chrome: {e}")
+            return False
 
     def run_js(self, js: str) -> Optional[str]:
-        """Chay JS qua DevTools Console - dùng chrome_manager"""
-        return chrome_manager.run_js(js)
+        """Chay JS qua DevTools Console"""
+        if not pag or not pyperclip:
+            return None
+
+        try:
+            self._focus_chrome_window()
+
+            # Mo DevTools Console
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.5)
+
+            # Copy JS
+            pyperclip.copy(js)
+            time.sleep(0.1)
+
+            # Paste va chay
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.2)
+            pag.press("enter")
+            time.sleep(0.5)
+
+            # Lay ket qua tu clipboard
+            result = pyperclip.paste()
+
+            # Dong DevTools
+            pag.hotkey("ctrl", "shift", "j")
+            time.sleep(0.3)
+
+            return result
+
+        except Exception as e:
+            self.log_err(f"Loi run JS: {e}")
+            return None
 
     def type_prompt(self) -> bool:
         """Nhap prompt vao textarea"""
@@ -162,7 +225,7 @@ class GeminiExtract:
         time.sleep(0.8)
 
         # Dong DevTools truoc khi dung keyboard
-        chrome_manager._focus_chrome()
+        self._focus_chrome_window()
         time.sleep(0.3)
 
         # Dung Tab de navigate den "Tai tep len" roi Enter
@@ -490,11 +553,17 @@ class GeminiExtract:
             self.log(f"   {len(image_paths)} anh can xu ly")
 
             # Navigate den URL moi de tao conversation moi
-            chrome_manager._focus_chrome()
+            self._focus_chrome_window()
             self.log(f"   Mo conversation moi...")
 
-            # Dung chrome_manager de navigate
-            chrome_manager.navigate_to("https://gemini.google.com/app?hl=vi")
+            # Dung JS de navigate
+            js = '''
+            (function() {
+                window.location.href = "https://gemini.google.com/app?hl=vi";
+                copy('OK');
+            })();
+            '''
+            self.run_js(js)
             time.sleep(5)  # Doi page load
 
             # Nhap prompt

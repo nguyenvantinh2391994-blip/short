@@ -299,6 +299,21 @@ class MainTab:
         )
         self.sora_btn.pack(side="left", padx=(0, 4))
 
+        # Nút Flow
+        self.flow_btn = ctk.CTkButton(
+            bottom_row,
+            text="Flow",
+            command=self.start_flow_process,
+            width=50,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#EC4899",
+            hover_color="#DB2777",
+            text_color="white"
+        )
+        self.flow_btn.pack(side="left", padx=(0, 4))
+
         # Nút Edit
         self.edit_btn = ctk.CTkButton(
             bottom_row,
@@ -2414,7 +2429,154 @@ class MainTab:
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
         self.edit_btn.configure(state="normal")
+        self.flow_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+
+    # ===== FLOW (Google Flow API) =====
+
+    def start_flow_process(self):
+        """Tạo ảnh biến thể với Google Flow API"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.is_running = True
+        self.shopee_btn.configure(state="disabled")
+        self.script_btn.configure(state="disabled")
+        self.start_btn.configure(state="disabled")
+        self.full_btn.configure(state="disabled")
+        self.filter_btn.configure(state="disabled")
+        self.edit_btn.configure(state="disabled")
+        self.flow_btn.configure(state="disabled")
+        self.sora_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.clear_table()
+        self.add_log("🌀 Bắt đầu tạo ảnh Flow...")
+
+        thread = threading.Thread(target=self._run_flow_process, daemon=True)
+        thread.start()
+
+    def _run_flow_process(self):
+        """Background thread chạy Flow"""
+        try:
+            from ...sheets_reader import SheetsReader
+            from ...flow_generator import get_flow_generator
+
+            self.after_safe(lambda: self.add_log("📊 Kết nối Google Sheets..."))
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+
+            if not reader.connect() or not reader.open_spreadsheet():
+                self.after_safe(lambda: self.add_log("❌ Không thể kết nối Google Sheets!"))
+                return
+
+            self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
+
+            # Lấy danh sách sản phẩm pending
+            products = reader.get_pending_products() or []
+            if not products:
+                self.after_safe(lambda: self.add_log("⚠️ Không có sản phẩm nào cần xử lý"))
+                return
+
+            product_codes = [p.get("code") for p in products if p.get("code")]
+            self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(product_codes)} sản phẩm"))
+
+            # Khởi tạo Flow Generator
+            flow_gen = get_flow_generator(self.app.config.output_dir)
+
+            # Set log callback
+            def log_callback(msg):
+                self.after_safe(lambda m=msg: self.add_log(m))
+            flow_gen.set_log_callback(log_callback)
+
+            # Kiểm tra token
+            # TODO: Implement token input dialog hoặc load từ config
+            self.after_safe(lambda: self.add_log("⚠️ Đang sử dụng chế độ không có token (có thể bị giới hạn)"))
+
+            # Xử lý từng sản phẩm
+            products_dir = Path(self.app.config.output_dir)
+            processed = 0
+            skipped = 0
+
+            for i, code in enumerate(product_codes, 1):
+                if self.stop_flag.is_set():
+                    self.after_safe(lambda: self.add_log("⏹️ Đã dừng theo yêu cầu"))
+                    break
+
+                # Kiểm tra có ảnh extracted chưa
+                extracted_folder = products_dir / code / "extracted"
+                if not extracted_folder.exists():
+                    self.after_safe(lambda c=code: self.add_log(f"  {c}: Chưa có extracted - bỏ qua"))
+                    skipped += 1
+                    continue
+
+                extracted_images = list(extracted_folder.glob("*.png")) + \
+                                   list(extracted_folder.glob("*.jpg")) + \
+                                   list(extracted_folder.glob("*.webp"))
+                if not extracted_images:
+                    self.after_safe(lambda c=code: self.add_log(f"  {c}: Không có ảnh extracted - bỏ qua"))
+                    skipped += 1
+                    continue
+
+                # Kiểm tra đã có flow chưa
+                flow_folder = products_dir / code / "flow"
+                if flow_folder.exists():
+                    existing_flow = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
+                    if existing_flow:
+                        self.after_safe(lambda c=code, n=len(existing_flow): self.add_log(f"  {c}: Đã có {n} ảnh flow - bỏ qua"))
+                        skipped += 1
+                        continue
+
+                # Tạo biến thể
+                self.after_safe(lambda c=code, i=i, t=len(product_codes):
+                    self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo ảnh flow..."))
+
+                try:
+                    generated = flow_gen.generate_variations(
+                        product_code=code,
+                        num_variations=4
+                    )
+                    if generated:
+                        processed += 1
+                        self.after_safe(lambda c=code, n=len(generated):
+                            self.add_log(f"  ✅ {c}: Đã tạo {n} ảnh flow"))
+                    else:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không tạo được ảnh"))
+
+                except Exception as e:
+                    self.after_safe(lambda c=code, e=str(e):
+                        self.add_log(f"  ❌ {c}: Lỗi - {e}"))
+
+            # Thống kê
+            self.after_safe(lambda: self.add_log(f"\n📊 Hoàn thành: {processed} sản phẩm, bỏ qua: {skipped}"))
+
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi Flow: {error_msg}"))
+            traceback.print_exc()
+
+        finally:
+            self.after_safe(self._on_flow_complete)
+
+    def _on_flow_complete(self):
+        """Callback khi hoàn thành Flow"""
+        self.is_running = False
+        self.shopee_btn.configure(state="normal")
+        self.script_btn.configure(state="normal")
+        self.start_btn.configure(state="normal")
+        self.full_btn.configure(state="normal")
+        self.filter_btn.configure(state="normal")
+        self.edit_btn.configure(state="normal")
+        self.flow_btn.configure(state="normal")
+        self.sora_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+        self.add_log("✓ Flow hoàn thành")
 
     # ===== EDIT VIDEOS =====
 
@@ -2431,6 +2593,8 @@ class MainTab:
         self.full_btn.configure(state="disabled")
         self.filter_btn.configure(state="disabled")
         self.edit_btn.configure(state="disabled")
+        self.flow_btn.configure(state="disabled")
+        self.sora_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
         self.clear_table()
@@ -2609,6 +2773,8 @@ class MainTab:
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
         self.edit_btn.configure(state="normal")
+        self.flow_btn.configure(state="normal")
+        self.sora_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     def cleanup_browsers(self):

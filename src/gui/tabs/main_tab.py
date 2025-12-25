@@ -1273,6 +1273,16 @@ class MainTab:
                 code = item["code"]
                 code_folder = input_folder / code
 
+                # Output folder cho anh da tach
+                extract_folder = code_folder / "extracted"
+
+                # Kiểm tra xem đã tách chưa (thư mục extracted đã có ảnh)
+                if extract_folder.exists():
+                    existing_extracted = list(extract_folder.glob("*.png")) + list(extract_folder.glob("*.jpg")) + list(extract_folder.glob("*.webp"))
+                    if existing_extracted:
+                        self.after_safe(lambda c=code, n=len(existing_extracted): self.add_log(f"  {c}: Đã tách ({n} ảnh) - bỏ qua"))
+                        continue
+
                 # Lay danh sach anh
                 images = get_images_in_folder(str(code_folder))
                 if not images:
@@ -1280,9 +1290,6 @@ class MainTab:
                     continue
 
                 self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
-
-                # Output folder cho anh da tach
-                extract_folder = code_folder / "extracted"
 
                 # Tach san pham
                 if first_extract:

@@ -36,9 +36,6 @@ class SettingsTab:
         # Gemini API section
         self.setup_gemini_config()
 
-        # Shopee Profile section
-        self.setup_shopee_profile()
-
         # Advanced section
         self.setup_advanced_config()
 
@@ -401,104 +398,6 @@ class SettingsTab:
         else:
             self.gemini_key_entry.configure(show="*")
 
-    def setup_shopee_profile(self):
-        """Shopee profile management"""
-        frame = ctk.CTkFrame(self.scroll_frame)
-        frame.pack(fill="x", padx=10, pady=10)
-
-        # Header
-        header = ctk.CTkFrame(frame, fg_color="transparent")
-        header.pack(fill="x", padx=15, pady=(15, 10))
-
-        ctk.CTkLabel(
-            header,
-            text="🛒 Shopee Profile",
-            font=ctk.CTkFont(size=16, weight="bold")
-        ).pack(side="left")
-
-        ctk.CTkButton(
-            header,
-            text="🔑 Login Shopee",
-            command=self.open_shopee_login,
-            width=120,
-            fg_color="#FF5722"
-        ).pack(side="right")
-
-        # Description
-        ctk.CTkLabel(
-            frame,
-            text="Profile riêng của tool để đăng nhập Shopee. Đăng nhập 1 lần, dùng nhiều lần.",
-            font=ctk.CTkFont(size=12),
-            text_color="gray"
-        ).pack(anchor="w", padx=15, pady=(0, 10))
-
-        # Profile path
-        path_row = ctk.CTkFrame(frame, fg_color="transparent")
-        path_row.pack(fill="x", padx=15, pady=(0, 15))
-
-        ctk.CTkLabel(path_row, text="Profile path:").pack(side="left")
-
-        # Get default path
-        home = Path.home()
-        default_shopee_profile = str(home / ".shopee_tool_profile")
-
-        self.shopee_profile_entry = ctk.CTkEntry(path_row, width=350)
-        self.shopee_profile_entry.pack(side="left", padx=10)
-        self.shopee_profile_entry.insert(0, getattr(self.app.config, 'shopee_profile_path', default_shopee_profile))
-
-        ctk.CTkButton(
-            path_row,
-            text="📁",
-            width=40,
-            command=lambda: self.browse_folder(self.shopee_profile_entry)
-        ).pack(side="left")
-
-    def open_shopee_login(self):
-        """Mở Chrome để login Shopee"""
-        import subprocess
-
-        # Lấy profile path
-        profile_path = self.shopee_profile_entry.get().strip()
-        if not profile_path:
-            home = Path.home()
-            profile_path = str(home / ".shopee_tool_profile")
-
-        # Tạo thư mục nếu chưa có
-        Path(profile_path).mkdir(parents=True, exist_ok=True)
-
-        chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-
-        def run_chrome():
-            try:
-                self.app.log(f"Mở Chrome để login Shopee...")
-                self.app.log(f"   Profile: {profile_path}")
-
-                cmd = [
-                    chrome_path,
-                    f"--user-data-dir={profile_path}",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    "--window-size=1200,800",
-                    "https://shopee.vn"
-                ]
-
-                subprocess.Popen(cmd, shell=False)
-                self.app.log("Chrome đã mở. Hãy đăng nhập Shopee và đóng browser khi xong.")
-
-            except Exception as e:
-                self.app.log(f"Lỗi mở Chrome: {e}", "ERROR")
-
-        threading.Thread(target=run_chrome, daemon=True).start()
-
-        messagebox.showinfo(
-            "Login Shopee",
-            f"Đang mở Chrome...\n\n"
-            f"Profile: {profile_path}\n\n"
-            "1. Đăng nhập tài khoản Shopee\n"
-            "2. Đóng browser khi xong\n"
-            "3. Lần sau tool sẽ tự dùng tài khoản này"
-        )
-
     def setup_advanced_config(self):
         """Advanced settings"""
         frame = ctk.CTkFrame(self.scroll_frame)
@@ -617,9 +516,6 @@ class SettingsTab:
 
         # Chrome visibility
         self.app.config.show_chrome = self.show_chrome_var.get()
-
-        # Shopee profile
-        self.app.config.shopee_profile_path = self.shopee_profile_entry.get()
 
         # Save
         self.app.save_config()

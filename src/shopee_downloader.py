@@ -665,27 +665,24 @@ class ShopeeDownloader:
                 if not chrome_path:
                     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
-                # Dùng profile mặc định nếu không có
-                if not profile_path:
-                    profile_path = r"C:\Users\trant\AppData\Local\Google\Chrome\User Data\Profile 4"
+                # Tạo profile riêng cho tool (không dùng profile Chrome cá nhân)
+                # Profile này thuộc về tool, user có thể đăng nhập tài khoản riêng
+                home = Path.home()
+                tool_profile = home / ".shopee_tool_profile"
+                tool_profile.mkdir(parents=True, exist_ok=True)
 
                 console.print(f"[dim]Chrome: {chrome_path}[/]")
-                console.print(f"[dim]Profile: {profile_path}[/]")
-
-                # Tách user-data-dir và profile-directory
-                profile = Path(profile_path)
-                user_data_dir = str(profile.parent)  # C:\Users\...\User Data
-                profile_dir = profile.name  # Profile 4
+                console.print(f"[dim]Tool Profile: {tool_profile}[/]")
 
                 # Mở Chrome với remote debugging để Selenium kết nối
                 debug_port = 9222
                 cmd = [
                     chrome_path,
-                    f"--user-data-dir={user_data_dir}",
-                    f"--profile-directory={profile_dir}",
+                    f"--user-data-dir={tool_profile}",
                     f"--remote-debugging-port={debug_port}",
                     "--no-first-run",
                     "--no-default-browser-check",
+                    "--window-size=1920,1080",
                     url
                 ]
 
@@ -705,6 +702,7 @@ class ShopeeDownloader:
                 try:
                     self.driver = webdriver.Chrome(options=options)
                     console.print(f"[green]Đã kết nối Chrome![/]")
+                    console.print(f"[cyan]💡 Lần đầu hãy đăng nhập Shopee, tool sẽ nhớ phiên đăng nhập[/]")
                 except Exception as e:
                     console.print(f"[red]Lỗi kết nối: {e}[/]")
                     console.print(f"[yellow]Đóng Chrome và thử lại[/]")

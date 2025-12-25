@@ -134,170 +134,54 @@ class MainTab:
         )
         action_frame.pack(fill="x", pady=(0, 12))
 
-        # Left: buttons
-        btn_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
-        btn_frame.pack(side="left", padx=15, pady=12)
+        # Left: buttons container
+        btn_container = ctk.CTkFrame(action_frame, fg_color="transparent")
+        btn_container.pack(side="left", padx=15, pady=8)
 
-        # Nút Login Shopee - để đăng nhập và lưu cookies
-        self.login_btn = ctk.CTkButton(
-            btn_frame,
-            text="Login",
-            command=self.login_shopee,
-            width=60,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#6B7280",  # Gray
-            hover_color="#4B5563",
-            text_color="white"
-        )
-        self.login_btn.pack(side="left", padx=(0, 5))
+        # === HÀNG TRÊN: Chạy Full, Dừng, Browser ===
+        top_row = ctk.CTkFrame(btn_container, fg_color="transparent")
+        top_row.pack(fill="x", pady=(0, 6))
 
-        # Nút Tải ảnh - Orange/Amber
-        self.shopee_btn = ctk.CTkButton(
-            btn_frame,
-            text="Tải ảnh",
-            command=self.download_shopee_images,
-            width=90,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color=self.COLORS["warning"],
-            hover_color=self.COLORS["warning_hover"],
-            text_color="white"
-        )
-        self.shopee_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Tách SP (Gemini) - Cyan/Teal
-        self.extract_btn = ctk.CTkButton(
-            btn_frame,
-            text="Tách SP",
-            command=self.start_extract_process,
-            width=80,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#0891B2",  # Cyan
-            hover_color="#0E7490",
-            text_color="white"
-        )
-        self.extract_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Lọc ảnh - Pink (sau Tải ảnh)
-        self.filter_btn = ctk.CTkButton(
-            btn_frame,
-            text="Lọc ảnh",
-            command=self.filter_images,
-            width=80,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#EC4899",  # Pink
-            hover_color="#DB2777",
-            text_color="white"
-        )
-        self.filter_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Làm kịch bản - Purple
-        self.script_btn = ctk.CTkButton(
-            btn_frame,
-            text="Làm kịch bản",
-            command=self.create_scripts,
-            width=120,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#8B5CF6",  # Purple
-            hover_color="#7C3AED",
-            text_color="white"
-        )
-        self.script_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Tạo Video (Grok) - Green/Success
-        self.start_btn = ctk.CTkButton(
-            btn_frame,
-            text="Grok",
-            command=self.start_process,
-            width=80,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color=self.COLORS["success"],
-            hover_color=self.COLORS["success_hover"],
-            text_color="white"
-        )
-        self.start_btn.pack(side="left", padx=(0, 5))
-
-        # Nút Tạo Video SORA - Gradient Purple/Blue
-        self.sora_btn = ctk.CTkButton(
-            btn_frame,
-            text="SORA",
-            command=self.start_sora_process,
-            width=80,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#7C3AED",  # Purple
-            hover_color="#6D28D9",
-            text_color="white"
-        )
-        self.sora_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Edit - Dark Cyan (trước Chạy Full)
-        self.edit_btn = ctk.CTkButton(
-            btn_frame,
-            text="Edit",
-            command=self.edit_videos,
-            width=80,
-            height=40,
-            corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#0D9488",  # Teal
-            hover_color="#0F766E",
-            text_color="white"
-        )
-        self.edit_btn.pack(side="left", padx=(0, 10))
-
-        # Nút Chạy Full - Cyan
+        # Nút Chạy Full - Cyan (nổi bật)
         self.full_btn = ctk.CTkButton(
-            btn_frame,
-            text="Chạy Full",
+            top_row,
+            text="▶ Chạy Full",
             command=self.run_full_workflow,
-            width=100,
-            height=40,
+            width=120,
+            height=38,
             corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
             fg_color="#0891B2",  # Cyan
             hover_color="#0E7490",
             text_color="white"
         )
-        self.full_btn.pack(side="left", padx=(0, 10))
+        self.full_btn.pack(side="left", padx=(0, 8))
 
         # Nút Dừng - Red/Danger
         self.stop_btn = ctk.CTkButton(
-            btn_frame,
-            text="Dừng",
+            top_row,
+            text="⏹ Dừng",
             command=self.stop_process,
-            width=80,
-            height=40,
+            width=100,
+            height=38,
             corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
             fg_color=self.COLORS["danger"],
             hover_color=self.COLORS["danger_hover"],
             text_color="white",
             state="disabled"
         )
-        self.stop_btn.pack(side="left", padx=(0, 10))
+        self.stop_btn.pack(side="left", padx=(0, 8))
 
         # Nút Browser - Outline style
         self.show_btn = ctk.CTkButton(
-            btn_frame,
-            text="Browser",
+            top_row,
+            text="🌐 Browser",
             command=self.show_browser,
-            width=80,
-            height=40,
+            width=100,
+            height=38,
             corner_radius=8,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
+            font=ctk.CTkFont(family="Segoe UI", size=13),
             fg_color="transparent",
             border_width=2,
             border_color=self.COLORS["primary"],
@@ -305,6 +189,130 @@ class MainTab:
             hover_color=(self.COLORS["bg_light"], self.COLORS["bg_dark"])
         )
         self.show_btn.pack(side="left")
+
+        # === HÀNG DƯỚI: Các nút lẻ ===
+        bottom_row = ctk.CTkFrame(btn_container, fg_color="transparent")
+        bottom_row.pack(fill="x")
+
+        # Nút Login Shopee
+        self.login_btn = ctk.CTkButton(
+            bottom_row,
+            text="Login",
+            command=self.login_shopee,
+            width=55,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#6B7280",
+            hover_color="#4B5563",
+            text_color="white"
+        )
+        self.login_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Tải ảnh
+        self.shopee_btn = ctk.CTkButton(
+            bottom_row,
+            text="Tải ảnh",
+            command=self.download_shopee_images,
+            width=70,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.COLORS["warning"],
+            hover_color=self.COLORS["warning_hover"],
+            text_color="white"
+        )
+        self.shopee_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Tách SP (Gemini)
+        self.extract_btn = ctk.CTkButton(
+            bottom_row,
+            text="Tách SP",
+            command=self.start_extract_process,
+            width=65,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#0891B2",
+            hover_color="#0E7490",
+            text_color="white"
+        )
+        self.extract_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Lọc ảnh
+        self.filter_btn = ctk.CTkButton(
+            bottom_row,
+            text="Lọc",
+            command=self.filter_images,
+            width=50,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#EC4899",
+            hover_color="#DB2777",
+            text_color="white"
+        )
+        self.filter_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Làm kịch bản
+        self.script_btn = ctk.CTkButton(
+            bottom_row,
+            text="Script",
+            command=self.create_scripts,
+            width=55,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#8B5CF6",
+            hover_color="#7C3AED",
+            text_color="white"
+        )
+        self.script_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Grok
+        self.start_btn = ctk.CTkButton(
+            bottom_row,
+            text="Grok",
+            command=self.start_process,
+            width=55,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.COLORS["success"],
+            hover_color=self.COLORS["success_hover"],
+            text_color="white"
+        )
+        self.start_btn.pack(side="left", padx=(0, 4))
+
+        # Nút SORA
+        self.sora_btn = ctk.CTkButton(
+            bottom_row,
+            text="SORA",
+            command=self.start_sora_process,
+            width=55,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#7C3AED",
+            hover_color="#6D28D9",
+            text_color="white"
+        )
+        self.sora_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Edit
+        self.edit_btn = ctk.CTkButton(
+            bottom_row,
+            text="Edit",
+            command=self.edit_videos,
+            width=50,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#0D9488",
+            hover_color="#0F766E",
+            text_color="white"
+        )
+        self.edit_btn.pack(side="left")
 
         # Right: stats với style đẹp hơn
         stats_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
@@ -732,11 +740,10 @@ class MainTab:
         thread.start()
 
     def _run_login_shopee(self):
-        """Background thread mở browser để login"""
+        """Background thread mở browser để login - dùng undetected_chromedriver"""
         try:
+            import undetected_chromedriver as uc
             from ...shopee_downloader import ShopeeDownloader
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
 
             # Browser profile từ Settings
             chrome_path = None
@@ -747,46 +754,32 @@ class MainTab:
                 profile_path = first_profile.get("profile_path")
                 self.after_safe(lambda: self.add_log(f"📱 Dùng profile: {first_profile.get('name', 'Default')}"))
 
-            # Tạo downloader với browser HIỆN (không headless)
+            # Tạo downloader
             self.shopee_downloader = ShopeeDownloader(
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False  # Hiện browser để user đăng nhập
+                headless=False
             )
 
-            # Setup Chrome options - DÙNG PROFILE ĐÃ LƯU
-            options = Options()
-
-            # Sử dụng Chrome profile từ Settings (đã đăng nhập)
+            # Tạo thư mục profile nếu chưa có
             if profile_path:
                 from pathlib import Path
-                profile = Path(profile_path)
-                if profile.exists():
-                    self.after_safe(lambda: self.add_log(f"📁 Profile path: {profile_path}"))
-                    options.add_argument(f"--user-data-dir={profile}")
-                else:
-                    self.after_safe(lambda: self.add_log(f"⚠️ Profile không tồn tại: {profile_path}"))
+                Path(profile_path).mkdir(parents=True, exist_ok=True)
+                self.after_safe(lambda: self.add_log(f"📁 Profile path: {profile_path}"))
 
-            # Đường dẫn Chrome executable
-            if chrome_path:
-                from pathlib import Path
-                if Path(chrome_path).exists():
-                    options.binary_location = chrome_path
+            # Dùng undetected_chromedriver để bypass captcha
+            options = uc.ChromeOptions()
 
-            # Window settings
-            options.add_argument("--window-size=1200,800")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
+            # Tạo driver với undetected_chromedriver
+            driver = uc.Chrome(
+                options=options,
+                user_data_dir=profile_path,
+            )
 
-            # Tạo driver với profile đã lưu
-            self.shopee_downloader.driver = webdriver.Chrome(options=options)
-
-            driver = self.shopee_downloader.driver
+            self.shopee_downloader.driver = driver
             driver.set_window_position(100, 100)
+            driver.set_window_size(1200, 800)
 
             # Vào trang Shopee
             driver.get("https://shopee.vn")
@@ -900,7 +893,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=True
+                headless=False
             )
 
             for item in pending:
@@ -1059,7 +1052,7 @@ class MainTab:
                 stop_flag=self.stop_flag,
                 on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(msg)),
                 on_progress=lambda cur, tot, msg: None,
-                headless=True,
+                headless=False,
             )
 
             self.current_worker = worker
@@ -1122,7 +1115,7 @@ class MainTab:
             output_dir=self.app.config.input_folder,
             chrome_path=chrome_path,
             profile_path=profile_path,
-            headless=True
+            headless=False
         )
 
         input_folder = Path(self.app.config.input_folder)
@@ -1269,7 +1262,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=True,
+                headless=False,
             )
             self.current_gemini = gemini
 
@@ -1414,7 +1407,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
-                headless=True,
+                headless=False,
             )
             self.current_sora = sora  # Lưu để toggle visibility
 
@@ -1851,7 +1844,7 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=True
+                headless=False
             )
 
             input_folder = Path(self.app.config.input_folder)
@@ -2087,7 +2080,7 @@ class MainTab:
                     stop_flag=self.stop_flag,
                     on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(f"  [Video] {msg}")),
                     on_progress=lambda cur, tot, msg: None,
-                    headless=True,
+                    headless=False,
                 )
 
                 self.current_worker = worker
@@ -2150,12 +2143,12 @@ class MainTab:
                     chrome_path = first_profile.get("chrome_path")
                     profile_path = first_profile.get("profile_path")
 
-                # Khởi tạo SORA (headless=True để ẩn khi chờ video)
+                # Khởi tạo SORA (headless=False để hiện Chrome)
                 sora = SoraAutomation(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
                     output_folder=str(output_folder),
-                    headless=True,
+                    headless=False,
                 )
                 self.current_sora = sora  # Lưu để toggle visibility
 

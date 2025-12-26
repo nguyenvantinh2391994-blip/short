@@ -29,7 +29,7 @@ class ChromeTokenExtractor:
         chrome_path: str,
         profile_path: str,
         headless: bool = False,
-        timeout: int = 60,
+        timeout: int = 120,
         debug_port: int = None
     ):
         """
@@ -153,7 +153,7 @@ class ChromeTokenExtractor:
         const originalFetch = window.fetch;
         window.fetch = function(...args) {
             const [url, options] = args;
-            if (url && url.includes('aisandbox-pa.googleapis.com') && url.includes('flowMedia')) {
+            if (url && url.includes('aisandbox-pa.googleapis.com')) {
                 const headers = options?.headers || {};
                 const auth = headers['Authorization'] || headers['authorization'];
                 if (auth && auth.startsWith('Bearer ')) {
@@ -162,6 +162,7 @@ class ChromeTokenExtractor:
                         url: url,
                         timestamp: Date.now()
                     });
+                    console.log('[VE3] Captured token from fetch:', url.substring(0, 80));
                 }
             }
             return originalFetch.apply(this, args);
@@ -178,7 +179,6 @@ class ChromeTokenExtractor:
         XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
             if (this.__ve3_url__ &&
                 this.__ve3_url__.includes('aisandbox-pa.googleapis.com') &&
-                this.__ve3_url__.includes('flowMedia') &&
                 (name.toLowerCase() === 'authorization') &&
                 value.startsWith('Bearer ')) {
                 window.__ve3_captured_tokens__.push({
@@ -186,9 +186,12 @@ class ChromeTokenExtractor:
                     url: this.__ve3_url__,
                     timestamp: Date.now()
                 });
+                console.log('[VE3] Captured token from XHR:', this.__ve3_url__.substring(0, 80));
             }
             return originalXHRSetHeader.apply(this, arguments);
         };
+
+        console.log('[VE3] Token capture scripts injected');
         """
         try:
             self.driver.execute_script(intercept_js)
@@ -254,46 +257,226 @@ class ChromeTokenExtractor:
 
         return None, None
 
-    def _trigger_image_generation(self):
-        """Trigger một request tạo ảnh để capture token."""
+    def _click_element_by_text(self, text: str, tag: str = "*", timeout: int = 5) -> bool:
+        """Click element chứa text cụ thể."""
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
 
         try:
-            time.sleep(3)
+            xpath = f"//{tag}[contains(text(), '{text}')]"
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.element_to_be_clickable((By.XPATH, xpath))
+            )
+            element.click()
+            return True
+        except:
+            return False
 
-            selectors = [
-                "button[aria-label*='Generate']",
+    def _click_element_by_selector(self, selector: str, timeout: int = 5) -> bool:
+        """Click element bằng CSS selector."""
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
+        try:
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+            )
+            element.click()
+            return True
+        except:
+            return False
+
+    def _wait_and_type(self, selector: str, text: str, timeout: int = 10) -> bool:
+        """Chờ element và nhập text."""
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.keys import Keys
+
+        try:
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+            )
+            element.clear()
+            element.send_keys(text)
+            return True
+        except:
+            return False
+
+    def _trigger_image_generation(self, callback=None) -> bool:
+        """
+        Thực hiện các bước để trigger tạo ảnh và capture token.
+
+        Các bước:
+        1. Click vào "Dự án mới" / "New project" / "Create"
+        2. Chờ prompt input xuất hiện
+        3. Nhập prompt test
+        4. Click Generate / Tạo
+        5. Chờ request được gửi (token sẽ được capture)
+        """
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.keys import Keys
+
+        try:
+            if callback:
+                callback("Đang tìm nút tạo dự án mới...")
+
+            time.sleep(2)
+
+            # === BƯỚC 1: Click vào nút tạo mới / New Project ===
+            new_project_clicked = False
+
+            # Thử các selector/text khác nhau cho nút "New"
+            new_buttons = [
+                # CSS Selectors
+                "button[aria-label*='New']",
                 "button[aria-label*='Create']",
-                "button:contains('Generate')",
-                "[data-test='generate-button']",
-                ".generate-button",
-                "button.primary",
+                "button[aria-label*='Mới']",
+                "[data-testid='new-project']",
+                "[data-testid='create-button']",
+                ".new-project-button",
+                # Có thể là icon +
+                "button svg[data-icon='plus']",
+                "button[aria-label='Add']",
             ]
 
-            for selector in selectors:
+            for selector in new_buttons:
+                if self._click_element_by_selector(selector, timeout=3):
+                    new_project_clicked = True
+                    if callback:
+                        callback(f"Đã click: {selector}")
+                    break
+
+            # Thử click bằng text
+            if not new_project_clicked:
+                text_options = ["New", "Mới", "Create", "Tạo mới", "+", "New project"]
+                for text in text_options:
+                    if self._click_element_by_text(text, "button", timeout=2):
+                        new_project_clicked = True
+                        if callback:
+                            callback(f"Đã click text: {text}")
+                        break
+
+            time.sleep(2)
+
+            # === BƯỚC 2: Tìm và nhập prompt ===
+            if callback:
+                callback("Đang tìm ô nhập prompt...")
+
+            prompt_entered = False
+            test_prompt = "a beautiful sunset over mountains, professional photo"
+
+            # Thử các selector cho textarea/input prompt
+            prompt_selectors = [
+                "textarea[placeholder*='prompt']",
+                "textarea[placeholder*='Prompt']",
+                "textarea[placeholder*='describe']",
+                "textarea[placeholder*='Describe']",
+                "textarea[placeholder*='Enter']",
+                "textarea[aria-label*='prompt']",
+                "textarea[aria-label*='Prompt']",
+                "input[placeholder*='prompt']",
+                "[contenteditable='true']",
+                "textarea",  # Fallback: any textarea
+            ]
+
+            for selector in prompt_selectors:
                 try:
-                    element = WebDriverWait(self.driver, 5).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                    )
-                    element.click()
-                    return True
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for element in elements:
+                        if element.is_displayed() and element.is_enabled():
+                            element.clear()
+                            element.send_keys(test_prompt)
+                            prompt_entered = True
+                            if callback:
+                                callback(f"Đã nhập prompt vào: {selector}")
+                            break
+                    if prompt_entered:
+                        break
                 except:
                     continue
 
-            try:
-                textarea = self.driver.find_element(By.TAG_NAME, "textarea")
-                textarea.send_keys("test image for token extraction")
-                textarea.submit()
-                return True
-            except:
-                pass
+            if not prompt_entered:
+                if callback:
+                    callback("Không tìm thấy ô nhập prompt, thử tìm bằng XPath...")
+                # Thử XPath
+                try:
+                    textarea = self.driver.find_element(By.XPATH, "//textarea")
+                    textarea.send_keys(test_prompt)
+                    prompt_entered = True
+                except:
+                    pass
 
-            return False
+            time.sleep(1)
+
+            # === BƯỚC 3: Click nút Generate / Tạo ===
+            if callback:
+                callback("Đang tìm nút Generate...")
+
+            generate_clicked = False
+
+            # Thử các selector cho nút Generate
+            generate_selectors = [
+                "button[aria-label*='Generate']",
+                "button[aria-label*='Create']",
+                "button[aria-label*='Tạo']",
+                "button[type='submit']",
+                "[data-testid='generate-button']",
+                "[data-testid='submit-button']",
+                ".generate-button",
+                ".submit-button",
+                "button.primary",
+                "button[class*='primary']",
+            ]
+
+            for selector in generate_selectors:
+                if self._click_element_by_selector(selector, timeout=3):
+                    generate_clicked = True
+                    if callback:
+                        callback(f"Đã click Generate: {selector}")
+                    break
+
+            # Thử click bằng text
+            if not generate_clicked:
+                text_options = ["Generate", "Tạo", "Create", "Submit", "Go", "Gửi"]
+                for text in text_options:
+                    if self._click_element_by_text(text, "button", timeout=2):
+                        generate_clicked = True
+                        if callback:
+                            callback(f"Đã click text: {text}")
+                        break
+
+            # Thử nhấn Enter trong textarea
+            if not generate_clicked and prompt_entered:
+                if callback:
+                    callback("Thử nhấn Enter để submit...")
+                try:
+                    textarea = self.driver.find_element(By.CSS_SELECTOR, "textarea")
+                    textarea.send_keys(Keys.CONTROL + Keys.ENTER)
+                    generate_clicked = True
+                except:
+                    try:
+                        textarea = self.driver.find_element(By.CSS_SELECTOR, "textarea")
+                        textarea.send_keys(Keys.ENTER)
+                        generate_clicked = True
+                    except:
+                        pass
+
+            if callback:
+                if generate_clicked:
+                    callback("Đã gửi yêu cầu tạo ảnh, đang chờ token...")
+                else:
+                    callback("Không tìm thấy nút Generate, chờ token từ các request khác...")
+
+            return generate_clicked or prompt_entered
 
         except Exception as e:
-            print(f"Error triggering generation: {e}")
+            if callback:
+                callback(f"Lỗi trigger: {str(e)}")
             return False
 
     def extract_token(self, callback=None) -> Tuple[Optional[str], Optional[str], str]:
@@ -320,16 +503,18 @@ class ChromeTokenExtractor:
             self.driver.get(self.FLOW_URL)
             time.sleep(5)
 
+            # Re-inject scripts sau khi navigate
             self._setup_cdp_network_capture()
             self._inject_stealth_scripts()
 
             if callback:
-                callback("Đang chờ đăng nhập (nếu cần)...")
+                callback("Đang chờ trang load...")
 
+            # Check if we need to login
             current_url = self.driver.current_url
             if "accounts.google.com" in current_url:
                 if callback:
-                    callback("Vui lòng đăng nhập Google trong cửa sổ Chrome...")
+                    callback("⚠️ Vui lòng đăng nhập Google trong cửa sổ Chrome...")
 
                 for _ in range(120):
                     time.sleep(1)
@@ -338,36 +523,49 @@ class ChromeTokenExtractor:
                 else:
                     return None, None, "Timeout waiting for login"
 
-            if callback:
-                callback("Đang capture token...")
+                # Re-inject sau khi login
+                time.sleep(3)
+                self._setup_cdp_network_capture()
+                self._inject_stealth_scripts()
 
-            start_time = time.time()
-            while time.time() - start_time < 10:
+            if callback:
+                callback("Đang thực hiện các bước lấy token...")
+
+            # Đợi trang load hoàn toàn
+            time.sleep(3)
+
+            # Thử capture token từ các request tự động của trang
+            for i in range(5):
                 token, project_id = self._extract_token_from_logs()
                 if token:
                     if callback:
-                        callback("Đã lấy được token!")
+                        callback("✅ Đã lấy được token từ request tự động!")
                     return token, project_id, ""
                 time.sleep(1)
 
+            # Nếu chưa có token, trigger tạo ảnh
             if callback:
-                callback("Đang trigger request để lấy token...")
+                callback("Đang trigger tạo ảnh để lấy token...")
 
-            self._trigger_image_generation()
+            self._trigger_image_generation(callback)
+
+            # Chờ và capture token
+            if callback:
+                callback("Đang chờ capture token...")
 
             start_time = time.time()
             while time.time() - start_time < self.timeout:
                 token, project_id = self._extract_token_from_logs()
                 if token:
                     if callback:
-                        callback("Đã lấy được token!")
+                        callback("✅ Đã lấy được token!")
                     return token, project_id, ""
-                time.sleep(1)
+                time.sleep(2)
 
-            error = "Không thể capture được token. Thử tạo một ảnh thủ công trên trang Flow."
+            error = "Không thể capture được token. Hãy thử tạo ảnh thủ công trên trang Flow."
 
         except ImportError as e:
-            error = f"Thiếu thư viện: {e}. Chạy: pip install selenium webdriver-manager"
+            error = f"Thiếu thư viện: {e}. Chạy: pip install selenium undetected-chromedriver webdriver-manager"
         except Exception as e:
             error = f"Lỗi: {str(e)}"
         finally:

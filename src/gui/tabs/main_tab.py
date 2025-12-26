@@ -2487,7 +2487,6 @@ class MainTab:
             extractor = ChromeTokenExtractor(
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=False,
                 timeout=120
             )
 

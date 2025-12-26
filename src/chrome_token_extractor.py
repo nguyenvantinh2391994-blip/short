@@ -2,7 +2,7 @@
 VE3 Tool - Chrome Token Extractor
 =================================
 Tự động lấy Bearer Token từ Google Flow theo flow:
-1. Mở Chrome với profile đã login
+1. Mở Chrome với profile đã login (dùng chrome_manager chung)
 2. Inject script capture token
 3. Click "Dự án mới"
 4. Chọn mode "Tạo hình ảnh"
@@ -11,11 +11,20 @@ Tự động lấy Bearer Token từ Google Flow theo flow:
 """
 
 import time
-import subprocess
-import platform
 from pathlib import Path
 from typing import Optional, Tuple
 import threading
+
+try:
+    from rich.console import Console
+    console = Console()
+except ImportError:
+    class Console:
+        def print(self, *args, **kwargs):
+            print(*args)
+    console = Console()
+
+from .chrome_manager import chrome_manager
 
 # Token capture script - inject vào page để hook fetch
 TOKEN_CAPTURE_SCRIPT = """
@@ -38,13 +47,14 @@ window._tk=null;window._pj=null;
   };
   console.log('[TOKEN] Capture script injected');
 })();
+copy('INJECTED');
 """
 
 
 class ChromeTokenExtractor:
     """
     Tự động lấy Bearer Token từ Google Flow.
-    Sử dụng PyAutoGUI để tự động hóa các thao tác UI.
+    Sử dụng chrome_manager chung như Gemini/Grok.
     """
 
     FLOW_URL = "https://labs.google/fx/vi/tools/flow"
@@ -58,82 +68,35 @@ class ChromeTokenExtractor:
         self.chrome_path = chrome_path
         self.profile_path = profile_path
         self.timeout = timeout
-        self.driver = None
         self.bearer_token = None
         self.project_id = None
 
-        # Xử lý profile path
-        profile_path_obj = Path(profile_path)
-        if (profile_path_obj.parent / "Local State").exists():
-            # System Chrome profile (e.g., "Profile 2" trong User Data)
-            self.user_data_dir = str(profile_path_obj.parent)
-            self.profile_name = profile_path_obj.name
-        else:
-            # Tool's user-data-dir
-            self.user_data_dir = str(profile_path_obj)
-            self.profile_name = "Default"
-
-    def _create_driver(self):
-        """Tạo Selenium driver với Chrome profile."""
-        try:
-            import undetected_chromedriver as uc
-
-            options = uc.ChromeOptions()
-            options.add_argument(f"--user-data-dir={self.user_data_dir}")
-            options.add_argument(f"--profile-directory={self.profile_name}")
-            options.binary_location = self.chrome_path
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--window-size=1400,900")
-            options.add_argument("--disable-blink-features=AutomationControlled")
-
-            self.driver = uc.Chrome(options=options, use_subprocess=True)
-            return True
-
-        except ImportError:
-            # Fallback to regular selenium
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
-            from selenium.webdriver.chrome.service import Service
-
-            options = Options()
-            options.add_argument(f"--user-data-dir={self.user_data_dir}")
-            options.add_argument(f"--profile-directory={self.profile_name}")
-            options.binary_location = self.chrome_path
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--window-size=1400,900")
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-
-            try:
-                from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=options)
-            except:
-                self.driver = webdriver.Chrome(options=options)
-
-            return True
+        # Cấu hình chrome_manager
+        chrome_manager.set_profile(
+            chrome_path=self.chrome_path,
+            profile_path=self.profile_path,
+        )
 
     def _inject_capture_script(self, callback=None):
         """Bước 2: Inject script capture token."""
         if callback:
             callback("Injecting token capture script...")
 
-        try:
-            self.driver.execute_script(TOKEN_CAPTURE_SCRIPT)
-            time.sleep(1)
-            return True
-        except Exception as e:
+        result = chrome_manager.run_js(TOKEN_CAPTURE_SCRIPT)
+        if result and 'INJECTED' in result:
             if callback:
-                callback(f"Inject error: {e}")
-            return False
+                callback("✅ Script injected")
+            return True
+        else:
+            if callback:
+                callback("⚠️ Script inject - checking...")
+            return True  # Vẫn tiếp tục
 
     def _click_new_project(self, callback=None):
-        """Bước 3: Click 'Dự án mới' button."""
+        """Bước 3: Click 'Dự án mới' button bằng JavaScript."""
         if callback:
             callback("Đang tìm nút 'Dự án mới'...")
 
-        # Thử click bằng JavaScript - tìm button có text "Dự án mới"
         click_script = """
         (function() {
             // Tìm tất cả buttons
@@ -142,7 +105,8 @@ class ChromeTokenExtractor:
                 var text = buttons[i].innerText || buttons[i].textContent || '';
                 if (text.includes('Dự án mới') || text.includes('New project') || text.includes('New')) {
                     buttons[i].click();
-                    return 'clicked: ' + text;
+                    copy('clicked: ' + text);
+                    return;
                 }
             }
 
@@ -150,66 +114,66 @@ class ChromeTokenExtractor:
             var newBtn = document.querySelector('[aria-label*="New"], [aria-label*="Mới"], [aria-label*="Create"]');
             if (newBtn) {
                 newBtn.click();
-                return 'clicked by aria-label';
+                copy('clicked by aria-label');
+                return;
             }
 
-            return 'not found';
+            copy('not found');
         })();
         """
 
-        try:
-            result = self.driver.execute_script(click_script)
-            if callback:
-                callback(f"Click result: {result}")
-            time.sleep(5)  # Đợi project được tạo
-            return 'clicked' in str(result).lower()
-        except Exception as e:
-            if callback:
-                callback(f"Click error: {e}")
-            return False
+        result = chrome_manager.run_js(click_script)
+        if callback:
+            callback(f"Click result: {result}")
+        time.sleep(5)  # Đợi project được tạo
+        return 'clicked' in str(result).lower() if result else False
 
     def _select_image_mode(self, callback=None):
         """Bước 4: Chọn mode 'Tạo hình ảnh'."""
         if callback:
             callback("Đang chọn mode 'Tạo hình ảnh'...")
 
+        # Script để click vào dropdown và chọn option
         select_script = """
         (function() {
             // Tìm dropdown/combobox
             var combo = document.querySelector('[role="combobox"], [role="listbox"], select');
             if (combo) {
                 combo.click();
-
-                // Đợi menu mở
-                setTimeout(function() {
-                    // Tìm option "Tạo hình ảnh"
-                    var options = document.querySelectorAll('[role="option"], [role="menuitem"], option, li');
-                    for (var i = 0; i < options.length; i++) {
-                        var text = options[i].innerText || options[i].textContent || '';
-                        if (text.includes('Tạo hình ảnh') || text.includes('Generate image') ||
-                            text.includes('Text to image') || text.includes('Image')) {
-                            options[i].click();
-                            return 'selected: ' + text;
-                        }
-                    }
-                }, 500);
-
-                return 'opened combo';
+                copy('opened combo');
+                return;
             }
-            return 'no combo found';
+            copy('no combo found');
         })();
         """
 
-        try:
-            result = self.driver.execute_script(select_script)
-            if callback:
-                callback(f"Select result: {result}")
-            time.sleep(3)
-            return True
-        except Exception as e:
-            if callback:
-                callback(f"Select error: {e}")
-            return False
+        result = chrome_manager.run_js(select_script)
+        if callback:
+            callback(f"Combo result: {result}")
+        time.sleep(1)
+
+        # Sau khi mở combo, chọn option
+        option_script = """
+        (function() {
+            var options = document.querySelectorAll('[role="option"], [role="menuitem"], option, li');
+            for (var i = 0; i < options.length; i++) {
+                var text = options[i].innerText || options[i].textContent || '';
+                if (text.includes('Tạo hình ảnh') || text.includes('Generate image') ||
+                    text.includes('Text to image') || text.includes('Image')) {
+                    options[i].click();
+                    copy('selected: ' + text);
+                    return;
+                }
+            }
+            copy('no option found');
+        })();
+        """
+
+        result = chrome_manager.run_js(option_script)
+        if callback:
+            callback(f"Option result: {result}")
+        time.sleep(2)
+        return True
 
     def _send_prompt(self, callback=None):
         """Bước 5: Gửi prompt để trigger API call."""
@@ -223,83 +187,95 @@ class ChromeTokenExtractor:
             // Tìm textarea
             var textarea = document.querySelector('textarea');
             if (!textarea) {{
-                // Thử tìm contenteditable
                 textarea = document.querySelector('[contenteditable="true"]');
             }}
 
             if (textarea) {{
-                // Focus và nhập text
                 textarea.focus();
                 textarea.value = "{prompt}";
-
-                // Trigger input event
                 textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 textarea.dispatchEvent(new Event('change', {{ bubbles: true }}));
-
-                // Nhấn Enter để gửi
-                setTimeout(function() {{
-                    textarea.dispatchEvent(new KeyboardEvent('keydown', {{
-                        key: 'Enter',
-                        code: 'Enter',
-                        keyCode: 13,
-                        which: 13,
-                        bubbles: true
-                    }}));
-
-                    // Thử click nút submit nếu Enter không work
-                    var submitBtn = document.querySelector('button[type="submit"], button[aria-label*="Generate"], button[aria-label*="Send"], button[aria-label*="Gửi"]');
-                    if (submitBtn) {{
-                        submitBtn.click();
-                    }}
-                }}, 500);
-
-                return 'prompt sent';
+                copy('prompt entered');
+            }} else {{
+                copy('no textarea found');
             }}
-            return 'no textarea found';
         }})();
         """
 
-        try:
-            result = self.driver.execute_script(send_script)
-            if callback:
-                callback(f"Send result: {result}")
+        result = chrome_manager.run_js(send_script)
+        if callback:
+            callback(f"Prompt result: {result}")
+        time.sleep(1)
 
-            # Đợi API call được thực hiện (20-30 giây)
-            if callback:
-                callback("Đang đợi API call (20-30s)...")
-            time.sleep(25)
-            return True
-        except Exception as e:
-            if callback:
-                callback(f"Send error: {e}")
-            return False
+        # Nhấn nút submit
+        submit_script = """
+        (function() {
+            var submitBtn = document.querySelector('button[type="submit"], button[aria-label*="Generate"], button[aria-label*="Send"], button[aria-label*="Gửi"]');
+            if (submitBtn) {
+                submitBtn.click();
+                copy('submitted');
+                return;
+            }
+
+            // Thử Enter trong textarea
+            var textarea = document.querySelector('textarea');
+            if (textarea) {
+                textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true
+                }));
+                copy('enter pressed');
+                return;
+            }
+            copy('no submit');
+        })();
+        """
+
+        result = chrome_manager.run_js(submit_script)
+        if callback:
+            callback(f"Submit result: {result}")
+
+        # Đợi API call được thực hiện (20-30 giây)
+        if callback:
+            callback("Đang đợi API call (25s)...")
+        time.sleep(25)
+        return True
 
     def _get_captured_token(self, callback=None):
         """Bước 6: Lấy token đã capture."""
         if callback:
             callback("Đang lấy token...")
 
-        try:
-            result = self.driver.execute_script("""
-                return {
-                    token: window._tk || null,
-                    projectId: window._pj || null
-                };
-            """)
+        get_token_script = """
+        (function() {
+            if (window._tk) {
+                copy('TOKEN:' + window._tk + '|PROJECT:' + (window._pj || 'none'));
+            } else {
+                copy('NO_TOKEN');
+            }
+        })();
+        """
 
-            if result and result.get('token'):
-                self.bearer_token = result['token']
-                self.project_id = result.get('projectId')
-                if callback:
-                    callback(f"✅ Token: {self.bearer_token[:30]}...")
-                return True
-            else:
-                if callback:
-                    callback("Token chưa được capture")
-                return False
-        except Exception as e:
+        result = chrome_manager.run_js(get_token_script)
+
+        if result and result.startswith('TOKEN:'):
+            # Parse result: TOKEN:xxx|PROJECT:yyy
+            parts = result.split('|')
+            token_part = parts[0].replace('TOKEN:', '')
+            project_part = parts[1].replace('PROJECT:', '') if len(parts) > 1 else None
+
+            self.bearer_token = token_part
+            self.project_id = project_part if project_part != 'none' else None
+
             if callback:
-                callback(f"Get token error: {e}")
+                callback(f"✅ Token: {self.bearer_token[:30]}...")
+            return True
+        else:
+            if callback:
+                callback("Token chưa được capture")
             return False
 
     def extract_token(self, callback=None) -> Tuple[Optional[str], Optional[str], str]:
@@ -312,35 +288,17 @@ class ChromeTokenExtractor:
         error = ""
 
         try:
-            # Bước 1: Mở Chrome
+            # Bước 1: Mở Chrome với URL Flow
             if callback:
                 callback("Bước 1: Đang mở Chrome...")
 
-            if not self._create_driver():
-                return None, None, "Không thể tạo Chrome driver"
+            if not chrome_manager.open_chrome(self.FLOW_URL):
+                return None, None, "Không thể mở Chrome"
 
-            # Navigate đến Flow
+            # Đợi trang load (12-15 giây)
             if callback:
-                callback(f"Đang mở {self.FLOW_URL}...")
-            self.driver.get(self.FLOW_URL)
-
-            # Đợi trang load (10-12 giây)
-            if callback:
-                callback("Đợi trang load (12s)...")
-            time.sleep(12)
-
-            # Check login
-            if "accounts.google.com" in self.driver.current_url:
-                if callback:
-                    callback("⚠️ Cần đăng nhập Google trong cửa sổ Chrome...")
-                # Đợi user login (max 2 phút)
-                for i in range(120):
-                    if "labs.google" in self.driver.current_url:
-                        break
-                    time.sleep(1)
-                else:
-                    return None, None, "Timeout đợi đăng nhập"
-                time.sleep(5)
+                callback("Đợi trang load (15s)...")
+            time.sleep(15)
 
             # Bước 2: Inject capture script
             if callback:
@@ -379,24 +337,12 @@ class ChromeTokenExtractor:
 
         except Exception as e:
             error = f"Lỗi: {str(e)}"
-        finally:
-            if self.driver:
-                try:
-                    # Không đóng Chrome ngay để user có thể thao tác thủ công nếu cần
-                    pass
-                except:
-                    pass
 
         return None, None, error
 
     def close(self):
-        """Đóng Chrome driver."""
-        if self.driver:
-            try:
-                self.driver.quit()
-            except:
-                pass
-            self.driver = None
+        """Đóng tab Flow (không đóng Chrome)."""
+        chrome_manager.close_current_tab()
 
     def extract_token_async(self, callback=None, on_complete=None):
         """Lấy token trong background thread."""
@@ -452,5 +398,5 @@ if __name__ == "__main__":
         print(f"❌ FAILED: {error}")
         print("=" * 60)
 
-    input("\nNhấn Enter để đóng Chrome...")
+    input("\nNhấn Enter để đóng tab...")
     extractor.close()

@@ -37,8 +37,9 @@ from .chrome_manager import chrome_manager
 
 # Token capture script - inject vào page để hook fetch
 # Capture: Bearer token, x-browser-validation, recaptchaToken, payload
+# CANCEL original request để recaptchaToken chưa bị dùng
 TOKEN_CAPTURE_SCRIPT = """
-window._tk=null;window._pj=null;window._xbv=null;window._rct=null;window._payload=null;
+window._tk=null;window._pj=null;window._xbv=null;window._rct=null;window._payload=null;window._url=null;
 (function(){
   var f=window.fetch;
   window.fetch=function(u,o){
@@ -60,15 +61,18 @@ window._tk=null;window._pj=null;window._xbv=null;window._rct=null;window._payloa
         console.log('[TOKEN] x-browser-validation captured');
       }
 
+      // Capture URL
+      window._url=s;
+
       // Capture project ID from URL
       var m=s.match(/\\/projects\\/([^\\/]+)\\//);
       if(m) window._pj=m[1];
 
-      // Capture recaptchaToken from body
+      // Capture FULL payload from body
       if(o&&o.body){
         try{
-          var body=typeof o.body==='string'?JSON.parse(o.body):o.body;
-          window._payload=body;
+          window._payload=typeof o.body==='string'?o.body:JSON.stringify(o.body);
+          var body=JSON.parse(window._payload);
           if(body.requests&&body.requests[0]){
             var ctx=body.requests[0].clientContext||{};
             if(ctx.recaptchaToken){
@@ -76,14 +80,22 @@ window._tk=null;window._pj=null;window._xbv=null;window._rct=null;window._payloa
               console.log('[TOKEN] recaptchaToken captured:', window._rct.substring(0,20)+'...');
             }
           }
-        }catch(e){}
+        }catch(e){console.log('[TOKEN] Parse error:',e);}
       }
 
-      console.log('[TOKEN] Full capture done');
+      console.log('[TOKEN] Full capture done - CANCELLING original request');
+
+      // CANCEL original request - return fake success response
+      // Điều này giữ recaptchaToken chưa bị dùng
+      return Promise.resolve(new Response(JSON.stringify({
+        media: [],
+        cancelled: true,
+        message: "Request captured for external use"
+      }), {status: 200, headers: {'Content-Type': 'application/json'}}));
     }
     return f.apply(this,arguments);
   };
-  console.log('[TOKEN] Capture script injected');
+  console.log('[TOKEN] Capture script injected (with request cancellation)');
 })();
 copy('INJECTED');
 """
@@ -113,6 +125,7 @@ class ChromeTokenExtractor:
         self.x_browser_validation = None
         self.recaptcha_token = None
         self.captured_payload = None
+        self.captured_url = None
 
         # Cấu hình chrome_manager
         chrome_manager.set_profile(
@@ -312,7 +325,8 @@ class ChromeTokenExtractor:
                 project: window._pj || null,
                 xbv: window._xbv || null,
                 rct: window._rct || null,
-                payload: window._payload || null
+                payload: window._payload || null,
+                url: window._url || null
             };
             copy(JSON.stringify(result));
         })();
@@ -330,7 +344,8 @@ class ChromeTokenExtractor:
                     self.project_id = data.get('project')
                     self.x_browser_validation = data.get('xbv')
                     self.recaptcha_token = data.get('rct')
-                    self.captured_payload = data.get('payload')
+                    self.captured_payload = data.get('payload')  # Full JSON string
+                    self.captured_url = data.get('url')
 
                     if callback:
                         callback(f"✅ Token: {self.bearer_token[:30]}...")
@@ -338,6 +353,8 @@ class ChromeTokenExtractor:
                             callback(f"✅ x-browser-validation: captured")
                         if self.recaptcha_token:
                             callback(f"✅ recaptchaToken: {self.recaptcha_token[:20]}...")
+                        if self.captured_payload:
+                            callback(f"✅ Full payload: captured")
                     return True
             except:
                 pass
@@ -573,6 +590,236 @@ class ChromeTokenExtractor:
                     callback(f"❌ Download error: {e}")
 
         return downloaded
+
+    # =========================================================================
+    # CALL API WITH CAPTURED PAYLOAD
+    # =========================================================================
+
+    def call_api_with_captured_payload(
+        self,
+        custom_prompt: str = None,
+        output_dir: Path = None,
+        prefix: str = "flow",
+        callback=None
+    ) -> list:
+        """
+        Gọi API trực tiếp với payload đã capture từ Chrome.
+        recaptchaToken chưa bị dùng vì request Chrome đã bị cancel.
+
+        Args:
+            custom_prompt: Prompt mới (nếu muốn thay đổi)
+            output_dir: Thư mục lưu ảnh
+            prefix: Prefix cho tên file
+            callback: Callback để log
+
+        Returns:
+            List of downloaded file paths
+        """
+        import requests
+        import json
+        from datetime import datetime
+
+        if not self.captured_payload:
+            if callback:
+                callback("❌ Chưa có captured payload")
+            return []
+
+        if not self.bearer_token:
+            if callback:
+                callback("❌ Chưa có Bearer token")
+            return []
+
+        # Parse payload
+        try:
+            payload = json.loads(self.captured_payload) if isinstance(self.captured_payload, str) else self.captured_payload
+        except:
+            if callback:
+                callback("❌ Không parse được payload")
+            return []
+
+        # Thay đổi prompt nếu có
+        if custom_prompt and payload.get("requests"):
+            for req in payload["requests"]:
+                req["prompt"] = custom_prompt
+            if callback:
+                callback(f"Đã thay prompt: {custom_prompt[:50]}...")
+
+        # Build URL
+        url = self.captured_url or f"https://aisandbox-pa.googleapis.com/v1/projects/{self.project_id}/flowMedia:batchGenerateImages"
+
+        # Build headers (giống debug script)
+        headers = {
+            "Authorization": f"Bearer {self.bearer_token}",
+            "Content-Type": "text/plain;charset=UTF-8",
+            "Accept": "*/*",
+            "Origin": "https://labs.google",
+            "Referer": "https://labs.google/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        }
+
+        # Add x-browser-validation nếu có
+        if self.x_browser_validation:
+            headers["x-browser-validation"] = self.x_browser_validation
+            headers["x-browser-channel"] = "stable"
+            headers["x-browser-year"] = "2025"
+
+        if callback:
+            callback(f"Calling API: {url[:60]}...")
+
+        try:
+            # Gọi API với data=json.dumps (giống debug script)
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),  # QUAN TRỌNG: data=, không phải json=
+                timeout=120
+            )
+
+            if callback:
+                callback(f"Response status: {response.status_code}")
+
+            if response.status_code == 401:
+                if callback:
+                    callback("❌ Token hết hạn!")
+                return []
+
+            if response.status_code == 403:
+                resp_text = response.text.lower()
+                if "recaptcha" in resp_text:
+                    if callback:
+                        callback("❌ recaptchaToken đã hết hạn - cần tạo ảnh mới trong Chrome")
+                else:
+                    if callback:
+                        callback(f"❌ Forbidden: {response.text[:200]}")
+                return []
+
+            if response.status_code != 200:
+                if callback:
+                    callback(f"❌ Error {response.status_code}: {response.text[:200]}")
+                return []
+
+            # Parse response
+            result = response.json()
+            media_list = result.get("media", [])
+
+            if not media_list:
+                if callback:
+                    callback("⚠️ Không có ảnh trong response")
+                return []
+
+            if callback:
+                callback(f"✅ Nhận được {len(media_list)} ảnh!")
+
+            # Download images
+            if output_dir:
+                output_dir = Path(output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+            downloaded = []
+            for i, media in enumerate(media_list):
+                fife_url = media.get("image", {}).get("generatedImage", {}).get("fifeUrl")
+
+                if fife_url:
+                    try:
+                        if callback:
+                            callback(f"Downloading image {i+1}/{len(media_list)}...")
+
+                        img_resp = requests.get(fife_url, timeout=60)
+                        if img_resp.status_code == 200:
+                            timestamp = datetime.now().strftime("%H%M%S")
+                            filename = f"{prefix}_{timestamp}_{i+1}.png"
+
+                            if output_dir:
+                                filepath = output_dir / filename
+                                with open(filepath, 'wb') as f:
+                                    f.write(img_resp.content)
+                                downloaded.append(str(filepath))
+                                if callback:
+                                    callback(f"✅ Saved: {filename}")
+                    except Exception as e:
+                        if callback:
+                            callback(f"❌ Download error: {e}")
+
+            return downloaded
+
+        except requests.exceptions.Timeout:
+            if callback:
+                callback("❌ Request timeout")
+            return []
+        except Exception as e:
+            if callback:
+                callback(f"❌ Error: {e}")
+            return []
+
+    def trigger_and_capture(self, prompt: str, callback=None) -> bool:
+        """
+        Trigger Chrome để tạo request mới với prompt, capture payload.
+        Request sẽ bị cancel để giữ recaptchaToken.
+
+        Args:
+            prompt: Prompt để gửi
+            callback: Callback để log
+
+        Returns:
+            True nếu capture thành công
+        """
+        if not HAS_PAG:
+            if callback:
+                callback("ERROR: PyAutoGUI not installed")
+            return False
+
+        # Reset captured values
+        self.captured_payload = None
+        self.recaptcha_token = None
+
+        try:
+            # Re-inject capture script
+            self._inject_capture_script(callback)
+            time.sleep(0.5)
+
+            # Focus Chrome
+            chrome_manager._focus_chrome()
+            time.sleep(0.3)
+
+            # Focus textarea
+            focus_script = """
+            (function() {
+                var ta = document.querySelector('textarea');
+                if (ta) { ta.focus(); ta.click(); ta.select(); }
+            })();
+            """
+            chrome_manager.run_js(focus_script)
+            time.sleep(0.5)
+
+            # Clear và paste prompt
+            pag.hotkey("ctrl", "a")
+            time.sleep(0.2)
+            pyperclip.copy(prompt)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.5)
+
+            if callback:
+                callback(f"Đã nhập prompt, đang trigger request...")
+
+            # Nhấn Enter để trigger request (sẽ bị cancel bởi script)
+            pag.press("enter")
+            time.sleep(3)  # Đợi request được trigger và capture
+
+            # Lấy captured values
+            if self._get_captured_token(callback):
+                if self.captured_payload and self.recaptcha_token:
+                    if callback:
+                        callback("✅ Đã capture payload với recaptchaToken mới!")
+                    return True
+
+            if callback:
+                callback("⚠️ Không capture được payload mới")
+            return False
+
+        except Exception as e:
+            if callback:
+                callback(f"Lỗi: {e}")
+            return False
 
     def close(self):
         """Đóng tab Flow (không đóng Chrome)."""

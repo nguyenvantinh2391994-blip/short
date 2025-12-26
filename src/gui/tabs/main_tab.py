@@ -2525,9 +2525,9 @@ class MainTab:
 
             self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(products)} sản phẩm"))
 
-            # === BƯỚC 3: Dùng Chrome automation để tạo ảnh ===
-            # Chrome đã mở từ bước lấy token, giữ nguyên để tạo ảnh
-            self.after_safe(lambda: self.add_log("🌐 Sử dụng Chrome automation để bypass captcha"))
+            # === BƯỚC 3: Tạo ảnh với Chrome trigger + API call ===
+            # Với mỗi sản phẩm: trigger Chrome để capture payload → gọi API trực tiếp
+            self.after_safe(lambda: self.add_log("🌐 Sử dụng Chrome trigger + API call (bypass captcha)"))
 
             # Xử lý từng sản phẩm
             products_dir = Path(self.app.config.input_folder)
@@ -2576,8 +2576,8 @@ class MainTab:
                     self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo ảnh flow..." + (f"\n   Prompt: {p}" if p else "")))
 
                 try:
-                    # Sử dụng Chrome automation để tạo ảnh (bypass captcha)
-                    # Không gọi API trực tiếp vì recaptchaToken đã bị dùng
+                    # Sử dụng Chrome trigger + API call để tạo ảnh
+                    # Flow: trigger Chrome (capture payload, cancel request) → gọi API với payload
 
                     if not flow_prompt:
                         self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không có prompt từ cột I - bỏ qua"))
@@ -2592,25 +2592,26 @@ class MainTab:
                     def chrome_log(msg, c=code):
                         self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
 
-                    # Gửi prompt qua Chrome
-                    success = extractor.generate_image_chrome(flow_prompt, callback=chrome_log)
+                    # BƯỚC 1: Trigger Chrome để capture payload với recaptchaToken mới
+                    # Request sẽ bị cancel để giữ token chưa dùng
+                    if not extractor.trigger_and_capture(flow_prompt, callback=chrome_log):
+                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không capture được payload"))
+                        continue
 
-                    if success:
-                        # Download ảnh từ Chrome
-                        downloaded = extractor.download_generated_images(
-                            output_dir=flow_folder,
-                            prefix=code,
-                            callback=chrome_log
-                        )
+                    # BƯỚC 2: Gọi API trực tiếp với captured payload
+                    downloaded = extractor.call_api_with_captured_payload(
+                        custom_prompt=flow_prompt,
+                        output_dir=flow_folder,
+                        prefix=code,
+                        callback=chrome_log
+                    )
 
-                        if downloaded:
-                            processed += 1
-                            self.after_safe(lambda c=code, n=len(downloaded):
-                                self.add_log(f"  ✅ {c}: Đã tạo {n} ảnh flow"))
-                        else:
-                            self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không download được ảnh"))
+                    if downloaded:
+                        processed += 1
+                        self.after_safe(lambda c=code, n=len(downloaded):
+                            self.add_log(f"  ✅ {c}: Đã tạo {n} ảnh flow"))
                     else:
-                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không tạo được ảnh"))
+                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không tạo được ảnh - có thể cần refresh token"))
 
                 except Exception as e:
                     self.after_safe(lambda c=code, e=str(e):

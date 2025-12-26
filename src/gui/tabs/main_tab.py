@@ -2486,8 +2486,8 @@ class MainTab:
             product_codes = [p.get("code") for p in products if p.get("code")]
             self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(product_codes)} sản phẩm"))
 
-            # Khởi tạo Flow Generator - dùng thư mục products
-            products_base = self.app.config.get("products.images_dir", "products")
+            # Khởi tạo Flow Generator - dùng thư mục input_folder (products)
+            products_base = self.app.config.input_folder
             flow_gen = get_flow_generator(products_base)
 
             # Set log callback

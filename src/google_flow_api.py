@@ -107,13 +107,12 @@ class ImageInput:
             "imageInputType": self.input_type.value
         }
         if self.name:
+            # Dùng media name từ response trước (preferred)
             result["name"] = self.name
         elif self.base64_data:
-            # Google Flow API uses inlineData structure for base64 images
-            result["inlineData"] = {
-                "mimeType": self.mime_type,
-                "data": self.base64_data
-            }
+            # Google Flow API format for base64
+            result["imageBytes"] = self.base64_data
+            result["mimeType"] = self.mime_type
         return result
 
     @classmethod

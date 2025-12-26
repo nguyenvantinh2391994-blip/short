@@ -3,17 +3,16 @@ Flow Generator - Wrapper để tạo ảnh/video từ extracted images
 Sử dụng Google Flow API (GemPix2/Veo3)
 """
 
-import os
-import json
 import time
 from pathlib import Path
 from typing import Optional, List, Dict, Callable
 from datetime import datetime
-from rich.console import Console
 
-from .google_flow_api import get_flow_api, GoogleFlowAPI
-
-console = Console()
+from .google_flow_api import (
+    GoogleFlowAPI, get_flow_api,
+    ImageInput, ImageInputType, AspectRatio,
+    GeneratedImage
+)
 
 
 class FlowGenerator:
@@ -40,21 +39,21 @@ class FlowGenerator:
 
     def _log(self, message: str) -> None:
         """Log message"""
+        # Strip rich markup for plain text logging
+        clean_msg = message.replace("[cyan]", "").replace("[/cyan]", "")
+        clean_msg = clean_msg.replace("[dim]", "").replace("[/dim]", "")
+        clean_msg = clean_msg.replace("[green]", "").replace("[/green]", "")
+        clean_msg = clean_msg.replace("[yellow]", "").replace("[/yellow]", "")
+        clean_msg = clean_msg.replace("[red]", "").replace("[/red]", "")
+        clean_msg = clean_msg.replace("[/]", "")
+
         if self.log_callback:
-            self.log_callback(message)
+            self.log_callback(clean_msg)
         else:
-            console.print(message)
+            print(clean_msg)
 
     def get_extracted_images(self, product_code: str) -> List[Path]:
-        """
-        Lấy danh sách ảnh đã extracted của sản phẩm
-
-        Args:
-            product_code: Mã sản phẩm
-
-        Returns:
-            List đường dẫn file ảnh
-        """
+        """Lấy danh sách ảnh đã extracted của sản phẩm"""
         extracted_folder = self.base_dir / product_code / "extracted"
         if not extracted_folder.exists():
             return []
@@ -66,15 +65,7 @@ class FlowGenerator:
         return sorted(images)
 
     def get_flow_folder(self, product_code: str) -> Path:
-        """
-        Lấy/tạo thư mục flow cho sản phẩm
-
-        Args:
-            product_code: Mã sản phẩm
-
-        Returns:
-            Đường dẫn thư mục flow
-        """
+        """Lấy/tạo thư mục flow cho sản phẩm"""
         flow_folder = self.base_dir / product_code / "flow"
         flow_folder.mkdir(parents=True, exist_ok=True)
         return flow_folder
@@ -102,98 +93,63 @@ class FlowGenerator:
         """
         extracted_images = self.get_extracted_images(product_code)
         if not extracted_images:
-            self._log(f"[yellow]⚠️ {product_code}: Không có ảnh extracted[/]")
+            self._log(f"⚠️ {product_code}: Không có ảnh extracted")
             return []
 
         flow_folder = self.get_flow_folder(product_code)
         generated_files = []
 
-        self._log(f"[cyan]🔄 {product_code}: Đang tạo biến thể từ {len(extracted_images)} ảnh...[/]")
+        self._log(f"🔄 {product_code}: Đang tạo biến thể từ {len(extracted_images)} ảnh...")
+
+        # Map aspect ratio string to enum
+        ar_map = {
+            "1:1": AspectRatio.SQUARE,
+            "16:9": AspectRatio.LANDSCAPE,
+            "9:16": AspectRatio.PORTRAIT,
+            "landscape": AspectRatio.LANDSCAPE,
+            "portrait": AspectRatio.PORTRAIT,
+            "square": AspectRatio.SQUARE
+        }
+        ar_enum = ar_map.get(aspect_ratio.lower(), AspectRatio.SQUARE)
 
         for i, image_path in enumerate(extracted_images, 1):
-            self._log(f"[dim]   Ảnh {i}/{len(extracted_images)}: {image_path.name}[/]")
+            self._log(f"   Ảnh {i}/{len(extracted_images)}: {image_path.name}")
 
             # Tạo prompt nếu chưa có
-            if not prompt:
-                prompt = "product photo, clean background, professional lighting, high quality"
+            actual_prompt = prompt or "product photo, clean background, professional lighting, high quality"
 
-            # Gọi API tạo ảnh
-            image_urls = self.api.generate_images(
-                prompt=prompt,
-                reference_image=str(image_path),
-                num_images=num_variations,
-                aspect_ratio=aspect_ratio,
-                style=style
+            # Tạo ImageInput từ file
+            image_input = ImageInput.from_file(image_path, ImageInputType.REFERENCE)
+
+            # Gọi API tạo ảnh với reference image
+            success, images, error = self.api.generate_images(
+                prompt=actual_prompt,
+                count=num_variations,
+                aspect_ratio=ar_enum,
+                image_inputs=[image_input]
             )
+
+            if not success:
+                self._log(f"   ❌ Lỗi API: {error}")
+                continue
 
             # Download và lưu ảnh
             timestamp = datetime.now().strftime("%H%M%S")
-            for j, url in enumerate(image_urls, 1):
+            for j, gen_image in enumerate(images, 1):
                 output_name = f"{image_path.stem}_flow_{timestamp}_{j}.png"
                 output_path = flow_folder / output_name
 
-                if self.api.download_image(url, str(output_path)):
-                    generated_files.append(str(output_path))
-                    self._log(f"[green]   ✅ Saved: {output_name}[/]")
+                downloaded = self.api.download_image(gen_image, flow_folder, f"{image_path.stem}_flow_{timestamp}_{j}")
+                if downloaded:
+                    generated_files.append(str(downloaded))
+                    self._log(f"   ✅ Saved: {output_name}")
 
             # Rate limiting
             if i < len(extracted_images):
                 time.sleep(2)
 
-        self._log(f"[green]✅ {product_code}: Đã tạo {len(generated_files)} ảnh flow[/]")
+        self._log(f"✅ {product_code}: Đã tạo {len(generated_files)} ảnh flow")
         return generated_files
-
-    def generate_video_from_image(
-        self,
-        product_code: str,
-        image_index: int = 0,
-        prompt: str = "",
-        duration: int = 5
-    ) -> Optional[str]:
-        """
-        Tạo video từ ảnh extracted
-
-        Args:
-            product_code: Mã sản phẩm
-            image_index: Index của ảnh trong extracted
-            prompt: Prompt mô tả video
-            duration: Độ dài video (giây)
-
-        Returns:
-            Đường dẫn video đã tạo
-        """
-        extracted_images = self.get_extracted_images(product_code)
-        if not extracted_images:
-            self._log(f"[yellow]⚠️ {product_code}: Không có ảnh extracted[/]")
-            return None
-
-        if image_index >= len(extracted_images):
-            image_index = 0
-
-        image_path = extracted_images[image_index]
-        flow_folder = self.get_flow_folder(product_code)
-
-        self._log(f"[cyan]🎬 {product_code}: Đang tạo video từ {image_path.name}...[/]")
-
-        if not prompt:
-            prompt = "product showcase video, smooth camera movement, professional lighting"
-
-        video_url = self.api.generate_video(
-            prompt=prompt,
-            reference_image=str(image_path),
-            duration=duration
-        )
-
-        if video_url:
-            timestamp = datetime.now().strftime("%H%M%S")
-            output_name = f"{image_path.stem}_video_{timestamp}.mp4"
-            output_path = flow_folder / output_name
-
-            if self.api.download_video(video_url, str(output_path)):
-                self._log(f"[green]✅ {product_code}: Video saved: {output_name}[/]")
-                return str(output_path)
-
-        return None
 
     def process_products(
         self,
@@ -204,20 +160,7 @@ class FlowGenerator:
         skip_existing: bool = True,
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> Dict[str, List[str]]:
-        """
-        Xử lý nhiều sản phẩm
-
-        Args:
-            product_codes: List mã sản phẩm
-            prompt: Prompt mô tả
-            num_variations: Số biến thể
-            style: Style preset
-            skip_existing: Bỏ qua sản phẩm đã có flow
-            progress_callback: Callback cập nhật progress (current, total)
-
-        Returns:
-            Dict mapping product_code -> list generated files
-        """
+        """Xử lý nhiều sản phẩm"""
         results = {}
         total = len(product_codes)
 
@@ -230,7 +173,7 @@ class FlowGenerator:
                 flow_folder = self.get_flow_folder(code)
                 existing = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
                 if existing:
-                    self._log(f"[dim]⏭️ {code}: Đã có {len(existing)} ảnh flow - bỏ qua[/]")
+                    self._log(f"⏭️ {code}: Đã có {len(existing)} ảnh flow - bỏ qua")
                     results[code] = [str(f) for f in existing]
                     continue
 
@@ -257,6 +200,6 @@ _generator_instance: Optional[FlowGenerator] = None
 def get_flow_generator(base_dir: str = "products") -> FlowGenerator:
     """Get singleton instance của FlowGenerator"""
     global _generator_instance
-    if _generator_instance is None:
+    if _generator_instance is None or str(_generator_instance.base_dir) != base_dir:
         _generator_instance = FlowGenerator(base_dir)
     return _generator_instance

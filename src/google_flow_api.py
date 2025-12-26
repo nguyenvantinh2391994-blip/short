@@ -109,8 +109,11 @@ class ImageInput:
         if self.name:
             result["name"] = self.name
         elif self.base64_data:
-            result["rawImageBytes"] = self.base64_data
-            result["mimeType"] = self.mime_type
+            # Google Flow API uses inlineData structure for base64 images
+            result["inlineData"] = {
+                "mimeType": self.mime_type,
+                "data": self.base64_data
+            }
         return result
 
     @classmethod

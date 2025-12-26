@@ -16,6 +16,15 @@ from typing import Optional, Tuple
 import threading
 
 try:
+    import pyautogui as pag
+    import pyperclip
+    HAS_PAG = True
+except ImportError:
+    HAS_PAG = False
+    pag = None
+    pyperclip = None
+
+try:
     from rich.console import Console
     console = Console()
 except ImportError:
@@ -185,10 +194,15 @@ class ChromeTokenExtractor:
         return True
 
     def _send_prompt(self, callback=None):
-        """Bước 5: Gửi prompt để trigger API call."""
+        """Bước 5: Gửi prompt để trigger API call - dùng PyAutoGUI paste."""
         prompt = "beautiful sunset over ocean with birds"
 
-        # Bước 5a: Focus textarea
+        if not HAS_PAG:
+            if callback:
+                callback("ERROR: PyAutoGUI not installed")
+            return False
+
+        # Bước 5a: Focus textarea bằng JS
         if callback:
             callback("Đang focus textarea...")
 
@@ -210,59 +224,40 @@ class ChromeTokenExtractor:
             callback(f"Focus: {result}")
         time.sleep(1)
 
-        # Bước 5b: Set prompt value
+        # Bước 5b: Paste prompt bằng PyAutoGUI (giống SORA)
         if callback:
-            callback("Đang nhập prompt...")
+            callback("Đang paste prompt...")
 
-        set_prompt_script = f"""
-        (function() {{
-            var ta = document.querySelector('textarea');
-            if (!ta) {{
-                copy('no textarea');
-                return;
-            }}
-            ta.value = "{prompt}";
-            ta.focus();
-            ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            copy('prompt set');
-        }})();
-        """
+        try:
+            # Focus Chrome window trước
+            chrome_manager._focus_chrome()
+            time.sleep(0.3)
 
-        result = chrome_manager.run_js(set_prompt_script)
-        if callback:
-            callback(f"Prompt: {result}")
+            # Copy prompt vào clipboard và paste
+            pyperclip.copy(prompt)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.5)
+
+            if callback:
+                callback("Đã paste prompt")
+        except Exception as e:
+            if callback:
+                callback(f"Lỗi paste: {e}")
+            return False
+
         time.sleep(1)
 
-        # Bước 5c: Click nút gửi hoặc nhấn Enter
+        # Bước 5c: Nhấn Enter để gửi (giống SORA)
         if callback:
-            callback("Đang gửi...")
+            callback("Đang gửi (Enter)...")
 
-        submit_script = """
-        (function() {
-            // Tìm nút gửi
-            var btns = document.querySelectorAll('button');
-            for (var btn of btns) {
-                var ariaLabel = btn.getAttribute('aria-label') || '';
-                if (ariaLabel.includes('Gửi') || ariaLabel.includes('Send')) {
-                    btn.click();
-                    copy('send button clicked');
-                    return;
-                }
-            }
-            // Fallback: Enter key
-            var ta = document.querySelector('textarea');
-            if (ta) {
-                ta.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', keyCode: 13, bubbles: true}));
-                copy('enter pressed');
-                return;
-            }
-            copy('no submit');
-        })();
-        """
-
-        result = chrome_manager.run_js(submit_script)
-        if callback:
-            callback(f"Submit: {result}")
+        try:
+            pag.press("enter")
+            if callback:
+                callback("Đã nhấn Enter")
+        except Exception as e:
+            if callback:
+                callback(f"Lỗi Enter: {e}")
 
         # Đợi API call được thực hiện (25-30 giây)
         if callback:

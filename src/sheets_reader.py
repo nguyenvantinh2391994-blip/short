@@ -274,7 +274,8 @@ class SheetsReader:
         self,
         status_column: str = "E",
         prompt_column: str = "F",
-        sora_prompt_column: str = "F"
+        sora_prompt_column: str = "F",
+        flow_prompt_column: str = "I"
     ) -> List[Dict]:
         """Lấy các sản phẩm có cột trạng thái trống (chưa làm video)
 
@@ -282,9 +283,10 @@ class SheetsReader:
             status_column: Cột trạng thái (mặc định E)
             prompt_column: Cột chứa prompt video (mặc định F)
             sora_prompt_column: Cột chứa prompt SORA (mặc định F - dùng chung)
+            flow_prompt_column: Cột chứa prompt Flow (mặc định I)
 
         Returns:
-            List[Dict]: Danh sách {row, code, prompt, sora_prompt, data}
+            List[Dict]: Danh sách {row, code, prompt, sora_prompt, flow_prompt, data}
         """
         if not self.sheet:
             if not self.open_spreadsheet():
@@ -303,6 +305,7 @@ class SheetsReader:
             status_col_idx = ord(status_column.upper()) - ord('A')
             prompt_col_idx = ord(prompt_column.upper()) - ord('A')
             sora_prompt_col_idx = ord(sora_prompt_column.upper()) - ord('A')
+            flow_prompt_col_idx = ord(flow_prompt_column.upper()) - ord('A')
 
             for row_idx, row in enumerate(all_values[1:], start=2):  # Bắt đầu từ row 2
                 # Kiểm tra cột trạng thái có trống không
@@ -315,6 +318,8 @@ class SheetsReader:
                     prompt = row[prompt_col_idx] if len(row) > prompt_col_idx else ""
                     # Lấy prompt SORA từ cột E
                     sora_prompt = row[sora_prompt_col_idx] if len(row) > sora_prompt_col_idx else ""
+                    # Lấy prompt Flow từ cột I
+                    flow_prompt = row[flow_prompt_col_idx] if len(row) > flow_prompt_col_idx else ""
 
                     if code:
                         pending.append({
@@ -322,6 +327,7 @@ class SheetsReader:
                             "code": code,
                             "prompt": prompt.strip(),
                             "sora_prompt": sora_prompt.strip(),
+                            "flow_prompt": flow_prompt.strip(),
                             "data": row
                         })
 

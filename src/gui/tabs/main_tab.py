@@ -2514,14 +2514,17 @@ class MainTab:
 
             self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
 
-            # Lấy danh sách sản phẩm pending
-            products = reader.get_pending_products() or []
+            # Lấy danh sách sản phẩm pending (với flow_prompt từ cột I)
+            products = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column,
+                flow_prompt_column="I"  # Cột I chứa Flow prompt
+            ) or []
             if not products:
                 self.after_safe(lambda: self.add_log("⚠️ Không có sản phẩm nào cần xử lý"))
                 return
 
-            product_codes = [p.get("code") for p in products if p.get("code")]
-            self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(product_codes)} sản phẩm"))
+            self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(products)} sản phẩm"))
 
             # === BƯỚC 3: Khởi tạo Flow Generator với token ===
             products_base = self.app.config.input_folder
@@ -2554,11 +2557,18 @@ class MainTab:
             products_dir = Path(products_base)
             processed = 0
             skipped = 0
+            total = len(products)
 
-            for i, code in enumerate(product_codes, 1):
+            for i, product_data in enumerate(products, 1):
                 if self.stop_flag.is_set():
                     self.after_safe(lambda: self.add_log("⏹️ Đã dừng theo yêu cầu"))
                     break
+
+                code = product_data.get("code", "")
+                flow_prompt = product_data.get("flow_prompt", "")  # Prompt từ cột I
+
+                if not code:
+                    continue
 
                 # Kiểm tra có ảnh extracted chưa
                 extracted_folder = products_dir / code / "extracted"
@@ -2584,13 +2594,15 @@ class MainTab:
                         skipped += 1
                         continue
 
-                # Tạo biến thể
-                self.after_safe(lambda c=code, i=i, t=len(product_codes):
-                    self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo ảnh flow..."))
+                # Log prompt nếu có
+                prompt_preview = flow_prompt[:50] + "..." if len(flow_prompt) > 50 else flow_prompt
+                self.after_safe(lambda c=code, i=i, t=total, p=prompt_preview:
+                    self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo ảnh flow..." + (f"\n   Prompt: {p}" if p else "")))
 
                 try:
                     generated = flow_gen.generate_variations(
                         product_code=code,
+                        prompt=flow_prompt,  # Sử dụng prompt từ cột I
                         num_variations=4
                     )
                     if generated:

@@ -118,15 +118,13 @@ class FlowGenerator:
             # Tạo prompt nếu chưa có
             actual_prompt = prompt or "product photo, clean background, professional lighting, high quality"
 
-            # Tạo ImageInput từ file
-            image_input = ImageInput.from_file(image_path, ImageInputType.REFERENCE)
-
-            # Gọi API tạo ảnh với reference image
+            # Gọi API tạo ảnh KHÔNG dùng reference image (API không hỗ trợ base64 trực tiếp)
+            # TODO: Dùng nanoai.pics proxy để hỗ trợ reference image
             success, images, error = self.api.generate_images(
                 prompt=actual_prompt,
                 count=num_variations,
                 aspect_ratio=ar_enum,
-                image_inputs=[image_input]
+                image_inputs=[]  # Không dùng reference - API không hỗ trợ base64
             )
 
             if not success:

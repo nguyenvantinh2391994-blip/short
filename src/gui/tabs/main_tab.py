@@ -2546,11 +2546,12 @@ class MainTab:
 
             self.after_safe(lambda: self.add_log("✓ Đã kết nối"))
 
-            # Lấy danh sách sản phẩm pending (với flow_prompt từ cột I)
+            # Lấy danh sách sản phẩm pending (với flow_prompt từ cột I và K)
             products = reader.get_pending_products(
                 status_column=self.app.config.status_column,
                 prompt_column=self.app.config.prompt_column,
-                flow_prompt_column="I"  # Cột I chứa Flow prompt
+                flow_prompt_column="I",   # Cột I chứa Flow prompt 1
+                flow_prompt_column_2="K"  # Cột K chứa Flow prompt 2
             ) or []
             if not products:
                 self.after_safe(lambda: self.add_log("⚠️ Không có sản phẩm nào cần xử lý"))
@@ -2574,7 +2575,8 @@ class MainTab:
                     break
 
                 code = product_data.get("code", "")
-                flow_prompt = product_data.get("flow_prompt", "")  # Prompt từ cột I
+                flow_prompt_1 = product_data.get("flow_prompt", "")    # Prompt từ cột I
+                flow_prompt_2 = product_data.get("flow_prompt_2", "")  # Prompt từ cột K
 
                 if not code:
                     continue
@@ -2604,16 +2606,15 @@ class MainTab:
                         continue
 
                 # Log prompt nếu có
-                prompt_preview = flow_prompt[:50] + "..." if len(flow_prompt) > 50 else flow_prompt
-                self.after_safe(lambda c=code, i=i, t=total, p=prompt_preview:
-                    self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo ảnh flow..." + (f"\n   Prompt: {p}" if p else "")))
+                self.after_safe(lambda c=code, i=i, t=total:
+                    self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo 8 ảnh flow (2 prompts x 4 ảnh)..."))
 
                 try:
                     # Sử dụng Chrome trigger + API call để tạo ảnh
                     # Flow: trigger Chrome (capture payload, cancel request) → gọi API với payload
 
-                    if not flow_prompt:
-                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không có prompt từ cột I - bỏ qua"))
+                    if not flow_prompt_1 and not flow_prompt_2:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không có prompt từ cột I và K - bỏ qua"))
                         skipped += 1
                         continue
 
@@ -2650,24 +2651,51 @@ class MainTab:
                             self.add_log(f"   Uploading reference (fallback): {img}"))
                         image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
 
-                    # BƯỚC 2: Trigger Chrome để capture payload với recaptchaToken mới
-                    # Request sẽ bị cancel để giữ token chưa dùng
-                    if not extractor.trigger_and_capture(flow_prompt, callback=chrome_log):
-                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không capture được payload"))
-                        continue
+                    total_downloaded = []
 
-                    # BƯỚC 3: Gọi API trực tiếp với captured payload + image reference
-                    downloaded = extractor.call_api_with_captured_payload(
-                        custom_prompt=flow_prompt,
-                        output_dir=flow_folder,
-                        prefix=code,
-                        image_ref=image_ref,  # Thêm image reference nếu có
-                        callback=chrome_log
-                    )
+                    # === PROMPT 1 (Cột I) - Tạo 4 ảnh ===
+                    if flow_prompt_1:
+                        self.after_safe(lambda c=code: self.add_log(f"   📸 Prompt 1 (cột I): Tạo 4 ảnh..."))
 
-                    if downloaded:
+                        # Trigger Chrome để capture payload
+                        if extractor.trigger_and_capture(flow_prompt_1, callback=chrome_log):
+                            # Gọi API với prompt 1
+                            downloaded_1 = extractor.call_api_with_captured_payload(
+                                custom_prompt=flow_prompt_1,
+                                output_dir=flow_folder,
+                                prefix=f"{code}_I",
+                                image_ref=image_ref,
+                                callback=chrome_log
+                            )
+                            if downloaded_1:
+                                total_downloaded.extend(downloaded_1)
+                                self.after_safe(lambda n=len(downloaded_1): self.add_log(f"   ✅ Prompt 1: {n} ảnh"))
+                        else:
+                            self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 1: Không capture được payload"))
+
+                    # === PROMPT 2 (Cột K) - Tạo 4 ảnh ===
+                    if flow_prompt_2:
+                        self.after_safe(lambda c=code: self.add_log(f"   📸 Prompt 2 (cột K): Tạo 4 ảnh..."))
+
+                        # Trigger Chrome để capture payload mới
+                        if extractor.trigger_and_capture(flow_prompt_2, callback=chrome_log):
+                            # Gọi API với prompt 2
+                            downloaded_2 = extractor.call_api_with_captured_payload(
+                                custom_prompt=flow_prompt_2,
+                                output_dir=flow_folder,
+                                prefix=f"{code}_K",
+                                image_ref=image_ref,
+                                callback=chrome_log
+                            )
+                            if downloaded_2:
+                                total_downloaded.extend(downloaded_2)
+                                self.after_safe(lambda n=len(downloaded_2): self.add_log(f"   ✅ Prompt 2: {n} ảnh"))
+                        else:
+                            self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 2: Không capture được payload"))
+
+                    if total_downloaded:
                         processed += 1
-                        self.after_safe(lambda c=code, n=len(downloaded):
+                        self.after_safe(lambda c=code, n=len(total_downloaded):
                             self.add_log(f"  ✅ {c}: Đã tạo {n} ảnh flow"))
                     else:
                         self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không tạo được ảnh - có thể cần refresh token"))

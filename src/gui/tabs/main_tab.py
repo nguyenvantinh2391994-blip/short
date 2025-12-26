@@ -2461,7 +2461,6 @@ class MainTab:
         """Background thread chạy Flow"""
         try:
             from ...sheets_reader import SheetsReader
-            from ...flow_generator import get_flow_generator
             from ...chrome_token_extractor import ChromeTokenExtractor
 
             # === BƯỚC 1: Lấy Bearer Token từ Chrome ===
@@ -2526,35 +2525,12 @@ class MainTab:
 
             self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(products)} sản phẩm"))
 
-            # === BƯỚC 3: Khởi tạo Flow Generator với token ===
-            products_base = self.app.config.input_folder
-            flow_gen = get_flow_generator(products_base)
-
-            # Set Bearer token
-            flow_gen.set_token(bearer_token)
-            self.after_safe(lambda: self.add_log("✅ Đã set Bearer token cho Flow API"))
-
-            # Set captured values từ Chrome (x-browser-validation, recaptchaToken)
-            x_browser_validation = getattr(extractor, 'x_browser_validation', None)
-            recaptcha_token = getattr(extractor, 'recaptcha_token', None)
-            if x_browser_validation or recaptcha_token:
-                flow_gen.set_captured_values(x_browser_validation, recaptcha_token)
-                self.after_safe(lambda: self.add_log("✅ Đã set captured values (bypass captcha)"))
-
-            # Set nanoai.pics proxy token nếu có
-            import os
-            nanoai_token = os.environ.get("NANOAI_TOKEN") or getattr(self.app.config, "nanoai_token", None)
-            if nanoai_token:
-                flow_gen.set_proxy_token(nanoai_token)
-                self.after_safe(lambda: self.add_log("✅ Đã enable nanoai.pics proxy"))
-
-            # Set log callback
-            def log_callback(msg):
-                self.after_safe(lambda m=msg: self.add_log(m))
-            flow_gen.set_log_callback(log_callback)
+            # === BƯỚC 3: Dùng Chrome automation để tạo ảnh ===
+            # Chrome đã mở từ bước lấy token, giữ nguyên để tạo ảnh
+            self.after_safe(lambda: self.add_log("🌐 Sử dụng Chrome automation để bypass captcha"))
 
             # Xử lý từng sản phẩm
-            products_dir = Path(products_base)
+            products_dir = Path(self.app.config.input_folder)
             processed = 0
             skipped = 0
             total = len(products)
@@ -2600,15 +2576,39 @@ class MainTab:
                     self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo ảnh flow..." + (f"\n   Prompt: {p}" if p else "")))
 
                 try:
-                    generated = flow_gen.generate_variations(
-                        product_code=code,
-                        prompt=flow_prompt,  # Sử dụng prompt từ cột I
-                        num_variations=4
-                    )
-                    if generated:
-                        processed += 1
-                        self.after_safe(lambda c=code, n=len(generated):
-                            self.add_log(f"  ✅ {c}: Đã tạo {n} ảnh flow"))
+                    # Sử dụng Chrome automation để tạo ảnh (bypass captcha)
+                    # Không gọi API trực tiếp vì recaptchaToken đã bị dùng
+
+                    if not flow_prompt:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không có prompt từ cột I - bỏ qua"))
+                        skipped += 1
+                        continue
+
+                    # Tạo thư mục flow
+                    flow_folder = products_dir / code / "flow"
+                    flow_folder.mkdir(parents=True, exist_ok=True)
+
+                    # Log callback
+                    def chrome_log(msg, c=code):
+                        self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
+
+                    # Gửi prompt qua Chrome
+                    success = extractor.generate_image_chrome(flow_prompt, callback=chrome_log)
+
+                    if success:
+                        # Download ảnh từ Chrome
+                        downloaded = extractor.download_generated_images(
+                            output_dir=flow_folder,
+                            prefix=code,
+                            callback=chrome_log
+                        )
+
+                        if downloaded:
+                            processed += 1
+                            self.after_safe(lambda c=code, n=len(downloaded):
+                                self.add_log(f"  ✅ {c}: Đã tạo {n} ảnh flow"))
+                        else:
+                            self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không download được ảnh"))
                     else:
                         self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không tạo được ảnh"))
 

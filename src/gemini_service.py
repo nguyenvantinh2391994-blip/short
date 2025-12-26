@@ -330,6 +330,295 @@ CHỈ TRẢ VỀ PROMPT SORA BẰNG TIẾNG ANH, KHÔNG GIẢI THÍCH:"""
             console.print(f"[red]❌ Lỗi tạo SORA prompt: {e}[/]")
             return ""
 
+    # =========================================================================
+    # FLOW IMAGE & VIDEO PROMPTS
+    # =========================================================================
+
+    # Template cho Flow image prompt - ĐỐI TƯỢNG VIỆT NAM
+    FLOW_IMAGE_PROMPT_TEMPLATE = """Dựa vào thông tin sản phẩm, hãy tạo prompt để generate ảnh realistic cho AI (Google Flow).
+
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
+
+QUAN TRỌNG: Đối tượng khách hàng là NGƯỜI VIỆT NAM, nên:
+- Nhân vật PHẢI là người Việt Nam với đặc điểm: da vàng, tóc đen, khuôn mặt châu Á đặc trưng
+- Bối cảnh PHẢI là Việt Nam: nhà Việt Nam, phòng khách Việt Nam, sân vườn Việt Nam, công viên Việt Nam...
+
+YÊU CẦU:
+1. Xác định đối tượng NGƯỜI VIỆT NAM phù hợp nhất:
+   - Tuổi (ví dụ: 25, 30, 4, 8...)
+   - Giới tính (male/female)
+
+2. Xác định bối cảnh VIỆT NAM phù hợp:
+   - Nhà Việt Nam điển hình (có thể thấy nội thất, đồ đạc Việt Nam)
+   - Hoạt động thường ngày của người Việt
+
+3. Điền vào template sau (CHỈ TRẢ VỀ PROMPT, KHÔNG GIẢI THÍCH):
+
+Create a photorealistic lifestyle photograph, as if taken by a real DSLR camera.
+
+A [TUỔI]-year-old [GIỚI TÍNH] Vietnamese person with typical Vietnamese features (dark hair, warm skin tone, Asian facial features) naturally using or wearing [TÊN SẢN PHẨM].
+Captured in a candid moment — not posing, not looking at the camera.
+Setting: [BỐI CẢNH VIỆT NAM - ví dụ: cozy Vietnamese living room, typical Vietnamese home interior, Vietnamese apartment balcony, local Vietnamese park]
+
+Vietnamese context requirements:
+- Person must look authentically Vietnamese (not Korean, Japanese, or Western)
+- Setting should feel like a real Vietnamese home or outdoor space
+- Background may include typical Vietnamese household items
+
+Realism requirements:
+- Realistic human proportions and facial features
+- Natural skin texture with small imperfections
+- Natural lighting from one side (window light or outdoor shade)
+- Slight motion blur and imperfect framing
+- Shallow depth of field, realistic background blur
+- Everyday real-life environment related to normal daily activities
+- Product shows natural usage, folds, or wear (not perfectly displayed)
+
+Photography style:
+- Real camera look, 35mm or 50mm lens, f/2.8
+- Natural color grading, slightly warm, not oversaturated
+- No studio lighting, no artificial glow
+- Not commercial, not advertisement style
+
+STRICTLY AVOID:
+- AI-generated look
+- Overly smooth or plastic skin
+- Perfect symmetry
+- Catalog or fashion pose
+- Studio background
+- Illustration, cartoon, or 3D style
+- Non-Vietnamese or Western-looking person
+
+The image should look like a spontaneous real-life photo taken by a Vietnamese family member or friend.
+
+CHỈ TRẢ VỀ PROMPT ĐÃ ĐIỀN ĐẦY ĐỦ, KHÔNG GIẢI THÍCH:"""
+
+    # Template cho video prompt (đơn giản, chân thực, bối cảnh Việt Nam)
+    FLOW_VIDEO_PROMPT_TEMPLATE = """Dựa vào thông tin sản phẩm, tạo prompt ngắn gọn để generate video từ ảnh sản phẩm.
+
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
+
+YÊU CẦU:
+- Video 5-10 giây, chân thực như quay bằng điện thoại
+- Nhân vật là người Việt Nam trong bối cảnh Việt Nam
+- Chỉ mô tả 1-2 hành động đơn giản, tự nhiên
+- KHÔNG dùng từ ngữ quảng cáo
+- Phong cách: video đời thường, không dàn dựng
+
+VÍ DỤ PROMPT TỐT:
+- "Vietnamese person gently adjusting the product, natural hand movement, cozy home setting"
+- "Vietnamese child playing happily, casual home environment, natural daylight"
+- "Vietnamese woman smiling while using the product, candid moment, warm indoor lighting"
+
+CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:"""
+
+    def generate_flow_image_prompt(
+        self,
+        product_name: str,
+        product_description: str,
+        variant: int = 1
+    ) -> str:
+        """
+        Tạo prompt cho Flow image generation.
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+            variant: Biến thể (1 hoặc 2) để tạo prompt khác nhau
+
+        Returns:
+            Flow image prompt string
+        """
+        if not self.api_key:
+            return ""
+
+        # Thêm yêu cầu biến thể nếu cần
+        variant_note = ""
+        if variant == 2:
+            variant_note = "\n\nLƯU Ý: Tạo prompt với đối tượng và bối cảnh KHÁC với prompt trước. Ví dụ: nếu trước là người lớn thì giờ là trẻ em, nếu trước là trong nhà thì giờ là ngoài trời."
+
+        prompt = self.FLOW_IMAGE_PROMPT_TEMPLATE.format(
+            product_name=product_name,
+            product_description=product_description or "Sản phẩm chất lượng cao"
+        ) + variant_note
+
+        try:
+            url = f"{self.GEMINI_API_URL}/{self.model}:generateContent?key={self.api_key}"
+
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.9 if variant == 2 else 0.7,
+                    "topK": 40,
+                    "topP": 0.95,
+                    "maxOutputTokens": 500,
+                }
+            }
+
+            response = requests.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+
+            if response.status_code != 200:
+                return ""
+
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return ""
+
+            content = candidates[0].get("content", {})
+            parts = content.get("parts", [])
+            if not parts:
+                return ""
+
+            result = parts[0].get("text", "").strip()
+
+            # Clean up
+            if result.startswith('"') and result.endswith('"'):
+                result = result[1:-1]
+
+            console.print(f"[green]✓ Đã tạo Flow image prompt {variant}[/]")
+            return result
+
+        except Exception as e:
+            console.print(f"[red]❌ Lỗi tạo Flow image prompt: {e}[/]")
+            return ""
+
+    def generate_video_prompt(
+        self,
+        product_name: str,
+        product_description: str,
+        variant: int = 1
+    ) -> str:
+        """
+        Tạo prompt cho video generation từ ảnh.
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+            variant: Biến thể (1 hoặc 2)
+
+        Returns:
+            Video prompt string
+        """
+        if not self.api_key:
+            return ""
+
+        variant_note = ""
+        if variant == 2:
+            variant_note = "\n\nLƯU Ý: Tạo prompt với hành động KHÁC với prompt trước."
+
+        prompt = self.FLOW_VIDEO_PROMPT_TEMPLATE.format(
+            product_name=product_name,
+            product_description=product_description or "Sản phẩm chất lượng cao"
+        ) + variant_note
+
+        try:
+            url = f"{self.GEMINI_API_URL}/{self.model}:generateContent?key={self.api_key}"
+
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.8 if variant == 2 else 0.6,
+                    "topK": 40,
+                    "topP": 0.95,
+                    "maxOutputTokens": 100,
+                }
+            }
+
+            response = requests.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+
+            if response.status_code != 200:
+                return ""
+
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return ""
+
+            content = candidates[0].get("content", {})
+            parts = content.get("parts", [])
+            if not parts:
+                return ""
+
+            result = parts[0].get("text", "").strip()
+
+            # Clean up
+            if result.startswith('"') and result.endswith('"'):
+                result = result[1:-1]
+
+            console.print(f"[green]✓ Đã tạo video prompt {variant}[/]")
+            return result
+
+        except Exception as e:
+            console.print(f"[red]❌ Lỗi tạo video prompt: {e}[/]")
+            return ""
+
+    def generate_flow_prompts(
+        self,
+        product_name: str,
+        product_description: str
+    ) -> dict:
+        """
+        Tạo tất cả 4 prompts cho Flow (2 image + 2 video).
+
+        Args:
+            product_name: Tên sản phẩm
+            product_description: Mô tả sản phẩm
+
+        Returns:
+            Dict với keys: image_prompt_1 (I), video_prompt_1 (J),
+                          image_prompt_2 (K), video_prompt_2 (L)
+        """
+        result = {
+            "image_prompt_1": "",  # Column I
+            "video_prompt_1": "",  # Column J
+            "image_prompt_2": "",  # Column K
+            "video_prompt_2": "",  # Column L
+        }
+
+        # Generate image prompt 1
+        result["image_prompt_1"] = self.generate_flow_image_prompt(
+            product_name, product_description, variant=1
+        )
+        time.sleep(0.5)  # Small delay to avoid rate limit
+
+        # Generate video prompt 1
+        result["video_prompt_1"] = self.generate_video_prompt(
+            product_name, product_description, variant=1
+        )
+        time.sleep(0.5)
+
+        # Generate image prompt 2 (different variant)
+        result["image_prompt_2"] = self.generate_flow_image_prompt(
+            product_name, product_description, variant=2
+        )
+        time.sleep(0.5)
+
+        # Generate video prompt 2
+        result["video_prompt_2"] = self.generate_video_prompt(
+            product_name, product_description, variant=2
+        )
+
+        return result
+
     def generate_voice(
         self,
         text: str,

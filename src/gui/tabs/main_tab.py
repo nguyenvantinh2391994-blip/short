@@ -1634,6 +1634,11 @@ class MainTab:
             name_col = 2  # C
             desc_col = 3  # D
             script_col = 6  # G
+            # Flow prompts columns
+            img_prompt_1_col = 8   # I - Image prompt 1
+            vid_prompt_1_col = 9   # J - Video prompt 1
+            img_prompt_2_col = 10  # K - Image prompt 2
+            vid_prompt_2_col = 11  # L - Video prompt 2
 
             # Đếm sản phẩm cần xử lý
             data_rows = all_values[1:] if len(all_values) > 1 else []
@@ -1643,14 +1648,22 @@ class MainTab:
                 code = row[code_col].strip() if len(row) > code_col else ""
                 name = row[name_col].strip() if len(row) > name_col else ""
                 existing_script = row[script_col].strip() if len(row) > script_col else ""
+                # Check existing flow prompts
+                existing_img_1 = row[img_prompt_1_col].strip() if len(row) > img_prompt_1_col else ""
+                existing_vid_1 = row[vid_prompt_1_col].strip() if len(row) > vid_prompt_1_col else ""
+                existing_img_2 = row[img_prompt_2_col].strip() if len(row) > img_prompt_2_col else ""
+                existing_vid_2 = row[vid_prompt_2_col].strip() if len(row) > vid_prompt_2_col else ""
 
                 if not code or not name:
                     continue
 
                 # Kiểm tra đã có voice chưa
                 voice_path = voice_folder / f"{code}.wav"
-                if voice_path.exists() and existing_script:
-                    continue  # Bỏ qua nếu đã có cả voice và script
+                # Kiểm tra đã có đủ flow prompts chưa
+                has_all_flow_prompts = all([existing_img_1, existing_vid_1, existing_img_2, existing_vid_2])
+
+                if voice_path.exists() and existing_script and has_all_flow_prompts:
+                    continue  # Bỏ qua nếu đã có cả voice, script và flow prompts
 
                 pending.append({
                     "code": code,
@@ -1660,6 +1673,7 @@ class MainTab:
                     "has_script": bool(existing_script),
                     "has_voice": voice_path.exists(),
                     "script": existing_script,
+                    "has_flow_prompts": has_all_flow_prompts,
                 })
 
             if not pending:
@@ -1725,22 +1739,41 @@ class MainTab:
 
                         if voice_result.success:
                             self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã tạo voice: {code}.wav"))
-                            self.set_task_video_status(code, TaskItem.STATUS_DONE)
-                            self.set_task_render_status(code, TaskItem.STATUS_DONE)
-                            success_count += 1
                         else:
                             self.after_safe(lambda c=code, e=voice_result.error: self.add_log(f"  ❌ Lỗi voice: {e}"))
-                            self.set_task_video_status(code, TaskItem.STATUS_ERROR)
-                            error_count += 1
                     else:
-                        # Đã có voice hoặc không có script
                         if item["has_voice"]:
                             self.after_safe(lambda c=code: self.add_log(f"  ⏭️ Đã có voice"))
-                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
-                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
-                        success_count += 1
 
+                    # Bước 3: Tạo Flow prompts (nếu chưa có đủ)
+                    if not item.get("has_flow_prompts", False):
+                        self.after_safe(lambda c=code: self.add_log(f"  Tạo Flow prompts (I, J, K, L)..."))
+                        flow_prompts = gemini.generate_flow_prompts(
+                            product_name=item["name"],
+                            product_description=item["description"]
+                        )
+
+                        # Ghi vào sheet
+                        try:
+                            row_num = item['row']
+                            if flow_prompts["image_prompt_1"]:
+                                reader.sheet.update_acell(f"I{row_num}", flow_prompts["image_prompt_1"])
+                            if flow_prompts["video_prompt_1"]:
+                                reader.sheet.update_acell(f"J{row_num}", flow_prompts["video_prompt_1"])
+                            if flow_prompts["image_prompt_2"]:
+                                reader.sheet.update_acell(f"K{row_num}", flow_prompts["image_prompt_2"])
+                            if flow_prompts["video_prompt_2"]:
+                                reader.sheet.update_acell(f"L{row_num}", flow_prompts["video_prompt_2"])
+                            self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi Flow prompts vào I, J, K, L"))
+                        except Exception as e:
+                            self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi Flow prompts: {e}"))
+                    else:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ Đã có Flow prompts"))
+
+                    self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                    self.set_task_render_status(code, TaskItem.STATUS_DONE)
                     self.set_task_input_status(code, TaskItem.STATUS_DONE)
+                    success_count += 1
 
                     # Delay để tránh rate limit
                     import time

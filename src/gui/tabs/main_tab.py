@@ -2592,17 +2592,37 @@ class MainTab:
                     def chrome_log(msg, c=code):
                         self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
 
-                    # BƯỚC 1: Trigger Chrome để capture payload với recaptchaToken mới
+                    # BƯỚC 1: Upload ảnh reference (input/<code>/extracted/<code>.png)
+                    image_ref = None
+                    # Thử các format ảnh khác nhau
+                    for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                        ref_image = extracted_folder / f"{code}{ext}"
+                        if ref_image.exists():
+                            self.after_safe(lambda c=code, img=ref_image.name:
+                                self.add_log(f"   Uploading reference: {img}"))
+                            image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
+                            break
+
+                    if not image_ref:
+                        # Fallback: lấy ảnh đầu tiên trong folder
+                        if extracted_images:
+                            ref_image = extracted_images[0]
+                            self.after_safe(lambda c=code, img=ref_image.name:
+                                self.add_log(f"   Uploading reference (fallback): {img}"))
+                            image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
+
+                    # BƯỚC 2: Trigger Chrome để capture payload với recaptchaToken mới
                     # Request sẽ bị cancel để giữ token chưa dùng
                     if not extractor.trigger_and_capture(flow_prompt, callback=chrome_log):
                         self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không capture được payload"))
                         continue
 
-                    # BƯỚC 2: Gọi API trực tiếp với captured payload
+                    # BƯỚC 3: Gọi API trực tiếp với captured payload + image reference
                     downloaded = extractor.call_api_with_captured_payload(
                         custom_prompt=flow_prompt,
                         output_dir=flow_folder,
                         prefix=code,
+                        image_ref=image_ref,  # Thêm image reference nếu có
                         callback=chrome_log
                     )
 

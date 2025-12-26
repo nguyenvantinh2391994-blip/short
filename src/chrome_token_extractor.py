@@ -36,21 +36,50 @@ except ImportError:
 from .chrome_manager import chrome_manager
 
 # Token capture script - inject vào page để hook fetch
+# Capture: Bearer token, x-browser-validation, recaptchaToken, payload
 TOKEN_CAPTURE_SCRIPT = """
-window._tk=null;window._pj=null;
+window._tk=null;window._pj=null;window._xbv=null;window._rct=null;window._payload=null;
 (function(){
   var f=window.fetch;
   window.fetch=function(u,o){
     var s=u?u.toString():'';
-    if(s.includes('flowMedia')||s.includes('aisandbox')){
+    if(s.includes('flowMedia')||s.includes('aisandbox')||s.includes('batchGenerateImages')){
       var h=o&&o.headers?o.headers:{};
+
+      // Capture Bearer token
       var a=h.Authorization||h.authorization||'';
       if(a.startsWith('Bearer ')){
         window._tk=a.substring(7);
-        var m=s.match(/\\/projects\\/([^\\/]+)\\//);
-        if(m) window._pj=m[1];
-        console.log('[TOKEN] Captured:', window._tk ? window._tk.substring(0,20)+'...' : 'none');
+        console.log('[TOKEN] Bearer captured');
       }
+
+      // Capture x-browser-validation
+      var xbv=h['x-browser-validation']||'';
+      if(xbv){
+        window._xbv=xbv;
+        console.log('[TOKEN] x-browser-validation captured');
+      }
+
+      // Capture project ID from URL
+      var m=s.match(/\\/projects\\/([^\\/]+)\\//);
+      if(m) window._pj=m[1];
+
+      // Capture recaptchaToken from body
+      if(o&&o.body){
+        try{
+          var body=typeof o.body==='string'?JSON.parse(o.body):o.body;
+          window._payload=body;
+          if(body.requests&&body.requests[0]){
+            var ctx=body.requests[0].clientContext||{};
+            if(ctx.recaptchaToken){
+              window._rct=ctx.recaptchaToken;
+              console.log('[TOKEN] recaptchaToken captured:', window._rct.substring(0,20)+'...');
+            }
+          }
+        }catch(e){}
+      }
+
+      console.log('[TOKEN] Full capture done');
     }
     return f.apply(this,arguments);
   };
@@ -77,8 +106,13 @@ class ChromeTokenExtractor:
         self.chrome_path = chrome_path
         self.profile_path = profile_path
         self.timeout = timeout
+
+        # Captured values
         self.bearer_token = None
         self.project_id = None
+        self.x_browser_validation = None
+        self.recaptcha_token = None
+        self.captured_payload = None
 
         # Cấu hình chrome_manager
         chrome_manager.set_profile(
@@ -266,38 +300,51 @@ class ChromeTokenExtractor:
         return True
 
     def _get_captured_token(self, callback=None):
-        """Bước 6: Lấy token đã capture."""
+        """Bước 6: Lấy token và các giá trị đã capture."""
         if callback:
             callback("Đang lấy token...")
 
-        get_token_script = """
+        # Script lấy tất cả captured values
+        get_all_script = """
         (function() {
-            if (window._tk) {
-                copy('TOKEN:' + window._tk + '|PROJECT:' + (window._pj || 'none'));
-            } else {
-                copy('NO_TOKEN');
-            }
+            var result = {
+                token: window._tk || null,
+                project: window._pj || null,
+                xbv: window._xbv || null,
+                rct: window._rct || null,
+                payload: window._payload || null
+            };
+            copy(JSON.stringify(result));
         })();
         """
 
-        result = chrome_manager.run_js(get_token_script)
+        result = chrome_manager.run_js(get_all_script)
 
-        if result and result.startswith('TOKEN:'):
-            # Parse result: TOKEN:xxx|PROJECT:yyy
-            parts = result.split('|')
-            token_part = parts[0].replace('TOKEN:', '')
-            project_part = parts[1].replace('PROJECT:', '') if len(parts) > 1 else None
+        if result:
+            try:
+                import json
+                data = json.loads(result)
 
-            self.bearer_token = token_part
-            self.project_id = project_part if project_part != 'none' else None
+                if data.get('token'):
+                    self.bearer_token = data['token']
+                    self.project_id = data.get('project')
+                    self.x_browser_validation = data.get('xbv')
+                    self.recaptcha_token = data.get('rct')
+                    self.captured_payload = data.get('payload')
 
-            if callback:
-                callback(f"✅ Token: {self.bearer_token[:30]}...")
-            return True
-        else:
-            if callback:
-                callback("Token chưa được capture")
-            return False
+                    if callback:
+                        callback(f"✅ Token: {self.bearer_token[:30]}...")
+                        if self.x_browser_validation:
+                            callback(f"✅ x-browser-validation: captured")
+                        if self.recaptcha_token:
+                            callback(f"✅ recaptchaToken: {self.recaptcha_token[:20]}...")
+                    return True
+            except:
+                pass
+
+        if callback:
+            callback("Token chưa được capture")
+        return False
 
     def extract_token(self, callback=None) -> Tuple[Optional[str], Optional[str], str]:
         """
@@ -360,6 +407,172 @@ class ChromeTokenExtractor:
             error = f"Lỗi: {str(e)}"
 
         return None, None, error
+
+    # =========================================================================
+    # CHROME-BASED IMAGE GENERATION (bypass captcha)
+    # =========================================================================
+
+    def generate_image_chrome(self, prompt: str, callback=None) -> bool:
+        """
+        Tạo ảnh bằng cách nhập prompt vào Chrome Flow UI.
+        Chrome sẽ tự xử lý captcha.
+
+        Args:
+            prompt: Prompt để tạo ảnh
+            callback: Callback để log progress
+
+        Returns:
+            True nếu đã gửi prompt thành công
+        """
+        if not HAS_PAG:
+            if callback:
+                callback("ERROR: PyAutoGUI not installed")
+            return False
+
+        try:
+            # Focus Chrome window
+            chrome_manager._focus_chrome()
+            time.sleep(0.5)
+
+            # Clear textarea và nhập prompt mới
+            if callback:
+                callback(f"Đang nhập prompt: {prompt[:50]}...")
+
+            # Focus textarea
+            focus_script = """
+            (function() {
+                var ta = document.querySelector('textarea');
+                if (ta) {
+                    ta.focus();
+                    ta.click();
+                    ta.select();
+                    copy('focused');
+                    return;
+                }
+                copy('no textarea');
+            })();
+            """
+            chrome_manager.run_js(focus_script)
+            time.sleep(0.5)
+
+            # Xóa nội dung cũ và paste prompt mới
+            pag.hotkey("ctrl", "a")
+            time.sleep(0.2)
+
+            pyperclip.copy(prompt)
+            pag.hotkey("ctrl", "v")
+            time.sleep(0.5)
+
+            if callback:
+                callback("Đã nhập prompt, đang gửi...")
+
+            # Nhấn Enter để generate
+            pag.press("enter")
+
+            if callback:
+                callback("Đã gửi, đang đợi tạo ảnh (60s)...")
+
+            # Đợi ảnh được tạo (60-90 giây)
+            time.sleep(60)
+
+            return True
+
+        except Exception as e:
+            if callback:
+                callback(f"Lỗi: {e}")
+            return False
+
+    def get_generated_image_urls(self, callback=None) -> list:
+        """
+        Lấy URLs của ảnh đã generate từ trang Flow.
+
+        Returns:
+            List of image URLs
+        """
+        get_images_script = """
+        (function() {
+            var urls = [];
+            // Tìm tất cả img tags có src chứa googleusercontent
+            var imgs = document.querySelectorAll('img[src*="googleusercontent"]');
+            for (var img of imgs) {
+                var src = img.src;
+                if (src && src.includes('lh3.googleusercontent.com')) {
+                    urls.push(src);
+                }
+            }
+            // Fallback: tìm trong các elements khác
+            if (urls.length === 0) {
+                var allImgs = document.querySelectorAll('img');
+                for (var img of allImgs) {
+                    if (img.src && img.width > 200 && img.height > 200) {
+                        urls.push(img.src);
+                    }
+                }
+            }
+            copy(JSON.stringify(urls));
+        })();
+        """
+
+        result = chrome_manager.run_js(get_images_script)
+
+        if result:
+            try:
+                import json
+                urls = json.loads(result)
+                if callback:
+                    callback(f"Tìm thấy {len(urls)} ảnh")
+                return urls
+            except:
+                pass
+
+        if callback:
+            callback("Không tìm thấy ảnh nào")
+        return []
+
+    def download_generated_images(self, output_dir: Path, prefix: str = "flow", callback=None) -> list:
+        """
+        Download ảnh đã generate về thư mục.
+
+        Args:
+            output_dir: Thư mục lưu ảnh
+            prefix: Prefix cho tên file
+            callback: Callback để log
+
+        Returns:
+            List of downloaded file paths
+        """
+        import requests
+        from datetime import datetime
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        urls = self.get_generated_image_urls(callback)
+        downloaded = []
+
+        for i, url in enumerate(urls):
+            try:
+                if callback:
+                    callback(f"Downloading image {i+1}/{len(urls)}...")
+
+                resp = requests.get(url, timeout=60)
+                if resp.status_code == 200:
+                    timestamp = datetime.now().strftime("%H%M%S")
+                    filename = f"{prefix}_{timestamp}_{i+1}.png"
+                    filepath = output_dir / filename
+
+                    with open(filepath, 'wb') as f:
+                        f.write(resp.content)
+
+                    downloaded.append(str(filepath))
+                    if callback:
+                        callback(f"✅ Saved: {filename}")
+
+            except Exception as e:
+                if callback:
+                    callback(f"❌ Download error: {e}")
+
+        return downloaded
 
     def close(self):
         """Đóng tab Flow (không đóng Chrome)."""

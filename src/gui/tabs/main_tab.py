@@ -2531,6 +2531,13 @@ class MainTab:
             flow_gen.set_token(bearer_token)
             self.after_safe(lambda: self.add_log("✅ Đã set Bearer token cho Flow API"))
 
+            # Set nanoai.pics proxy token nếu có
+            import os
+            nanoai_token = os.environ.get("NANOAI_TOKEN") or getattr(self.app.config, "nanoai_token", None)
+            if nanoai_token:
+                flow_gen.set_proxy_token(nanoai_token)
+                self.after_safe(lambda: self.add_log("✅ Đã enable nanoai.pics proxy"))
+
             # Set log callback
             def log_callback(msg):
                 self.after_safe(lambda m=msg: self.add_log(m))

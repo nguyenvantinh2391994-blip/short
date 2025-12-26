@@ -172,10 +172,8 @@ class GoogleFlowAPI:
     BASE_URL = "https://aisandbox-pa.googleapis.com"
     TOOL_NAME = "PINHOLE"  # Internal name for Flow
 
-    # Proxy API for bypassing captcha
-    PROXY_VIDEO_API_URL = "https://flow-api.nanoai.pics/api/fix/create-video-veo3"
-    PROXY_IMAGE_API_URL = "https://flow-api.nanoai.pics/api/fix/create-image-veo3"
-    PROXY_TASK_STATUS_URL = "https://flow-api.nanoai.pics/api/fix/task-status"
+    # Proxy API nanoai.pics
+    PROXY_API_URL = "https://nanoai.pics/api/flow-proxy"
 
     def __init__(
         self,
@@ -382,16 +380,17 @@ class GoogleFlowAPI:
         prompt: str,
         aspect_ratio: str
     ) -> Tuple[bool, List[GeneratedImage], str]:
-        """Gọi qua proxy API để bypass captcha."""
+        """Gọi qua nanoai.pics proxy API."""
         if not self.proxy_api_token:
-            return False, [], "Proxy API token required"
+            return False, [], "Proxy API token required (nanoai.pics)"
 
-        self._log(f"POST {self.PROXY_IMAGE_API_URL} (via proxy)")
+        google_url = f"{self.BASE_URL}/v1/projects/{self.project_id}/flowMedia:batchGenerateImages"
+        self._log(f"POST {self.PROXY_API_URL} (via nanoai proxy)")
 
         proxy_payload = {
             "body_json": payload,
             "flow_auth_token": self.bearer_token,
-            "flow_url": f"{self.BASE_URL}/v1/projects/{self.project_id}/flowMedia:batchGenerateImages"
+            "flow_url": google_url
         }
 
         try:
@@ -401,32 +400,33 @@ class GoogleFlowAPI:
             }
 
             response = requests.post(
-                self.PROXY_IMAGE_API_URL,
+                self.PROXY_API_URL,
                 headers=proxy_headers,
                 json=proxy_payload,
-                timeout=30
+                timeout=self.timeout
             )
 
             self._log(f"Proxy response status: {response.status_code}")
 
             if response.status_code == 401:
-                return False, [], "Proxy API authentication failed"
+                return False, [], "Proxy API authentication failed - check nanoai token"
 
             if response.status_code != 200:
-                return False, [], f"Proxy API error: {response.status_code}"
+                return False, [], f"Proxy API error: {response.status_code} - {response.text[:200]}"
 
             result = response.json()
 
-            if not result.get("success"):
-                return False, [], f"Proxy create task failed: {result.get('error', 'Unknown')}"
+            # Parse images from response
+            images = self._parse_image_response(result, prompt, aspect_ratio)
 
-            task_id = result.get("taskId")
-            if not task_id:
-                return False, [], "No taskId in proxy response"
+            if images:
+                self._log(f"✓ Generated {len(images)} images via proxy")
+                return True, images, ""
+            else:
+                return False, [], "No images in proxy response"
 
-            self._log(f"Task created: {task_id}")
-            return self._poll_proxy_task(task_id, prompt, aspect_ratio, proxy_headers)
-
+        except requests.exceptions.Timeout:
+            return False, [], f"Proxy timeout after {self.timeout}s"
         except Exception as e:
             return False, [], f"Proxy error: {str(e)}"
 

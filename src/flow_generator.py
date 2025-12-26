@@ -33,6 +33,11 @@ class FlowGenerator:
         """Set Bearer token cho API"""
         self.api.set_token(token)
 
+    def set_proxy_token(self, nanoai_token: str) -> None:
+        """Set nanoai.pics proxy token và enable proxy mode"""
+        self.api.proxy_api_token = nanoai_token
+        self.api.use_proxy = True
+
     def set_log_callback(self, callback: Callable[[str], None]) -> None:
         """Set callback để log ra UI"""
         self.log_callback = callback

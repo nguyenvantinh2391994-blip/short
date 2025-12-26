@@ -129,104 +129,130 @@ class ChromeTokenExtractor:
         return 'clicked' in str(result).lower() if result else False
 
     def _select_image_mode(self, callback=None):
-        """Bước 4: Chọn mode 'Tạo hình ảnh'."""
+        """Bước 4: Chọn mode 'Tạo hình ảnh' - Click dropdown rồi chọn option."""
         if callback:
-            callback("Đang chọn mode 'Tạo hình ảnh'...")
+            callback("Đang click dropdown...")
 
-        # Script để click vào dropdown và chọn option
-        select_script = """
+        # Bước 4a: Click dropdown button
+        click_dropdown_script = """
         (function() {
-            // Tìm dropdown/combobox
-            var combo = document.querySelector('[role="combobox"], [role="listbox"], select');
-            if (combo) {
-                combo.click();
-                copy('opened combo');
+            var dd = document.querySelector('button[role="combobox"]');
+            if (!dd) {
+                copy('ERROR: no dropdown');
                 return;
             }
-            copy('no combo found');
+            dd.click();
+            copy('dropdown clicked');
         })();
         """
 
-        result = chrome_manager.run_js(select_script)
+        result = chrome_manager.run_js(click_dropdown_script)
         if callback:
-            callback(f"Combo result: {result}")
+            callback(f"Dropdown: {result}")
+
+        # Đợi menu mở
         time.sleep(1)
 
-        # Sau khi mở combo, chọn option
-        option_script = """
+        # Bước 4b: Chọn "Tạo hình ảnh"
+        if callback:
+            callback("Đang chọn 'Tạo hình ảnh'...")
+
+        select_option_script = """
         (function() {
-            var options = document.querySelectorAll('[role="option"], [role="menuitem"], option, li');
-            for (var i = 0; i < options.length; i++) {
-                var text = options[i].innerText || options[i].textContent || '';
-                if (text.includes('Tạo hình ảnh') || text.includes('Generate image') ||
-                    text.includes('Text to image') || text.includes('Image')) {
-                    options[i].click();
-                    copy('selected: ' + text);
-                    return;
+            var all = document.querySelectorAll('*');
+            for (var el of all) {
+                var t = el.textContent || '';
+                if (t === 'Tạo hình ảnh' || t.includes('Tạo hình ảnh từ văn bản')) {
+                    var rect = el.getBoundingClientRect();
+                    // Chỉ click element có kích thước hợp lý
+                    if (rect.height > 10 && rect.height < 80 && rect.width > 50) {
+                        el.click();
+                        copy('selected: ' + t.substring(0, 40));
+                        return;
+                    }
                 }
             }
             copy('no option found');
         })();
         """
 
-        result = chrome_manager.run_js(option_script)
+        result = chrome_manager.run_js(select_option_script)
         if callback:
-            callback(f"Option result: {result}")
-        time.sleep(2)
+            callback(f"Option: {result}")
+
+        # Đợi sau khi chọn mode
+        time.sleep(3)
         return True
 
     def _send_prompt(self, callback=None):
         """Bước 5: Gửi prompt để trigger API call."""
+        prompt = "beautiful sunset over ocean with birds"
+
+        # Bước 5a: Focus textarea
         if callback:
-            callback("Đang gửi prompt...")
+            callback("Đang focus textarea...")
 
-        prompt = "beautiful sunset over ocean, high quality photo"
+        focus_script = """
+        (function() {
+            var ta = document.querySelector('textarea');
+            if (ta) {
+                ta.focus();
+                ta.click();
+                copy('textarea focused');
+                return;
+            }
+            copy('no textarea');
+        })();
+        """
 
-        send_script = f"""
+        result = chrome_manager.run_js(focus_script)
+        if callback:
+            callback(f"Focus: {result}")
+        time.sleep(1)
+
+        # Bước 5b: Set prompt value
+        if callback:
+            callback("Đang nhập prompt...")
+
+        set_prompt_script = f"""
         (function() {{
-            // Tìm textarea
-            var textarea = document.querySelector('textarea');
-            if (!textarea) {{
-                textarea = document.querySelector('[contenteditable="true"]');
+            var ta = document.querySelector('textarea');
+            if (!ta) {{
+                copy('no textarea');
+                return;
             }}
-
-            if (textarea) {{
-                textarea.focus();
-                textarea.value = "{prompt}";
-                textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                textarea.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                copy('prompt entered');
-            }} else {{
-                copy('no textarea found');
-            }}
+            ta.value = "{prompt}";
+            ta.focus();
+            ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            copy('prompt set');
         }})();
         """
 
-        result = chrome_manager.run_js(send_script)
+        result = chrome_manager.run_js(set_prompt_script)
         if callback:
-            callback(f"Prompt result: {result}")
+            callback(f"Prompt: {result}")
         time.sleep(1)
 
-        # Nhấn nút submit
+        # Bước 5c: Click nút gửi hoặc nhấn Enter
+        if callback:
+            callback("Đang gửi...")
+
         submit_script = """
         (function() {
-            var submitBtn = document.querySelector('button[type="submit"], button[aria-label*="Generate"], button[aria-label*="Send"], button[aria-label*="Gửi"]');
-            if (submitBtn) {
-                submitBtn.click();
-                copy('submitted');
-                return;
+            // Tìm nút gửi
+            var btns = document.querySelectorAll('button');
+            for (var btn of btns) {
+                var ariaLabel = btn.getAttribute('aria-label') || '';
+                if (ariaLabel.includes('Gửi') || ariaLabel.includes('Send')) {
+                    btn.click();
+                    copy('send button clicked');
+                    return;
+                }
             }
-
-            // Thử Enter trong textarea
-            var textarea = document.querySelector('textarea');
-            if (textarea) {
-                textarea.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'Enter',
-                    code: 'Enter',
-                    keyCode: 13,
-                    which: 13,
-                    bubbles: true
-                }));
+            // Fallback: Enter key
+            var ta = document.querySelector('textarea');
+            if (ta) {
+                ta.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', keyCode: 13, bubbles: true}));
                 copy('enter pressed');
                 return;
             }
@@ -236,9 +262,9 @@ class ChromeTokenExtractor:
 
         result = chrome_manager.run_js(submit_script)
         if callback:
-            callback(f"Submit result: {result}")
+            callback(f"Submit: {result}")
 
-        # Đợi API call được thực hiện (20-30 giây)
+        # Đợi API call được thực hiện (25-30 giây)
         if callback:
             callback("Đang đợi API call (25s)...")
         time.sleep(25)

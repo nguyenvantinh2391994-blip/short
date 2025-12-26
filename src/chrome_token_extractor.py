@@ -650,7 +650,7 @@ class ChromeTokenExtractor:
         # Build payload
         payload = {
             "imageInput": {
-                "aspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+                "aspectRatio": "IMAGE_ASPECT_RATIO_PORTRAIT",  # 9:16
                 "isUserUploaded": True,
                 "mimeType": mime_type,
                 "rawImageBytes": raw_image_bytes
@@ -760,11 +760,25 @@ class ChromeTokenExtractor:
                 callback("❌ Không parse được payload")
             return []
 
-        # Thay đổi prompt nếu có
-        if custom_prompt and payload.get("requests"):
+        # Mở rộng requests từ 2 lên 4
+        if payload.get("requests") and len(payload["requests"]) < 4:
+            import copy
+            import random
+            original_requests = payload["requests"]
+            while len(payload["requests"]) < 4:
+                new_req = copy.deepcopy(original_requests[len(payload["requests"]) % len(original_requests)])
+                new_req["seed"] = random.randint(100000, 999999)
+                payload["requests"].append(new_req)
+
+        # Thay đổi prompt và aspect ratio cho tất cả requests
+        if payload.get("requests"):
             for req in payload["requests"]:
-                req["prompt"] = custom_prompt
-            if callback:
+                if custom_prompt:
+                    req["prompt"] = custom_prompt
+                # Đổi aspect ratio sang 9:16 (PORTRAIT)
+                req["imageAspectRatio"] = "IMAGE_ASPECT_RATIO_PORTRAIT"
+
+            if custom_prompt and callback:
                 callback(f"Đã thay prompt: {custom_prompt[:50]}...")
 
         # Thêm image reference nếu có

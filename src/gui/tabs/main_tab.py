@@ -2592,24 +2592,30 @@ class MainTab:
                     def chrome_log(msg, c=code):
                         self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
 
-                    # BƯỚC 1: Upload ảnh reference (input/<code>/extracted/<code>.png)
+                    # BƯỚC 1: Upload ảnh reference (input/<code>/extracted/<code>.png hoặc <code>_1.png)
                     image_ref = None
-                    # Thử các format ảnh khác nhau
-                    for ext in ['.png', '.jpg', '.jpeg', '.webp']:
-                        ref_image = extracted_folder / f"{code}{ext}"
-                        if ref_image.exists():
-                            self.after_safe(lambda c=code, img=ref_image.name:
-                                self.add_log(f"   Uploading reference: {img}"))
-                            image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
+                    ref_image = None
+                    # Thử các pattern và format ảnh khác nhau
+                    patterns = [code, f"{code}_1"]  # <code>.png và <code>_1.png
+                    for pattern in patterns:
+                        for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                            candidate = extracted_folder / f"{pattern}{ext}"
+                            if candidate.exists():
+                                ref_image = candidate
+                                break
+                        if ref_image:
                             break
 
-                    if not image_ref:
+                    if ref_image:
+                        self.after_safe(lambda c=code, img=ref_image.name:
+                            self.add_log(f"   Uploading reference: {img}"))
+                        image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
+                    elif extracted_images:
                         # Fallback: lấy ảnh đầu tiên trong folder
-                        if extracted_images:
-                            ref_image = extracted_images[0]
-                            self.after_safe(lambda c=code, img=ref_image.name:
-                                self.add_log(f"   Uploading reference (fallback): {img}"))
-                            image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
+                        ref_image = extracted_images[0]
+                        self.after_safe(lambda c=code, img=ref_image.name:
+                            self.add_log(f"   Uploading reference (fallback): {img}"))
+                        image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
 
                     # BƯỚC 2: Trigger Chrome để capture payload với recaptchaToken mới
                     # Request sẽ bị cancel để giữ token chưa dùng

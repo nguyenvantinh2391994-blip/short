@@ -2531,6 +2531,13 @@ class MainTab:
             flow_gen.set_token(bearer_token)
             self.after_safe(lambda: self.add_log("✅ Đã set Bearer token cho Flow API"))
 
+            # Set captured values từ Chrome (x-browser-validation, recaptchaToken)
+            x_browser_validation = getattr(extractor, 'x_browser_validation', None)
+            recaptcha_token = getattr(extractor, 'recaptcha_token', None)
+            if x_browser_validation or recaptcha_token:
+                flow_gen.set_captured_values(x_browser_validation, recaptcha_token)
+                self.after_safe(lambda: self.add_log("✅ Đã set captured values (bypass captcha)"))
+
             # Set nanoai.pics proxy token nếu có
             import os
             nanoai_token = os.environ.get("NANOAI_TOKEN") or getattr(self.app.config, "nanoai_token", None)

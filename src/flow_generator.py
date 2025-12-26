@@ -38,6 +38,10 @@ class FlowGenerator:
         self.api.proxy_api_token = nanoai_token
         self.api.use_proxy = True
 
+    def set_captured_values(self, x_browser_validation: str = None, recaptcha_token: str = None) -> None:
+        """Set captured values từ Chrome để bypass captcha"""
+        self.api.set_captured_values(x_browser_validation, recaptcha_token)
+
     def set_log_callback(self, callback: Callable[[str], None]) -> None:
         """Set callback để log ra UI"""
         self.log_callback = callback

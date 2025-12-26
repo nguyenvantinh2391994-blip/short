@@ -224,6 +224,26 @@ class GoogleFlowAPI:
         self.bearer_token = token
         self.session.headers["Authorization"] = f"Bearer {self.bearer_token}"
 
+    def set_captured_values(
+        self,
+        x_browser_validation: str = None,
+        recaptcha_token: str = None
+    ) -> None:
+        """
+        Set captured values từ Chrome để bypass captcha.
+
+        Args:
+            x_browser_validation: Header x-browser-validation từ Chrome
+            recaptcha_token: recaptchaToken từ request payload
+        """
+        if x_browser_validation:
+            self.extra_headers["x-browser-validation"] = x_browser_validation
+            self.extra_headers["x-browser-channel"] = "stable"
+            self.extra_headers["x-browser-year"] = "2025"
+            self.session = self._create_session()  # Rebuild session with new headers
+
+        self._recaptcha_token = recaptcha_token if recaptcha_token else None
+
     def _create_session(self) -> requests.Session:
         """Tạo HTTP session với headers chuẩn."""
         session = requests.Session()
@@ -308,14 +328,22 @@ class GoogleFlowAPI:
         if image_inputs_data:
             self._log(f"Using {len(image_inputs_data)} reference image(s)")
 
+        # Build clientContext with recaptchaToken if available
+        client_context = {
+            "sessionId": self.session_id,
+            "projectId": self.project_id,
+            "tool": self.TOOL_NAME
+        }
+
+        # Add recaptchaToken if captured from Chrome
+        if hasattr(self, '_recaptcha_token') and self._recaptcha_token:
+            client_context["recaptchaToken"] = self._recaptcha_token
+            self._log("Using captured recaptchaToken")
+
         requests_data = []
         for _ in range(count):
             request_item = {
-                "clientContext": {
-                    "sessionId": self.session_id,
-                    "projectId": self.project_id,
-                    "tool": self.TOOL_NAME
-                },
+                "clientContext": client_context.copy(),
                 "seed": self._generate_seed(),
                 "imageModelName": model.value,
                 "imageAspectRatio": aspect_ratio.value,
@@ -325,11 +353,7 @@ class GoogleFlowAPI:
             requests_data.append(request_item)
 
         payload = {
-            "clientContext": {
-                "sessionId": self.session_id,
-                "projectId": self.project_id,
-                "tool": self.TOOL_NAME
-            },
+            "clientContext": client_context.copy(),
             "requests": requests_data
         }
 

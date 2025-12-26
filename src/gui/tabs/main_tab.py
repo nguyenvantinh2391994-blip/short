@@ -2462,7 +2462,45 @@ class MainTab:
         try:
             from ...sheets_reader import SheetsReader
             from ...flow_generator import get_flow_generator
+            from ...chrome_token_extractor import ChromeTokenExtractor
 
+            # === BƯỚC 1: Lấy Bearer Token từ Chrome ===
+            self.after_safe(lambda: self.add_log("🔑 Đang lấy Bearer Token từ Chrome..."))
+
+            # Lấy Chrome path và profile từ config
+            chrome_path = None
+            profile_path = None
+            if self.app.config.browser_profiles:
+                first_profile = self.app.config.browser_profiles[0]
+                chrome_path = first_profile.get("chrome_path")
+                profile_path = first_profile.get("profile_path")
+
+            if not chrome_path or not profile_path:
+                self.after_safe(lambda: self.add_log("❌ Chưa cấu hình Chrome Profile trong Settings!"))
+                return
+
+            # Callback để log progress
+            def token_progress(msg):
+                self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
+
+            # Tạo extractor và lấy token
+            extractor = ChromeTokenExtractor(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                headless=False,
+                timeout=120
+            )
+
+            self.after_safe(lambda: self.add_log("   Đang mở Chrome và truy cập Google Flow..."))
+            bearer_token, project_id, error = extractor.extract_token(callback=token_progress)
+
+            if not bearer_token:
+                self.after_safe(lambda e=error: self.add_log(f"❌ Không lấy được token: {e}"))
+                return
+
+            self.after_safe(lambda: self.add_log(f"✅ Đã lấy được token (project: {project_id or 'auto'})"))
+
+            # === BƯỚC 2: Kết nối Google Sheets ===
             self.after_safe(lambda: self.add_log("📊 Kết nối Google Sheets..."))
 
             reader = SheetsReader(
@@ -2486,18 +2524,18 @@ class MainTab:
             product_codes = [p.get("code") for p in products if p.get("code")]
             self.after_safe(lambda: self.add_log(f"📋 Tìm thấy {len(product_codes)} sản phẩm"))
 
-            # Khởi tạo Flow Generator - dùng thư mục input_folder (products)
+            # === BƯỚC 3: Khởi tạo Flow Generator với token ===
             products_base = self.app.config.input_folder
             flow_gen = get_flow_generator(products_base)
+
+            # Set Bearer token
+            flow_gen.set_token(bearer_token)
+            self.after_safe(lambda: self.add_log("✅ Đã set Bearer token cho Flow API"))
 
             # Set log callback
             def log_callback(msg):
                 self.after_safe(lambda m=msg: self.add_log(m))
             flow_gen.set_log_callback(log_callback)
-
-            # Kiểm tra token
-            # TODO: Implement token input dialog hoặc load từ config
-            self.after_safe(lambda: self.add_log("⚠️ Đang sử dụng chế độ không có token (có thể bị giới hạn)"))
 
             # Xử lý từng sản phẩm
             products_dir = Path(products_base)

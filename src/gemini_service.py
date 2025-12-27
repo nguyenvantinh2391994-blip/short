@@ -71,39 +71,54 @@ class GeminiService:
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     # Prompt template cho kịch bản bán hàng TỰ NHIÊN (30-40s)
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là người dùng thật đang chia sẻ trải nghiệm về sản phẩm mình mua.
+    SCRIPT_PROMPT_TEMPLATE = """Bạn là người review sản phẩm tự nhiên, chân thực.
 
 SẢN PHẨM:
 - Tên: {product_name}
-- Mô tả: {product_description}
+- Mô tả chi tiết: {product_description}
 
-BỐI CẢNH: Video đã có phần mở đầu (5-10s) cho thấy người mặc/dùng sản phẩm. Bây giờ bạn cần viết lời thoại TIẾP NỐI tự nhiên, như đang kể chuyện cho bạn bè nghe.
+NHIỆM VỤ: Từ mô tả sản phẩm, LỌC RA các TÍNH NĂNG NỔI BẬT và viết kịch bản 30-40 giây.
 
-YÊU CẦU - QUAN TRỌNG:
-1. Độ dài: 90-120 từ (đọc trong 30-40 giây)
-2. Giọng điệu: TỰ NHIÊN, CHÂN THẬT như đang nói chuyện với bạn bè
-3. KHÔNG bắt đầu bằng từ cảm thán mạnh (Ôi trời ơi, Mọi người ơi...)
-4. Bắt đầu NHẸN NHÀNG như đang tiếp tục câu chuyện, ví dụ:
-   - "Nói thật là lúc đầu mình cũng không tin lắm..."
-   - "Mình mới mua cái này được mấy hôm..."
-   - "Hôm nay mình muốn chia sẻ với mọi người..."
-   - "Thật ra thì món này mình thấy..."
+BỐI CẢNH VIDEO:
+- Phần đầu (SORA): Đã có hình ảnh bắt mắt của người mặc/dùng sản phẩm (5-10s)
+- Phần voice này: Tiếp nối, giải thích TẠI SAO sản phẩm này tốt
 
-CẤU TRÚC KỊCH BẢN:
-1. MỞ ĐẦU (nhẹ nhàng): Giới thiệu ngắn, tự nhiên
-2. TRẢI NGHIỆM: Kể lại cảm nhận thật khi dùng (2-3 điểm)
-3. CHI TIẾT: Nói về chất liệu, kiểu dáng, hoặc điểm bạn thích
-4. KHUYÊN NHỦ: Lời khuyên chân thành (không ép buộc)
+CẤU TRÚC KỊCH BẢN (4 phần):
+
+1. HOOK NHẸ (1-2 câu): Thu hút tiếp sau hình ảnh
+   - "Mình biết nhiều bạn đang thắc mắc về..."
+   - "Đây là món mình hay được hỏi nhất..."
+   - "Nếu bạn đang tìm [loại sản phẩm] thì..."
+
+2. TÍNH NĂNG (2-3 điểm): Trích từ mô tả, nói ngắn gọn
+   - Chất liệu gì? (cotton, lụa, thun...)
+   - Thiết kế như thế nào? (form, kiểu dáng...)
+   - Điểm đặc biệt? (co giãn, thoáng mát, không nhăn...)
+
+3. LÝ DO MUA (kích thích nhu cầu):
+   - Phù hợp với ai? Dịp nào?
+   - Giải quyết vấn đề gì cho người mua?
+   - So sánh nhẹ (giá tốt, chất lượng...)
+
+4. CALL TO ACTION (thúc đẩy hành động):
+   - "Link mình để ở bio nha"
+   - "Inbox mình để được tư vấn"
+   - "Đặt ngay kẻo hết size nha"
+
+YÊU CẦU:
+- Độ dài: 90-120 từ (30-40 giây)
+- Giọng điệu: Tự nhiên như nói chuyện, KHÔNG giả tạo
+- Tập trung TÍNH NĂNG thực tế từ mô tả sản phẩm
+- KHÔNG bịa thông tin không có trong mô tả
 
 PHONG CÁCH:
-- Như đang quay story kể cho bạn bè
-- Có thể dùng từ ngữ đời thường: "thật sự", "nói thật", "mình thấy"
-- KHÔNG dùng từ quảng cáo: "siêu xịn", "đỉnh của chóp", "cực phẩm"
-- KHÔNG tạo FOMO giả: "hàng có hạn", "mua ngay kẻo hết"
-- Có thể nhắc nhẹ về giá hoặc nơi mua ở cuối
+- Như đang review cho bạn bè xem
+- Dùng từ đời thường: "thật sự", "nói thật", "mình thấy"
+- Có thể dùng: "xịn", "ưng", "đáng tiền" (tự nhiên)
+- KHÔNG dùng quá mức: "siêu cấp", "đỉnh của chóp"
 
-VÍ DỤ TỐT:
-"Nói thật là lúc đầu mình cũng không tin lắm, nhưng mà mặc vào rồi thì thấy ưng quá. Chất vải mát, mặc cả ngày cũng không bí. Mình thích nhất là phần thiết kế, vừa đơn giản mà lại trông thanh lịch. Với giá này thì mình thấy được lắm. Ai đang tìm đồ tương tự thì có thể tham khảo nha."
+VÍ DỤ TỐT (cho áo thun cotton):
+"Đây là mẫu áo mình hay được hỏi nhất nè. Chất cotton 100% nên mặc mát lắm, đi làm cả ngày không bí. Form áo vừa vặn, không quá rộng cũng không bó. Màu này dễ phối đồ, mình hay mặc với quần jean hoặc chân váy đều được. Giá cũng mềm, dưới 200k thôi. Ai thích thì inbox mình tư vấn size nha."
 
 CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 

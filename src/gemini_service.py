@@ -100,22 +100,30 @@ SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
-YÊU CẦU QUAN TRỌNG:
+QUAN TRỌNG - PHẢI XÁC ĐỊNH NHÂN VẬT CỤ THỂ:
+1. Dựa vào tên và mô tả sản phẩm, xác định:
+   - ĐỘ TUỔI cụ thể (ví dụ: 6-year-old, 25-year-old, 35-year-old...)
+   - GIỚI TÍNH (boy/girl/man/woman)
+   - Ví dụ: "áo dài bé gái" → "6-year-old Vietnamese girl"
+   - Ví dụ: "váy nữ" → "25-year-old Vietnamese woman"
+   - Ví dụ: "áo sơ mi nam" → "30-year-old Vietnamese man"
+
+2. Tạo prompt với format:
+   [TUỔI]-year-old Vietnamese [GIỚI TÍNH] wearing [SẢN PHẨM], [HÀNH ĐỘNG ĐƠN GIẢN], [BỐI CẢNH VIỆT NAM]
+
+YÊU CẦU:
 - KHÔNG phải video review, KHÔNG giới thiệu sản phẩm
-- CHỈ CẦN nhân vật đang mặc/dùng sản phẩm trong bối cảnh tự nhiên
-- Người Việt Nam trong bối cảnh Việt Nam phù hợp
+- CHỈ CẦN nhân vật đang mặc/dùng sản phẩm tự nhiên
+- Bối cảnh Việt Nam phù hợp
 - Video 5-10 giây, như quay bằng điện thoại
-- Prompt NGẮN, ĐƠN GIẢN, 10-20 từ tiếng Anh
+- Prompt NGẮN 15-25 từ tiếng Anh
 
-VÍ DỤ CHO ÁO DÀI BÉ GÁI:
-- "Vietnamese little girl wearing ao dai, walking in garden, natural phone footage"
-- "Young Vietnamese girl in traditional dress, playing outdoors, candid moment"
+VÍ DỤ:
+- "6-year-old Vietnamese girl wearing ao dai, walking happily in garden, natural phone footage"
+- "25-year-old Vietnamese woman in elegant dress, gentle walk in park, warm daylight"
+- "8-year-old Vietnamese boy wearing shirt, playing in backyard, candid moment"
 
-VÍ DỤ CHO VÁY:
-- "Vietnamese woman in dress, casual walk in park, natural daylight"
-- "Girl wearing the dress, light breeze, simple outdoor setting"
-
-CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (10-20 từ):"""
+CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """

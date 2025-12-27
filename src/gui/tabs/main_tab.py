@@ -1033,22 +1033,25 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Lọc các mã có ảnh
+            # Lọc các mã có ảnh - lấy từ thư mục input/{code}/flow/
             valid_items = []
             for item in pending:
                 code = item["code"]
-                code_folder = input_folder / code
-                if code_folder.exists():
-                    images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png")) + list(code_folder.glob("*.webp"))
+                # Grok lấy ảnh từ thư mục flow (ảnh do Flow generate)
+                flow_folder = input_folder / code / "flow"
+                if flow_folder.exists():
+                    images = list(flow_folder.glob("*.jpg")) + list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.webp"))
                     if images:
                         item["images"] = images  # Thêm danh sách ảnh vào item
                         valid_items.append(item)
                         self.set_task_input_status(code, TaskItem.STATUS_DONE)
+                        self.after_safe(lambda c=code, n=len(images): self.add_log(f"  📷 {c}: {n} ảnh từ flow/"))
                     else:
                         self.set_task_input_status(code, TaskItem.STATUS_ERROR)
-                        self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: không có ảnh"))
+                        self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: không có ảnh trong flow/"))
                 else:
                     self.set_task_input_status(code, TaskItem.STATUS_ERROR)
+                    self.after_safe(lambda c=code: self.add_log(f"⚠️ {c}: chưa có thư mục flow/"))
 
             if not valid_items:
                 self.after_safe(lambda: self.add_log("Không có mã nào có ảnh!"))
@@ -1427,6 +1430,7 @@ class MainTab:
                 chrome_path=chrome_path,
                 profile_path=profile_path,
                 output_folder=str(output_folder),
+                input_folder=str(input_folder),  # Thêm input_folder
                 headless=not getattr(self.app.config, 'show_chrome', True),
             )
             self.current_sora = sora  # Lưu để toggle visibility
@@ -1448,14 +1452,14 @@ class MainTab:
                     self.set_task_video_status(code, TaskItem.STATUS_ERROR)
                     continue
 
-                # Tìm ảnh SORA trong folder input/sora/{code}.jpg
+                # Tìm ảnh SORA trong folder input/{code}/extracted/
                 image_path = find_sora_image(str(input_folder), code)
                 if image_path:
                     self.after_safe(lambda c=code, p=Path(image_path).name:
                         self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
                 else:
                     self.after_safe(lambda c=code:
-                        self.add_log(f"  ⚠️ {c}: Không tìm thấy ảnh trong input/sora/"))
+                        self.add_log(f"  ⚠️ {c}: Không tìm thấy ảnh trong input/{c}/extracted/"))
 
                 self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
@@ -1717,6 +1721,10 @@ class MainTab:
                             try:
                                 reader.sheet.update_acell(f"G{item['row']}", script)
                                 self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi kịch bản vào G{item['row']}"))
+                                # Ghi SORA prompt vào cột F (nếu có)
+                                if script_result.sora_prompt:
+                                    reader.sheet.update_acell(f"F{item['row']}", script_result.sora_prompt)
+                                    self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi SORA prompt vào F{item['row']}"))
                             except Exception as e:
                                 self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi sheet: {e}"))
                         else:
@@ -2794,16 +2802,15 @@ class MainTab:
             music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
             voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
 
-            # Lọc các mã có video từ Grok (trong OUTPUT/_temp_videos/{code}/)
-            temp_folder = output_folder / "_temp_videos"
+            # Lọc các mã có video (trong input/{code}/video/)
             valid_items = []
             for item in pending:
                 code = item["code"]
 
-                # Tìm video trong OUTPUT/_temp_videos/{code}/
-                code_temp_folder = temp_folder / code
-                if code_temp_folder.exists():
-                    videos = list(code_temp_folder.glob("*.mp4"))
+                # Tìm video trong input/{code}/video/
+                code_video_folder = input_folder / code / "video"
+                if code_video_folder.exists():
+                    videos = list(code_video_folder.glob("*.mp4"))
                     if videos:
                         item["videos"] = videos
                         valid_items.append(item)
@@ -2811,8 +2818,8 @@ class MainTab:
 
             if not valid_items:
                 self.after_safe(lambda: self.add_log("❌ Không có video nào để edit"))
-                self.after_safe(lambda tf=temp_folder: self.add_log(f"  Đã tìm trong: {tf}/[mã]/"))
-                self.after_safe(lambda: self.add_log("  💡 Chạy 'Tạo Video' trước để tạo video từ ảnh"))
+                self.after_safe(lambda: self.add_log(f"  Đã tìm trong: input/[mã]/video/"))
+                self.after_safe(lambda: self.add_log("  💡 Chạy 'SORA' hoặc 'Tạo Video' trước để tạo video"))
                 return
 
             self.after_safe(lambda n=len(valid_items): self.add_log(f"📋 Tìm thấy {n} sản phẩm có video"))

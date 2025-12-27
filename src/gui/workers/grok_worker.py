@@ -203,9 +203,9 @@ class GrokWorker:
                 self.on_automation_created(self)  # Truyền worker thay vì single automation
 
         try:
-            # Thư mục tạm cho mã này
-            code_temp_folder = self.temp_folder / code
-            code_temp_folder.mkdir(parents=True, exist_ok=True)
+            # Thư mục video cho mã này - lưu vào input/{code}/video/
+            code_video_folder = self.input_folder / code / "video"
+            code_video_folder.mkdir(parents=True, exist_ok=True)
 
             # ===== BƯỚC 1: Tạo video từ mỗi ảnh =====
             self.log(f"[{profile_name}] Tạo {len(images)} video từ ảnh...", "progress")
@@ -217,7 +217,7 @@ class GrokWorker:
                     break
 
                 video_name = f"{code}_{j+1:02d}.mp4"
-                video_path = code_temp_folder / video_name
+                video_path = code_video_folder / video_name
 
                 # Bỏ qua nếu đã có
                 if video_path.exists() and video_path.stat().st_size > 50000:
@@ -288,8 +288,8 @@ class GrokWorker:
             # Đường dẫn output
             final_video = self.output_folder / f"{code}.mp4"
 
-            # Kiểm tra video SORA (00_sora_{code}.mp4)
-            sora_video_path = code_temp_folder / f"00_sora_{code}.mp4"
+            # Kiểm tra video SORA (00_sora_{code}.mp4) trong thư mục video
+            sora_video_path = code_video_folder / f"00_sora_{code}.mp4"
             has_sora = sora_video_path.exists() and sora_video_path.stat().st_size > 50000
 
             if has_sora:

@@ -44,28 +44,30 @@ class SoraResult:
 
 
 def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
-    """Tìm ảnh SORA theo mã sản phẩm trong thư mục input/sora/
+    """Tìm ảnh SORA theo mã sản phẩm trong thư mục input/{code}/extracted/
 
     Args:
         input_folder: Thư mục input gốc (ví dụ: E:/affiliate/short/input)
         product_code: Mã sản phẩm (ví dụ: SP001)
 
     Returns:
-        Đường dẫn ảnh hoặc None
+        Đường dẫn ảnh đầu tiên tìm thấy hoặc None
 
     Ví dụ:
-        find_sora_image("input", "SP001") -> "input/sora/SP001.jpg"
+        find_sora_image("input", "SP001") -> "input/SP001/extracted/image1.jpg"
     """
-    sora_folder = Path(input_folder) / "sora"
+    # Tìm trong thư mục input/{code}/extracted/
+    extracted_folder = Path(input_folder) / product_code / "extracted"
 
-    if not sora_folder.exists():
+    if not extracted_folder.exists():
         return None
 
-    # Tìm ảnh theo mã sản phẩm
+    # Tìm ảnh đầu tiên trong thư mục extracted
     for ext in [".jpg", ".jpeg", ".png", ".webp"]:
-        image_path = sora_folder / f"{product_code}{ext}"
-        if image_path.exists():
-            return str(image_path)
+        images = list(extracted_folder.glob(f"*{ext}"))
+        if images:
+            # Trả về ảnh đầu tiên (sorted theo tên)
+            return str(sorted(images)[0])
 
     return None
 
@@ -104,6 +106,7 @@ class SoraAutomation:
         chrome_path: str = r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         profile_path: str = None,
         output_folder: str = "OUTPUT",
+        input_folder: str = "input",  # Thêm input_folder
         timeout: int = 300,
         headless: bool = False,
         maximize: bool = True,  # Mặc định maximize để PyAutoGUI hoạt động tốt
@@ -112,6 +115,7 @@ class SoraAutomation:
         self.profile_path = profile_path
         self.output_folder = Path(output_folder)
         self.output_folder.mkdir(parents=True, exist_ok=True)
+        self.input_folder = Path(input_folder)  # Thêm input_folder
         self.timeout = timeout
         self.headless = headless  # Chế độ ẩn (minimize khi chờ)
         self.maximize = maximize
@@ -648,11 +652,12 @@ class SoraAutomation:
 
             self.log_ok(f"Video URL: {video_url[:60]}...")
 
-            # Download video
+            # Download video - lưu vào input/{code}/video/
             if output_path:
                 video_folder = Path(output_path).parent
             elif product_code:
-                video_folder = self.output_folder / "_temp_videos" / product_code
+                # Lưu video vào input/{code}/video/
+                video_folder = self.input_folder / product_code / "video" if hasattr(self, 'input_folder') else self.output_folder / "_temp_videos" / product_code
             else:
                 video_folder = self.output_folder
 
@@ -724,10 +729,11 @@ class SoraAutomation:
             if not video_url:
                 return SoraResult(False, error="Không lấy được URL video")
 
+            # Lưu video vào input/{code}/video/
             if output_path:
                 video_folder = Path(output_path).parent
             elif product_code:
-                video_folder = self.output_folder / "_temp_videos" / product_code
+                video_folder = self.input_folder / product_code / "video" if hasattr(self, 'input_folder') else self.output_folder / "_temp_videos" / product_code
             else:
                 video_folder = self.output_folder
 

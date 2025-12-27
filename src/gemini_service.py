@@ -93,25 +93,27 @@ VÍ DỤ:
 
 CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 
-    # Prompt template cho SORA video hook (10s)
-    SORA_PROMPT_TEMPLATE = """Tạo prompt cho AI video generator (SORA) để tạo video HOOK thu hút 10 giây.
+    # Prompt template cho SORA video (đơn giản, dạng review sản phẩm)
+    SORA_PROMPT_TEMPLATE = """Tạo prompt ngắn gọn cho SORA AI để tạo video giới thiệu sản phẩm như một review tự nhiên.
 
 SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
 YÊU CẦU:
-- Mô tả cảnh quay ngắn gọn, trực quan
-- Tập trung vào sản phẩm và người dùng
-- Phong cách: quảng cáo TikTok/Reels hiện đại
-- Ánh sáng đẹp, màu sắc tươi sáng
-- Camera movement: zoom in, slow motion, hoặc tracking shot
+- Video dạng review sản phẩm từ người dùng thật
+- Người Việt Nam cầm/dùng sản phẩm tự nhiên
+- Bối cảnh đời thường (nhà, phòng khách)
+- Ánh sáng tự nhiên, không dàn dựng
+- 10 giây, phong cách tự quay bằng điện thoại
 
-ĐỊNH DẠNG PROMPT SORA (tiếng Anh, 1-2 câu ngắn):
-- Mô tả cảnh + hành động + phong cách
-- Ví dụ: "Close-up of a woman applying lipstick with soft natural lighting, cinematic slow motion, beauty advertisement style"
+ĐỊNH DẠNG: 1 câu tiếng Anh mô tả cảnh quay (15-25 từ)
 
-CHỈ TRẢ VỀ PROMPT SORA BẰNG TIẾNG ANH, KHÔNG GIẢI THÍCH:"""
+VÍ DỤ:
+- "Vietnamese person showing product naturally at home, casual review style, warm daylight"
+- "Close-up hands unboxing and demonstrating product, authentic home setting, natural lighting"
+
+CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH:"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """

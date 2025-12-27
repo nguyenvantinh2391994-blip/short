@@ -1884,7 +1884,616 @@ class MainTab:
         thread.start()
 
     def _run_full_workflow(self):
-        """Background thread chạy full quy trình"""
+        """Background thread chạy full quy trình - gọi từng bước tuần tự"""
+        import time
+
+        steps = [
+            ("📥 BƯỚC 1: TẢI ẢNH", self._run_shopee_download_internal),
+            ("🔬 BƯỚC 2: TÁCH SẢN PHẨM", self._run_extract_internal),
+            ("🔍 BƯỚC 3: LỌC ẢNH", self._run_filter_internal),
+            ("📝 BƯỚC 4: TẠO SCRIPT & VOICE", self._run_script_creation_internal),
+            ("🌀 BƯỚC 5: TẠO ẢNH FLOW", self._run_flow_internal),
+            ("🎬 BƯỚC 6: TẠO VIDEO SORA", self._run_sora_internal),
+            ("🎥 BƯỚC 7: TẠO VIDEO GROK", self._run_grok_internal),
+            ("✂️ BƯỚC 8: EDIT VIDEO", self._run_edit_internal),
+        ]
+
+        try:
+            for step_name, step_func in steps:
+                if self.stop_flag.is_set():
+                    self.after_safe(lambda: self.add_log("⏹️ Đã dừng theo yêu cầu"))
+                    break
+
+                self.after_safe(lambda n=step_name: self.add_log(f"\n{'='*40}\n{n}\n{'='*40}"))
+
+                try:
+                    step_func()
+                except Exception as e:
+                    self.after_safe(lambda n=step_name, e=str(e): self.add_log(f"⚠️ Lỗi {n}: {e}"))
+
+                time.sleep(1)  # Nghỉ giữa các bước
+
+            self.after_safe(lambda: self.add_log("\n🎉 HOÀN THÀNH TOÀN BỘ QUY TRÌNH!"))
+
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"❌ Lỗi: {e}"))
+        finally:
+            self.after_safe(self._on_full_workflow_complete)
+
+    def _run_shopee_download_internal(self):
+        """Chạy tải ảnh Shopee (internal - không quản lý state)"""
+        from ...sheets_reader import SheetsReader
+        from ...shopee_downloader import ShopeeDownloader
+        from pathlib import Path
+
+        reader = SheetsReader(
+            credentials_file=self.app.config.credentials_file,
+            spreadsheet_id=self.app.config.spreadsheet_id,
+            sheet_name=self.app.config.sheet_name
+        )
+        if not reader.connect() or not reader.open_spreadsheet():
+            self.after_safe(lambda: self.add_log("❌ Không kết nối được Sheet"))
+            return
+
+        pending = reader.get_pending_products(
+            status_column=self.app.config.status_column,
+            prompt_column=self.app.config.prompt_column
+        )
+        if not pending:
+            self.after_safe(lambda: self.add_log("Không có sản phẩm nào"))
+            return
+
+        # Browser profile
+        chrome_path, profile_path = None, None
+        if self.app.config.browser_profiles:
+            chrome_path = self.app.config.browser_profiles[0].get("chrome_path")
+            profile_path = self.app.config.browser_profiles[0].get("profile_path")
+
+        downloader = ShopeeDownloader(
+            output_dir=self.app.config.input_folder,
+            chrome_path=chrome_path,
+            profile_path=profile_path,
+            headless=not getattr(self.app.config, 'show_chrome', True)
+        )
+
+        input_folder = Path(self.app.config.input_folder)
+        all_values = reader.sheet.get_all_values()
+        link_col_idx = ord(getattr(self.app.config, 'shopee_link_column', 'B').upper()) - ord('A')
+
+        for item in pending:
+            if self.stop_flag.is_set():
+                break
+            code = item["code"]
+            code_folder = input_folder / code
+
+            # Skip nếu đã có ảnh
+            if code_folder.exists():
+                existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                if existing:
+                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có ảnh"))
+                    continue
+
+            row_idx = item["row"] - 1
+            if row_idx < len(all_values):
+                link = all_values[row_idx][link_col_idx] if len(all_values[row_idx]) > link_col_idx else ""
+                if link and "shopee" in link.lower():
+                    product, images = downloader.get_product_and_download(link.strip(), code, True)
+                    if images:
+                        self.after_safe(lambda c=code, n=len(images): self.add_log(f"  ✓ {c}: {n} ảnh"))
+                        if product:
+                            try:
+                                if product.name:
+                                    reader.sheet.update_acell(f"C{item['row']}", product.name)
+                                if product.description:
+                                    reader.sheet.update_acell(f"D{item['row']}", product.description)
+                            except:
+                                pass
+
+    def _run_extract_internal(self):
+        """Chạy tách sản phẩm (internal)"""
+        # Gọi logic từ start_extract_process nhưng không quản lý UI state
+        try:
+            from ...image_processor import ImageExtractor
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+
+            if not self.app.config.gemini_api_key:
+                self.after_safe(lambda: self.add_log("  ⚠️ Chưa có Gemini API - bỏ qua"))
+                return
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+            if not pending:
+                return
+
+            extractor = ImageExtractor(self.app.config.gemini_api_key)
+            input_folder = Path(self.app.config.input_folder)
+
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+                code = item["code"]
+                code_folder = input_folder / code
+                extracted_folder = code_folder / "extracted"
+
+                # Skip nếu đã có
+                if extracted_folder.exists() and list(extracted_folder.glob("*.png")):
+                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã tách"))
+                    continue
+
+                if not code_folder.exists():
+                    continue
+
+                images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                if not images:
+                    continue
+
+                self.after_safe(lambda c=code: self.add_log(f"  🔬 {c}: đang tách..."))
+                for img in images[:3]:  # Tối đa 3 ảnh
+                    if self.stop_flag.is_set():
+                        break
+                    try:
+                        result = extractor.extract_product(str(img), str(extracted_folder))
+                        if result:
+                            self.after_safe(lambda c=code: self.add_log(f"    ✓ Tách xong 1 ảnh"))
+                    except Exception as e:
+                        pass
+        except ImportError:
+            self.after_safe(lambda: self.add_log("  ⚠️ Module ImageExtractor không có"))
+
+    def _run_filter_internal(self):
+        """Chạy lọc ảnh (internal)"""
+        try:
+            from ...image_processor import ImageFilter
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+            import time
+
+            if not self.app.config.gemini_api_key:
+                self.after_safe(lambda: self.add_log("  ⚠️ Chưa có Gemini API - bỏ qua"))
+                return
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+            if not pending:
+                return
+
+            img_filter = ImageFilter(self.app.config.gemini_api_key)
+            input_folder = Path(self.app.config.input_folder)
+
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+                code = item["code"]
+                code_folder = input_folder / code
+                if not code_folder.exists():
+                    continue
+
+                images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                if not images:
+                    continue
+
+                for img in images:
+                    if self.stop_flag.is_set():
+                        break
+                    try:
+                        analysis = img_filter.analyze_image(str(img))
+                        if not analysis.should_keep:
+                            img.unlink()
+                            self.after_safe(lambda p=img.name: self.add_log(f"    ✗ Xóa: {p}"))
+                        time.sleep(0.3)
+                    except:
+                        pass
+        except ImportError:
+            self.after_safe(lambda: self.add_log("  ⚠️ Module ImageFilter không có"))
+
+    def _run_script_creation_internal(self):
+        """Chạy tạo script (internal)"""
+        try:
+            from ...gemini_service import GeminiService
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+            import time
+
+            if not self.app.config.gemini_api_key:
+                self.after_safe(lambda: self.add_log("  ⚠️ Chưa có Gemini API - bỏ qua"))
+                return
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            gemini = GeminiService(self.app.config.gemini_api_key)
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
+            voice_folder.mkdir(parents=True, exist_ok=True)
+
+            all_values = reader.sheet.get_all_values()
+            for row_idx, row in enumerate(all_values[1:], start=2):
+                if self.stop_flag.is_set():
+                    break
+
+                code = row[0].strip() if row else ""
+                name = row[2].strip() if len(row) > 2 else ""
+                desc = row[3].strip() if len(row) > 3 else ""
+                script = row[6].strip() if len(row) > 6 else ""
+
+                if not code or not name:
+                    continue
+
+                # Check voice
+                has_voice = (voice_folder / f"{code}.mp3").exists() or (voice_folder / f"{code}.wav").exists()
+                if has_voice and script:
+                    continue
+
+                self.after_safe(lambda c=code: self.add_log(f"  📝 {c}..."))
+
+                # Tạo script nếu chưa có
+                if not script:
+                    result = gemini.generate_script(name, desc)
+                    if result.success:
+                        script = result.script
+                        reader.sheet.update_acell(f"G{row_idx}", script)
+                        if result.sora_prompt:
+                            reader.sheet.update_acell(f"F{row_idx}", result.sora_prompt)
+
+                # Tạo voice nếu chưa có
+                if script and not has_voice:
+                    voice_result = gemini.generate_voice(script, str(voice_folder / f"{code}.mp3"))
+                    if voice_result.success:
+                        self.after_safe(lambda c=code: self.add_log(f"    ✓ Voice xong"))
+
+                time.sleep(1)
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+
+    def _run_flow_internal(self):
+        """Chạy Flow tạo ảnh (internal)"""
+        # Gọi logic từ _run_flow_process
+        try:
+            from ...chrome_token_extractor import ChromeTokenExtractor
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+
+            chrome_path, profile_path = None, None
+            if self.app.config.browser_profiles:
+                chrome_path = self.app.config.browser_profiles[0].get("chrome_path")
+                profile_path = self.app.config.browser_profiles[0].get("profile_path")
+
+            if not chrome_path or not profile_path:
+                self.after_safe(lambda: self.add_log("  ⚠️ Chưa cấu hình Chrome - bỏ qua"))
+                return
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            products = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column,
+                flow_prompt_column="I",
+                flow_prompt_column_2="K"
+            )
+            if not products:
+                return
+
+            extractor = ChromeTokenExtractor(chrome_path, profile_path, timeout=120)
+            self.after_safe(lambda: self.add_log("  Đang lấy token..."))
+            bearer_token, project_id, error = extractor.extract_token()
+            if not bearer_token:
+                self.after_safe(lambda e=error: self.add_log(f"  ❌ Không lấy được token: {e}"))
+                return
+
+            input_folder = Path(self.app.config.input_folder)
+
+            for product in products:
+                if self.stop_flag.is_set():
+                    break
+
+                code = product.get("code", "")
+                flow_prompt_1 = product.get("flow_prompt", "")
+                flow_prompt_2 = product.get("flow_prompt_2", "")
+
+                if not code or (not flow_prompt_1 and not flow_prompt_2):
+                    continue
+
+                flow_folder = input_folder / code / "flow"
+                extracted_folder = input_folder / code / "extracted"
+
+                # Skip nếu đã có đủ ảnh
+                if flow_folder.exists():
+                    existing = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
+                    required = 8 if (flow_prompt_1 and flow_prompt_2) else 4
+                    if len(existing) >= required:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có ảnh flow"))
+                        continue
+
+                if not extracted_folder.exists():
+                    continue
+
+                self.after_safe(lambda c=code: self.add_log(f"  🌀 {c}: tạo ảnh flow..."))
+                flow_folder.mkdir(parents=True, exist_ok=True)
+
+                # Upload reference image
+                ref_images = list(extracted_folder.glob("*.png")) + list(extracted_folder.glob("*.jpg"))
+                image_ref = None
+                if ref_images:
+                    image_ref = extractor.upload_image(str(ref_images[0]))
+
+                # Tạo ảnh với mỗi prompt
+                for i, prompt in enumerate([flow_prompt_1, flow_prompt_2], 1):
+                    if not prompt or self.stop_flag.is_set():
+                        continue
+                    prefix = f"{code}_I" if i == 1 else f"{code}_K"
+                    if extractor.trigger_and_capture(prompt):
+                        extractor.call_api_with_captured_payload(
+                            custom_prompt=prompt,
+                            output_dir=flow_folder,
+                            prefix=prefix,
+                            image_ref=image_ref
+                        )
+
+        except ImportError:
+            self.after_safe(lambda: self.add_log("  ⚠️ Module ChromeTokenExtractor không có"))
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+
+    def _run_sora_internal(self):
+        """Chạy SORA tạo video (internal)"""
+        try:
+            from ...sora_automation import SoraAutomation, find_sora_image
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+
+            chrome_path, profile_path = None, None
+            if self.app.config.browser_profiles:
+                chrome_path = self.app.config.browser_profiles[0].get("chrome_path")
+                profile_path = self.app.config.browser_profiles[0].get("profile_path")
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+            if not pending:
+                return
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+
+            sora = SoraAutomation(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                output_folder=str(output_folder),
+                input_folder=str(input_folder),
+                headless=not getattr(self.app.config, 'show_chrome', True)
+            )
+
+            first_video = True
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                sora_prompt = item.get("sora_prompt", "") or item.get("prompt", "")
+
+                # Skip nếu đã có video
+                video_folder = input_folder / code / "video"
+                if (video_folder / f"00_sora_{code}.mp4").exists():
+                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có video SORA"))
+                    continue
+
+                if not sora_prompt:
+                    continue
+
+                image_path = find_sora_image(str(input_folder), code)
+                if not image_path:
+                    continue
+
+                self.after_safe(lambda c=code: self.add_log(f"  🎬 {c}: tạo video SORA..."))
+
+                if first_video:
+                    result = sora.create_video(image_path, sora_prompt, code)
+                    first_video = False
+                else:
+                    result = sora.create_video_continue(image_path, sora_prompt, code)
+
+                if result and result.success:
+                    self.after_safe(lambda c=code: self.add_log(f"    ✓ {c}: SORA xong"))
+
+        except ImportError:
+            self.after_safe(lambda: self.add_log("  ⚠️ Module SoraAutomation không có"))
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+
+    def _run_grok_internal(self):
+        """Chạy Grok tạo video (internal)"""
+        try:
+            from ..workers.grok_worker import GrokWorker
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+            if not pending:
+                return
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+
+            # Lọc mã có ảnh flow
+            valid_items = []
+            for item in pending:
+                code = item["code"]
+                flow_folder = input_folder / code / "flow"
+                video_folder = input_folder / code / "video"
+
+                if flow_folder.exists():
+                    images = list(flow_folder.glob("*.jpg")) + list(flow_folder.glob("*.png"))
+                    if images:
+                        # Skip nếu đã có đủ video
+                        if video_folder.exists():
+                            grok_videos = [v for v in video_folder.glob("*.mp4")
+                                          if not v.name.startswith("00_sora_")]
+                            if len(grok_videos) >= len(images):
+                                self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có video Grok"))
+                                continue
+                        item["images"] = images
+                        valid_items.append(item)
+
+            if not valid_items:
+                self.after_safe(lambda: self.add_log("  Không có mã nào cần tạo video"))
+                return
+
+            worker = GrokWorker(
+                input_folder=str(input_folder),
+                output_folder=str(output_folder),
+                music_folder=self.app.config.music_folder or "",
+                voice_folder=self.app.config.voice_folder or "",
+                config=self.app.config,
+                browser_profiles=self.app.config.browser_profiles,
+                stop_flag=self.stop_flag,
+                on_log=lambda msg, lvl: self.after_safe(lambda m=msg: self.add_log(f"    {m}")),
+                on_progress=lambda cur, tot, msg: None,
+                headless=not getattr(self.app.config, 'show_chrome', True)
+            )
+
+            for item in valid_items:
+                if self.stop_flag.is_set():
+                    break
+                code = item["code"]
+                self.after_safe(lambda c=code: self.add_log(f"  🎥 {c}: tạo video Grok..."))
+                worker.process_single_item(item, reader)
+
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+
+    def _run_edit_internal(self):
+        """Chạy Edit ghép video (internal)"""
+        try:
+            from ...video_merger import VideoMerger, get_random_music, get_voice_for_code
+            from ...sheets_reader import SheetsReader
+            from pathlib import Path
+
+            reader = SheetsReader(
+                credentials_file=self.app.config.credentials_file,
+                spreadsheet_id=self.app.config.spreadsheet_id,
+                sheet_name=self.app.config.sheet_name
+            )
+            if not reader.connect() or not reader.open_spreadsheet():
+                return
+
+            pending = reader.get_pending_products(
+                status_column=self.app.config.status_column,
+                prompt_column=self.app.config.prompt_column
+            )
+            if not pending:
+                return
+
+            input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
+            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
+            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
+
+            merger = VideoMerger(
+                transition_type="crossfade",
+                transition_duration=0.5,
+                on_log=lambda msg: self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
+            )
+
+            for item in pending:
+                if self.stop_flag.is_set():
+                    break
+
+                code = item["code"]
+                video_folder = input_folder / code / "video"
+                final_output = output_folder / f"{code}.mp4"
+
+                # Skip nếu đã có output
+                if final_output.exists():
+                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có video final"))
+                    continue
+
+                if not video_folder.exists():
+                    continue
+
+                videos = sorted([str(v) for v in video_folder.glob("*.mp4")])
+                if not videos:
+                    continue
+
+                self.after_safe(lambda c=code: self.add_log(f"  ✂️ {c}: ghép video..."))
+
+                # Lấy voice và music
+                voice_path = get_voice_for_code(str(voice_folder), code) if voice_folder else None
+                music_path = get_random_music(str(music_folder)) if music_folder else None
+
+                # Check SORA video
+                sora_video = video_folder / f"00_sora_{code}.mp4"
+                if sora_video.exists():
+                    grok_videos = [v for v in videos if "00_sora_" not in v]
+                    merger.merge_with_sora(
+                        str(sora_video), grok_videos, str(final_output),
+                        music_path, voice_path, 0.6, 1.0, True
+                    )
+                else:
+                    merger.merge_videos(
+                        videos, str(final_output),
+                        music_path, voice_path, 0.6, 1.0, True
+                    )
+
+                if final_output.exists():
+                    self.after_safe(lambda c=code: self.add_log(f"    ✓ {c}: Edit xong"))
+                    reader.update_status(item["row"], "DONE", self.app.config.status_column)
+
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+
+    def _run_full_workflow_old(self):
+        """Background thread chạy full quy trình (OLD - kept for reference)"""
         try:
             from ...sheets_reader import SheetsReader
             from ...shopee_downloader import ShopeeDownloader

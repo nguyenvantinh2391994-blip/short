@@ -70,8 +70,8 @@ class GeminiService:
     # API endpoints
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    # Prompt template cho kịch bản bán hàng TỰ NHIÊN (30-40s)
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là người review sản phẩm tự nhiên, chân thực.
+    # Prompt template cho kịch bản bán hàng TỰ NHIÊN (30-40s) - AFFILIATE
+    SCRIPT_PROMPT_TEMPLATE = """Bạn là người review sản phẩm tự nhiên, chân thực cho video AFFILIATE.
 
 SẢN PHẨM:
 - Tên: {product_name}
@@ -82,13 +82,14 @@ NHIỆM VỤ: Từ mô tả sản phẩm, LỌC RA các TÍNH NĂNG NỔI BẬT 
 BỐI CẢNH VIDEO:
 - Phần đầu (SORA): Đã có hình ảnh bắt mắt của người mặc/dùng sản phẩm (5-10s)
 - Phần voice này: Tiếp nối, giải thích TẠI SAO sản phẩm này tốt
+- Video có GẮN GIỎ HÀNG (icon giỏ hàng màu vàng trong video)
 
 CẤU TRÚC KỊCH BẢN (4 phần):
 
 1. HOOK NHẸ (1-2 câu): Thu hút tiếp sau hình ảnh
    - "Mình biết nhiều bạn đang thắc mắc về..."
    - "Đây là món mình hay được hỏi nhất..."
-   - "Nếu bạn đang tìm [loại sản phẩm] thì..."
+   - "Nếu bạn đang tìm [loại sản phẩm] thì xem tiếp nha..."
 
 2. TÍNH NĂNG (2-3 điểm): Trích từ mô tả, nói ngắn gọn
    - Chất liệu gì? (cotton, lụa, thun...)
@@ -100,10 +101,11 @@ CẤU TRÚC KỊCH BẢN (4 phần):
    - Giải quyết vấn đề gì cho người mua?
    - So sánh nhẹ (giá tốt, chất lượng...)
 
-4. CALL TO ACTION (thúc đẩy hành động):
-   - "Link mình để ở bio nha"
-   - "Inbox mình để được tư vấn"
-   - "Đặt ngay kẻo hết size nha"
+4. CALL TO ACTION (cho video AFFILIATE - chọn 1):
+   - "Bấm vào giỏ hàng màu vàng trong video để mua nha"
+   - "Ai thích thì bấm giỏ hàng để xem giá nha"
+   - "Comment 'muốn' để mình gửi link nha"
+   - "Bấm vào giỏ hàng hoặc comment để mình tư vấn"
 
 YÊU CẦU:
 - Độ dài: 90-120 từ (30-40 giây)
@@ -118,7 +120,7 @@ PHONG CÁCH:
 - KHÔNG dùng quá mức: "siêu cấp", "đỉnh của chóp"
 
 VÍ DỤ TỐT (cho áo thun cotton):
-"Đây là mẫu áo mình hay được hỏi nhất nè. Chất cotton 100% nên mặc mát lắm, đi làm cả ngày không bí. Form áo vừa vặn, không quá rộng cũng không bó. Màu này dễ phối đồ, mình hay mặc với quần jean hoặc chân váy đều được. Giá cũng mềm, dưới 200k thôi. Ai thích thì inbox mình tư vấn size nha."
+"Đây là mẫu áo mình hay được hỏi nhất nè. Chất cotton 100% nên mặc mát lắm, đi làm cả ngày không bí. Form áo vừa vặn, không quá rộng cũng không bó. Màu này dễ phối đồ, mình hay mặc với quần jean hoặc chân váy đều được. Giá cũng mềm, dưới 200k thôi. Ai thích thì bấm vào giỏ hàng màu vàng trong video nha."
 
 CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 

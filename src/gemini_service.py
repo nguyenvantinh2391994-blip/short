@@ -93,27 +93,29 @@ VÍ DỤ:
 
 CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 
-    # Prompt template cho SORA video (đơn giản, dạng review sản phẩm)
-    SORA_PROMPT_TEMPLATE = """Tạo prompt ngắn gọn cho SORA AI để tạo video giới thiệu sản phẩm như một review tự nhiên.
+    # Prompt template cho SORA video (đơn giản, nhân vật mặc/dùng sản phẩm)
+    SORA_PROMPT_TEMPLATE = """Tạo prompt NGẮN GỌN cho SORA AI để tạo video người Việt Nam đang mặc/sử dụng sản phẩm.
 
 SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
-YÊU CẦU:
-- Video dạng review sản phẩm từ người dùng thật
-- Người Việt Nam cầm/dùng sản phẩm tự nhiên
-- Bối cảnh đời thường (nhà, phòng khách)
-- Ánh sáng tự nhiên, không dàn dựng
-- 10 giây, phong cách tự quay bằng điện thoại
+YÊU CẦU QUAN TRỌNG:
+- KHÔNG phải video review, KHÔNG giới thiệu sản phẩm
+- CHỈ CẦN nhân vật đang mặc/dùng sản phẩm trong bối cảnh tự nhiên
+- Người Việt Nam trong bối cảnh Việt Nam phù hợp
+- Video 5-10 giây, như quay bằng điện thoại
+- Prompt NGẮN, ĐƠN GIẢN, 10-20 từ tiếng Anh
 
-ĐỊNH DẠNG: 1 câu tiếng Anh mô tả cảnh quay (15-25 từ)
+VÍ DỤ CHO ÁO DÀI BÉ GÁI:
+- "Vietnamese little girl wearing ao dai, walking in garden, natural phone footage"
+- "Young Vietnamese girl in traditional dress, playing outdoors, candid moment"
 
-VÍ DỤ:
-- "Vietnamese person showing product naturally at home, casual review style, warm daylight"
-- "Close-up hands unboxing and demonstrating product, authentic home setting, natural lighting"
+VÍ DỤ CHO VÁY:
+- "Vietnamese woman in dress, casual walk in park, natural daylight"
+- "Girl wearing the dress, light breeze, simple outdoor setting"
 
-CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH:"""
+CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (10-20 từ):"""
 
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         """
@@ -336,25 +338,92 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH:"""
     # FLOW IMAGE & VIDEO PROMPTS
     # =========================================================================
 
-    # Template cho Flow image prompt - ĐỐI TƯỢNG VIỆT NAM
-    FLOW_IMAGE_PROMPT_TEMPLATE = """Dựa vào thông tin sản phẩm, hãy tạo prompt để generate ảnh realistic cho AI (Google Flow).
+    # Template cho Flow image prompt 1 - ẢNH BÌA SẢN PHẨM (thể hiện rõ sản phẩm)
+    FLOW_IMAGE_PROMPT_1_TEMPLATE = """Dựa vào thông tin sản phẩm, hãy tạo prompt để generate ẢNH BÌA SẢN PHẨM cho AI (Google Flow).
 
 SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
-QUAN TRỌNG: Đối tượng khách hàng là NGƯỜI VIỆT NAM, nên:
-- Nhân vật PHẢI là người Việt Nam với đặc điểm: da vàng, tóc đen, khuôn mặt châu Á đặc trưng
-- Bối cảnh PHẢI là Việt Nam: nhà Việt Nam, phòng khách Việt Nam, sân vườn Việt Nam, công viên Việt Nam...
+MỤC ĐÍCH: Tạo ẢNH BÌA cho sản phẩm - ảnh thể hiện RÕ RÀNG sản phẩm, như ảnh chụp mẫu chuyên nghiệp.
+
+QUAN TRỌNG:
+- Nhân vật PHẢI là người Việt Nam (da vàng, tóc đen, khuôn mặt châu Á)
+- Sản phẩm PHẢI được thể hiện RÕ RÀNG, CHÍNH DIỆN, nhìn thấy TOÀN BỘ sản phẩm
+- Người mẫu ĐỨNG hoặc NGỒI đẹp, TƯ THẾ tự nhiên nhưng thể hiện trọn vẹn sản phẩm
+- BỐI CẢNH đơn giản, tôn sản phẩm (không rối mắt)
 
 YÊU CẦU:
-1. Xác định đối tượng NGƯỜI VIỆT NAM phù hợp nhất:
+1. Xác định đối tượng NGƯỜI VIỆT NAM phù hợp với sản phẩm:
+   - Tuổi phù hợp (trẻ em, người lớn...)
+   - Giới tính phù hợp
+
+2. Điền vào template sau (CHỈ TRẢ VỀ PROMPT, KHÔNG GIẢI THÍCH):
+
+Create a photorealistic product showcase photograph, as if taken by a professional photographer.
+
+A [TUỔI]-year-old [GIỚI TÍNH] Vietnamese person with typical Vietnamese features (dark hair, warm skin tone, Asian facial features) wearing/holding [TÊN SẢN PHẨM].
+
+PRODUCT VISIBILITY (CRITICAL):
+- The product must be FULLY VISIBLE and CLEARLY DISPLAYED
+- Person standing or sitting in a pose that SHOWCASES THE ENTIRE PRODUCT
+- Front-facing view showing complete product details
+- Product is the MAIN FOCUS of the image
+
+Pose requirements:
+- Natural but elegant standing/sitting pose
+- Body position that displays the full product
+- Relaxed, confident expression
+- May look at camera with gentle smile OR look slightly to the side
+
+Background:
+- Simple, clean background that complements the product
+- Soft neutral colors (light gray, beige, soft white)
+- Vietnamese context: simple Vietnamese home corner, plain wall, garden edge
+- NO distracting elements - background should enhance product visibility
+
+Lighting:
+- Soft, even lighting that highlights the product
+- Natural daylight feel
+- No harsh shadows on the product
+
+Photography style:
+- Product photography quality, 85mm lens, f/4
+- Full body or 3/4 shot showing complete product
+- Sharp focus on both person and product
+- Clean, professional but natural look
+
+STRICTLY AVOID:
+- Cropped or partially hidden product
+- Person doing activities that hide the product
+- Busy or distracting backgrounds
+- Side angles that don't show product clearly
+- AI-generated or overly perfect look
+
+The image should look like a professional product photo for e-commerce cover image.
+
+CHỈ TRẢ VỀ PROMPT ĐÃ ĐIỀN ĐẦY ĐỦ, KHÔNG GIẢI THÍCH:"""
+
+    # Template cho Flow image prompt 2 - LIFESTYLE (hoạt động thường ngày)
+    FLOW_IMAGE_PROMPT_2_TEMPLATE = """Dựa vào thông tin sản phẩm, hãy tạo prompt để generate ảnh LIFESTYLE cho AI (Google Flow).
+
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
+
+MỤC ĐÍCH: Tạo ảnh LIFESTYLE - người Việt Nam đang sử dụng sản phẩm trong sinh hoạt thường ngày.
+
+QUAN TRỌNG:
+- Nhân vật PHẢI là người Việt Nam (da vàng, tóc đen, khuôn mặt châu Á)
+- Bối cảnh VIỆT NAM: nhà Việt Nam, sân vườn, công viên...
+- Hoạt động TỰ NHIÊN, đời thường
+
+YÊU CẦU:
+1. Xác định đối tượng NGƯỜI VIỆT NAM phù hợp:
    - Tuổi (ví dụ: 25, 30, 4, 8...)
    - Giới tính (male/female)
 
-2. Xác định bối cảnh VIỆT NAM phù hợp:
-   - Nhà Việt Nam điển hình (có thể thấy nội thất, đồ đạc Việt Nam)
-   - Hoạt động thường ngày của người Việt
+2. Xác định BỐI CẢNH và HOẠT ĐỘNG phù hợp Việt Nam
 
 3. Điền vào template sau (CHỈ TRẢ VỀ PROMPT, KHÔNG GIẢI THÍCH):
 
@@ -438,15 +507,18 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
         if not self.api_key:
             return ""
 
-        # Thêm yêu cầu biến thể nếu cần
-        variant_note = ""
-        if variant == 2:
-            variant_note = "\n\nLƯU Ý: Tạo prompt với đối tượng và bối cảnh KHÁC với prompt trước. Ví dụ: nếu trước là người lớn thì giờ là trẻ em, nếu trước là trong nhà thì giờ là ngoài trời."
+        # Chọn template theo variant
+        # Variant 1: Ảnh bìa sản phẩm (cover photo) - thể hiện rõ sản phẩm
+        # Variant 2: Ảnh lifestyle - hoạt động thường ngày
+        if variant == 1:
+            template = self.FLOW_IMAGE_PROMPT_1_TEMPLATE
+        else:
+            template = self.FLOW_IMAGE_PROMPT_2_TEMPLATE
 
-        prompt = self.FLOW_IMAGE_PROMPT_TEMPLATE.format(
+        prompt = template.format(
             product_name=product_name,
             product_description=product_description or "Sản phẩm chất lượng cao"
-        ) + variant_note
+        )
 
         try:
             url = f"{self.GEMINI_API_URL}/{self.model}:generateContent?key={self.api_key}"

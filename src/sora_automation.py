@@ -44,7 +44,12 @@ class SoraResult:
 
 
 def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
-    """Tìm ảnh SORA theo mã sản phẩm trong thư mục input/{code}/extracted/
+    """Tìm ảnh SORA theo mã sản phẩm
+
+    Tìm theo thứ tự ưu tiên:
+    1. input/{code}/extracted/ - ảnh đã tách sản phẩm
+    2. input/sora/{code}.jpg - ảnh SORA cũ
+    3. input/{code}/ - ảnh gốc trong thư mục sản phẩm
 
     Args:
         input_folder: Thư mục input gốc (ví dụ: E:/affiliate/short/input)
@@ -52,22 +57,32 @@ def find_sora_image(input_folder: str, product_code: str) -> Optional[str]:
 
     Returns:
         Đường dẫn ảnh đầu tiên tìm thấy hoặc None
-
-    Ví dụ:
-        find_sora_image("input", "SP001") -> "input/SP001/extracted/image1.jpg"
     """
-    # Tìm trong thư mục input/{code}/extracted/
-    extracted_folder = Path(input_folder) / product_code / "extracted"
+    input_path = Path(input_folder)
 
-    if not extracted_folder.exists():
-        return None
+    # 1. Tìm trong input/{code}/extracted/ (ưu tiên)
+    extracted_folder = input_path / product_code / "extracted"
+    if extracted_folder.exists():
+        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            images = list(extracted_folder.glob(f"*{ext}"))
+            if images:
+                return str(sorted(images)[0])
 
-    # Tìm ảnh đầu tiên trong thư mục extracted
-    for ext in [".jpg", ".jpeg", ".png", ".webp"]:
-        images = list(extracted_folder.glob(f"*{ext}"))
-        if images:
-            # Trả về ảnh đầu tiên (sorted theo tên)
-            return str(sorted(images)[0])
+    # 2. Tìm trong input/sora/{code}.* (cách cũ)
+    sora_folder = input_path / "sora"
+    if sora_folder.exists():
+        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            image_path = sora_folder / f"{product_code}{ext}"
+            if image_path.exists():
+                return str(image_path)
+
+    # 3. Fallback: tìm trong input/{code}/ (ảnh gốc)
+    code_folder = input_path / product_code
+    if code_folder.exists():
+        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            images = list(code_folder.glob(f"*{ext}"))
+            if images:
+                return str(sorted(images)[0])
 
     return None
 

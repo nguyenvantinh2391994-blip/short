@@ -1473,14 +1473,14 @@ class MainTab:
                     self.set_task_video_status(code, TaskItem.STATUS_ERROR)
                     continue
 
-                # Tìm ảnh SORA trong folder input/{code}/extracted/
+                # Tìm ảnh SORA (extracted/ → sora/ → code/)
                 image_path = find_sora_image(str(input_folder), code)
                 if image_path:
-                    self.after_safe(lambda c=code, p=Path(image_path).name:
-                        self.add_log(f"  📷 {c}: Dùng ảnh {p}"))
+                    self.after_safe(lambda c=code, p=image_path:
+                        self.add_log(f"  📷 {c}: Dùng ảnh {Path(p).name}"))
                 else:
                     self.after_safe(lambda c=code:
-                        self.add_log(f"  ⚠️ {c}: Không tìm thấy ảnh trong input/{c}/extracted/"))
+                        self.add_log(f"  ⚠️ {c}: Không tìm thấy ảnh"))
 
                 self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)

@@ -70,26 +70,40 @@ class GeminiService:
     # API endpoints
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    # Prompt template cho kịch bản bán hàng vui tươi (20-30s)
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là MC bán hàng livestream VUI VẺ, NĂNG ĐỘNG trên TikTok/Shopee.
+    # Prompt template cho kịch bản bán hàng TỰ NHIÊN (30-40s)
+    SCRIPT_PROMPT_TEMPLATE = """Bạn là người dùng thật đang chia sẻ trải nghiệm về sản phẩm mình mua.
 
 SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
-YÊU CẦU: Viết kịch bản VUI TƯƠI, HÀO HỨNG cho video 20-30 giây.
+BỐI CẢNH: Video đã có phần mở đầu (5-10s) cho thấy người mặc/dùng sản phẩm. Bây giờ bạn cần viết lời thoại TIẾP NỐI tự nhiên, như đang kể chuyện cho bạn bè nghe.
 
-QUY TẮC:
-1. Độ dài: 55-80 từ (đọc nhanh trong 20-30 giây)
-2. Giọng điệu: VUI VẺ, PHẤN KHÍCH như chia sẻ deal HOT cho bạn thân
-3. Bắt đầu: "Ôi trời ơi!", "Mọi người ơi!", "Siêu HOT nè!"
-4. Dùng từ: siêu xịn, đỉnh của chóp, cực phẩm, xịn sò, mê xỉu
-5. Nêu 2-3 ưu điểm nổi bật
-6. Tạo FOMO: hàng có hạn, mua ngay kẻo hết
-7. Kết: "Mua ngay!", "Đặt liền nha!"
+YÊU CẦU - QUAN TRỌNG:
+1. Độ dài: 90-120 từ (đọc trong 30-40 giây)
+2. Giọng điệu: TỰ NHIÊN, CHÂN THẬT như đang nói chuyện với bạn bè
+3. KHÔNG bắt đầu bằng từ cảm thán mạnh (Ôi trời ơi, Mọi người ơi...)
+4. Bắt đầu NHẸN NHÀNG như đang tiếp tục câu chuyện, ví dụ:
+   - "Nói thật là lúc đầu mình cũng không tin lắm..."
+   - "Mình mới mua cái này được mấy hôm..."
+   - "Hôm nay mình muốn chia sẻ với mọi người..."
+   - "Thật ra thì món này mình thấy..."
 
-VÍ DỤ:
-"Ôi trời ơi mọi người ơi! Món này siêu xịn sò nè! Chất lượng đỉnh của chóp mà giá mềm xèo luôn! Ai mua rồi cũng khen nức nở! Hàng có hạn lắm, mua ngay kẻo hết nha mọi người!"
+CẤU TRÚC KỊCH BẢN:
+1. MỞ ĐẦU (nhẹ nhàng): Giới thiệu ngắn, tự nhiên
+2. TRẢI NGHIỆM: Kể lại cảm nhận thật khi dùng (2-3 điểm)
+3. CHI TIẾT: Nói về chất liệu, kiểu dáng, hoặc điểm bạn thích
+4. KHUYÊN NHỦ: Lời khuyên chân thành (không ép buộc)
+
+PHONG CÁCH:
+- Như đang quay story kể cho bạn bè
+- Có thể dùng từ ngữ đời thường: "thật sự", "nói thật", "mình thấy"
+- KHÔNG dùng từ quảng cáo: "siêu xịn", "đỉnh của chóp", "cực phẩm"
+- KHÔNG tạo FOMO giả: "hàng có hạn", "mua ngay kẻo hết"
+- Có thể nhắc nhẹ về giá hoặc nơi mua ở cuối
+
+VÍ DỤ TỐT:
+"Nói thật là lúc đầu mình cũng không tin lắm, nhưng mà mặc vào rồi thì thấy ưng quá. Chất vải mát, mặc cả ngày cũng không bí. Mình thích nhất là phần thiết kế, vừa đơn giản mà lại trông thanh lịch. Với giá này thì mình thấy được lắm. Ai đang tìm đồ tương tự thì có thể tham khảo nha."
 
 CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 
@@ -181,10 +195,10 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
                     "parts": [{"text": prompt}]
                 }],
                 "generationConfig": {
-                    "temperature": 0.9,
+                    "temperature": 0.85,
                     "topK": 40,
                     "topP": 0.95,
-                    "maxOutputTokens": 200,
+                    "maxOutputTokens": 350,  # Tăng cho kịch bản 90-120 từ
                 }
             }
 

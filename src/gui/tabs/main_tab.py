@@ -2413,7 +2413,16 @@ class MainTab:
             self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
 
     def _run_edit_internal(self):
-        """Chạy Edit ghép video (internal)"""
+        """Chạy Edit ghép video (internal)
+
+        Thứ tự ghép:
+        1. SORA videos (đầu tiên)
+        2. Grok videos (voice + music bắt đầu từ đây)
+        3. Flow images (cuối, mỗi ảnh 0.5s)
+
+        Music: random từ music folder, 60% volume
+        Transitions: random (fade_black, crossfade, none)
+        """
         try:
             from ...video_merger import VideoMerger, get_random_music, get_voice_for_code
             from ...sheets_reader import SheetsReader
@@ -2436,11 +2445,10 @@ class MainTab:
 
             input_folder = Path(self.app.config.input_folder)
             output_folder = Path(self.app.config.output_folder)
-            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
-            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
+            music_folder = self.app.config.music_folder
+            voice_folder = self.app.config.voice_folder
 
             merger = VideoMerger(
-                transition_type="crossfade",
                 transition_duration=0.5,
                 on_log=lambda msg: self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
             )
@@ -2461,29 +2469,42 @@ class MainTab:
                 if not video_folder.exists():
                     continue
 
-                videos = sorted([str(v) for v in video_folder.glob("*.mp4")])
-                if not videos:
+                all_videos = list(video_folder.glob("*.mp4"))
+                if not all_videos:
                     continue
 
-                self.after_safe(lambda c=code: self.add_log(f"  ✂️ {c}: ghép video..."))
+                # Phân loại: SORA vs Grok
+                sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
+                grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
+
+                # Tìm ảnh Flow từ input/{code}/flow/
+                flow_images = []
+                flow_folder = input_folder / code / "flow"
+                if flow_folder.exists():
+                    for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
+                        flow_images.extend([str(p) for p in flow_folder.glob(ext)])
+                    flow_images.sort()
+
+                self.after_safe(lambda c=code, s=len(sora_videos), g=len(grok_videos), f=len(flow_images):
+                    self.add_log(f"  ✂️ {c}: {s} SORA + {g} Grok + {f} ảnh Flow"))
 
                 # Lấy voice và music
-                voice_path = get_voice_for_code(str(voice_folder), code) if voice_folder else None
-                music_path = get_random_music(str(music_folder)) if music_folder else None
+                voice_path = get_voice_for_code(voice_folder, code) if voice_folder else None
+                music_path = get_random_music(music_folder) if music_folder else None
 
-                # Check SORA video
-                sora_video = video_folder / f"00_sora_{code}.mp4"
-                if sora_video.exists():
-                    grok_videos = [v for v in videos if "00_sora_" not in v]
-                    merger.merge_with_sora(
-                        str(sora_video), grok_videos, str(final_output),
-                        music_path, voice_path, 0.6, 1.0, True
-                    )
-                else:
-                    merger.merge_videos(
-                        videos, str(final_output),
-                        music_path, voice_path, 0.6, 1.0, True
-                    )
+                # Sử dụng merge_full mới
+                merger.merge_full(
+                    sora_videos=sora_videos,
+                    grok_videos=grok_videos,
+                    flow_images=flow_images,
+                    output_path=str(final_output),
+                    music_path=music_path,
+                    voice_path=voice_path,
+                    music_volume=0.6,  # 60%
+                    voice_volume=1.0,
+                    image_duration=0.5,  # Mỗi ảnh 0.5s
+                    mute_original=True
+                )
 
                 if final_output.exists():
                     self.after_safe(lambda c=code: self.add_log(f"    ✓ {c}: Edit xong"))
@@ -3418,11 +3439,19 @@ class MainTab:
         thread.start()
 
     def _run_edit_videos(self):
-        """Background thread edit video"""
+        """Background thread edit video
+
+        Thứ tự ghép:
+        1. SORA videos (đầu tiên)
+        2. Grok videos (voice + music bắt đầu từ đây)
+        3. Flow images (cuối, mỗi ảnh 0.5s)
+
+        Music: random từ music folder, 60% volume
+        Transitions: random (fade_black, crossfade, none)
+        """
         try:
             from ...sheets_reader import SheetsReader
-            from ..workers.grok_worker import GrokWorker
-            from ...video_merger import VideoMerger
+            from ...video_merger import VideoMerger, get_random_music
             import random
 
             self.after_safe(lambda: self.add_log("📊 Kết nối Google Sheets..."))
@@ -3453,7 +3482,7 @@ class MainTab:
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            music_folder = Path(self.app.config.music_folder) if self.app.config.music_folder else None
+            music_folder = self.app.config.music_folder
             voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else None
 
             # Lọc các mã có video (trong input/{code}/video/)
@@ -3464,11 +3493,17 @@ class MainTab:
                 # Tìm video trong input/{code}/video/
                 code_video_folder = input_folder / code / "video"
                 if code_video_folder.exists():
-                    videos = list(code_video_folder.glob("*.mp4"))
-                    if videos:
-                        item["videos"] = videos
+                    all_videos = list(code_video_folder.glob("*.mp4"))
+                    if all_videos:
+                        # Phân loại: SORA vs Grok
+                        sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
+                        grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
+
+                        item["sora_videos"] = sora_videos
+                        item["grok_videos"] = grok_videos
                         valid_items.append(item)
-                        self.after_safe(lambda c=code, n=len(videos): self.add_log(f"  📹 {c}: {n} video"))
+                        self.after_safe(lambda c=code, s=len(sora_videos), g=len(grok_videos):
+                            self.add_log(f"  📹 {c}: {s} SORA + {g} Grok"))
 
             if not valid_items:
                 self.after_safe(lambda: self.add_log("❌ Không có video nào để edit"))
@@ -3485,15 +3520,19 @@ class MainTab:
                 self.tasks[code] = task
                 self.after_safe(lambda t=task: self.add_task_row(t))
 
-            # Khởi tạo VideoMerger
-            merger = VideoMerger()
+            # Khởi tạo VideoMerger với random transition
+            merger = VideoMerger(
+                transition_duration=0.5,
+                on_log=lambda msg: self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
+            )
 
             for item in valid_items:
                 if self.stop_flag.is_set():
                     break
 
                 code = item["code"]
-                videos = item["videos"]
+                sora_videos = item["sora_videos"]
+                grok_videos = item["grok_videos"]
 
                 self.set_task_input_status(code, TaskItem.STATUS_DONE)
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
@@ -3509,42 +3548,41 @@ class MainTab:
                                 voice_path = str(vp)
                                 break
 
-                    # Tìm music ngẫu nhiên
-                    music_path = None
-                    if music_folder and music_folder.exists():
-                        music_files = list(music_folder.glob("*.mp3"))
-                        if music_files:
-                            music_path = str(random.choice(music_files))
+                    # Tìm music RANDOM từ music folder
+                    music_path = get_random_music(music_folder) if music_folder else None
+                    if music_path:
+                        self.after_safe(lambda p=Path(music_path).name: self.add_log(f"  🎵 Nhạc: {p}"))
 
-                    # Tìm ảnh từ INPUT folder để thêm cuối video
-                    image_paths = []
-                    code_input_folder = input_folder / code
-                    if code_input_folder.exists():
+                    # Tìm ảnh Flow từ input/{code}/flow/
+                    flow_images = []
+                    flow_folder = input_folder / code / "flow"
+                    if flow_folder.exists():
                         for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
-                            image_paths.extend([str(p) for p in code_input_folder.glob(ext)])
-                        image_paths.sort()  # Sắp xếp theo tên
-                        if image_paths:
-                            self.after_safe(lambda c=code, n=len(image_paths): self.add_log(f"  📷 Thêm {n} ảnh cuối video"))
+                            flow_images.extend([str(p) for p in flow_folder.glob(ext)])
+                        flow_images.sort()
+                        if flow_images:
+                            self.after_safe(lambda c=code, n=len(flow_images):
+                                self.add_log(f"  📷 {n} ảnh Flow (mỗi ảnh 0.5s)"))
 
                     # Output path
                     final_video = output_folder / f"{code}_final.mp4"
 
-                    # Merge videos với music/voice + ảnh cuối
-                    # Nếu có voice -> nhạc 0.5, không có voice -> nhạc full (1.0)
-                    music_vol = 0.5 if voice_path else 1.0
-
-                    success = merger.merge_videos_with_images(
-                        video_paths=[str(v) for v in videos],
-                        image_paths=image_paths,
+                    # Sử dụng merge_full mới
+                    # Thứ tự: SORA → Grok → Flow images
+                    # Music: 60% volume
+                    # Voice: bắt đầu từ Grok
+                    # Transitions: random
+                    success = merger.merge_full(
+                        sora_videos=sora_videos,
+                        grok_videos=grok_videos,
+                        flow_images=flow_images,
                         output_path=str(final_video),
                         music_path=music_path,
                         voice_path=voice_path,
-                        music_volume=music_vol,
+                        music_volume=0.6,  # 60%
                         voice_volume=1.0,
-                        mute_original=True,
-                        image_duration=1.0,  # Mỗi ảnh 1 giây
-                        target_width=1080,
-                        target_height=1920
+                        image_duration=0.5,  # Mỗi ảnh 0.5 giây
+                        mute_original=True
                     )
 
                     if success:

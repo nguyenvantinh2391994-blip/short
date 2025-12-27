@@ -3,6 +3,7 @@ Video Merger - Ghép video + nhạc + voice + chuyển cảnh
 """
 
 import os
+import random
 from pathlib import Path
 from typing import List, Optional, Callable
 from moviepy.editor import (
@@ -17,6 +18,7 @@ class VideoMerger:
     # Loại chuyển cảnh
     TRANSITION_FADE_BLACK = "fade_black"  # Mờ đen
     TRANSITION_CROSSFADE = "crossfade"    # Mix/hòa trộn
+    TRANSITION_NONE = "none"              # Không chuyển cảnh
 
     def __init__(
         self,
@@ -604,6 +606,258 @@ class VideoMerger:
 
         finally:
             for clip in clips:
+                try:
+                    clip.close()
+                except:
+                    pass
+
+    def _get_random_transition(self) -> str:
+        """Chọn ngẫu nhiên 1 trong 3 loại transition"""
+        return random.choice([
+            self.TRANSITION_FADE_BLACK,
+            self.TRANSITION_CROSSFADE,
+            self.TRANSITION_NONE
+        ])
+
+    def _apply_transition_to_clip(
+        self,
+        clip,
+        transition_type: str,
+        is_first: bool = False,
+        is_last: bool = False
+    ):
+        """
+        Áp dụng transition cho clip
+
+        Args:
+            clip: Video clip
+            transition_type: Loại transition
+            is_first: Là clip đầu tiên
+            is_last: Là clip cuối cùng
+
+        Returns:
+            Clip đã xử lý
+        """
+        if transition_type == self.TRANSITION_NONE:
+            return clip
+
+        duration = self.transition_duration
+
+        if transition_type == self.TRANSITION_FADE_BLACK:
+            if not is_first:
+                clip = clip.fx(vfx.fadein, duration)
+            if not is_last:
+                clip = clip.fx(vfx.fadeout, duration)
+        elif transition_type == self.TRANSITION_CROSSFADE:
+            if not is_first:
+                clip = clip.fx(vfx.fadein, duration)
+            if not is_last:
+                clip = clip.fx(vfx.fadeout, duration)
+
+        return clip
+
+    def merge_full(
+        self,
+        sora_videos: List[str],
+        grok_videos: List[str],
+        flow_images: List[str],
+        output_path: str,
+        music_path: Optional[str] = None,
+        voice_path: Optional[str] = None,
+        music_volume: float = 0.6,
+        voice_volume: float = 1.0,
+        image_duration: float = 0.5,
+        mute_original: bool = True
+    ) -> bool:
+        """
+        Ghép video hoàn chỉnh theo thứ tự:
+        1. SORA videos (đầu tiên)
+        2. Grok videos (voice + music bắt đầu từ đây)
+        3. Flow images (cuối cùng, mỗi ảnh 0.5s)
+
+        Chuyển cảnh: Random giữa fade_black, crossfade, none
+        Music: Random từ thư mục music, 60% volume
+        Voice: Bắt đầu từ Grok video
+
+        Args:
+            sora_videos: Danh sách video SORA
+            grok_videos: Danh sách video Grok
+            flow_images: Danh sách ảnh Flow
+            output_path: Đường dẫn output
+            music_path: Đường dẫn file nhạc (random từ music folder)
+            voice_path: Đường dẫn file voice
+            music_volume: Âm lượng nhạc (default 0.6 = 60%)
+            voice_volume: Âm lượng voice
+            image_duration: Thời lượng mỗi ảnh (default 0.5s)
+            mute_original: Tắt âm thanh gốc của video
+
+        Returns:
+            True nếu thành công
+        """
+        all_clips = []
+        sora_clips = []
+        grok_clips = []
+        image_clips = []
+        sora_total_duration = 0
+
+        try:
+            # ===== 1. Load SORA videos =====
+            if sora_videos:
+                self.log(f"Đang load {len(sora_videos)} video SORA...")
+                for i, path in enumerate(sora_videos):
+                    if not os.path.exists(path):
+                        continue
+                    self.log(f"  SORA [{i+1}]: {Path(path).name}")
+                    clip = VideoFileClip(path)
+                    if mute_original:
+                        clip = clip.without_audio()
+
+                    # Random transition
+                    transition = self._get_random_transition()
+                    is_first = (i == 0)
+                    is_last = (i == len(sora_videos) - 1) and not grok_videos and not flow_images
+                    clip = self._apply_transition_to_clip(clip, transition, is_first, is_last)
+
+                    sora_clips.append(clip)
+                    sora_total_duration += clip.duration
+
+                self.log(f"  Tổng SORA: {sora_total_duration:.1f}s")
+
+            # ===== 2. Load Grok videos =====
+            if grok_videos:
+                self.log(f"Đang load {len(grok_videos)} video Grok...")
+                for i, path in enumerate(grok_videos):
+                    if not os.path.exists(path):
+                        continue
+                    self.log(f"  Grok [{i+1}]: {Path(path).name}")
+                    clip = VideoFileClip(path)
+                    if mute_original:
+                        clip = clip.without_audio()
+
+                    # Random transition
+                    transition = self._get_random_transition()
+                    is_first = (i == 0) and not sora_clips
+                    is_last = (i == len(grok_videos) - 1) and not flow_images
+                    clip = self._apply_transition_to_clip(clip, transition, is_first, is_last)
+
+                    grok_clips.append(clip)
+
+            # ===== 3. Tạo image clips từ Flow images =====
+            if flow_images:
+                self.log(f"Tạo {len(flow_images)} ảnh Flow (mỗi ảnh {image_duration}s)...")
+                for i, img_path in enumerate(flow_images):
+                    if not os.path.exists(img_path):
+                        continue
+                    try:
+                        clip = ImageClip(img_path, duration=image_duration)
+
+                        # Random transition cho ảnh
+                        transition = self._get_random_transition()
+                        is_first = (i == 0) and not sora_clips and not grok_clips
+                        is_last = (i == len(flow_images) - 1)
+                        # Transition ngắn hơn cho ảnh (0.2s)
+                        orig_duration = self.transition_duration
+                        self.transition_duration = min(0.2, image_duration / 2)
+                        clip = self._apply_transition_to_clip(clip, transition, is_first, is_last)
+                        self.transition_duration = orig_duration
+
+                        image_clips.append(clip)
+                    except Exception as e:
+                        self.log(f"  Lỗi load ảnh {img_path}: {e}")
+
+                if image_clips:
+                    self.log(f"  Tổng ảnh: {len(image_clips)} x {image_duration}s = {len(image_clips) * image_duration:.1f}s")
+
+            # ===== Ghép tất cả clips =====
+            all_clips = sora_clips + grok_clips + image_clips
+
+            if not all_clips:
+                self.log("Không có video/ảnh hợp lệ để ghép")
+                return False
+
+            self.log("Ghép video...")
+            final_clip = concatenate_videoclips(all_clips, method="compose")
+            total_duration = final_clip.duration
+
+            # Tính thời lượng các phần
+            grok_start = sora_total_duration  # Voice/music bắt đầu từ đây
+            grok_duration = sum(c.duration for c in grok_clips)
+            image_total = sum(c.duration for c in image_clips)
+
+            self.log(f"  Tổng: {total_duration:.1f}s")
+            self.log(f"    SORA: {sora_total_duration:.1f}s")
+            self.log(f"    Grok: {grok_duration:.1f}s (voice/music từ đây)")
+            self.log(f"    Flow images: {image_total:.1f}s")
+
+            # ===== 4. Xử lý audio (bắt đầu từ Grok) =====
+            audio_clips = []
+            audio_offset = grok_start  # Voice/music bắt đầu sau SORA
+            remaining_duration = total_duration - grok_start
+
+            # Voice
+            if voice_path and os.path.exists(voice_path):
+                self.log(f"Thêm voice (offset {audio_offset:.1f}s): {Path(voice_path).name}")
+                voice_audio = AudioFileClip(voice_path)
+                voice_audio = voice_audio.volumex(voice_volume)
+                # Offset voice để bắt đầu sau SORA
+                voice_audio = voice_audio.set_start(audio_offset)
+                audio_clips.append(voice_audio)
+
+            # Nhạc nền (random, 60% volume)
+            if music_path and os.path.exists(music_path):
+                self.log(f"Thêm nhạc (offset {audio_offset:.1f}s, volume {int(music_volume*100)}%): {Path(music_path).name}")
+                music_audio = AudioFileClip(music_path)
+
+                # Loop nhạc nếu cần
+                if music_audio.duration < remaining_duration:
+                    loops_needed = int(remaining_duration / music_audio.duration) + 1
+                    self.log(f"  Loop nhạc {loops_needed} lần")
+                    from moviepy.editor import concatenate_audioclips
+                    music_clips_list = [music_audio] * loops_needed
+                    music_audio = concatenate_audioclips(music_clips_list)
+
+                # Cắt nhạc = độ dài còn lại
+                music_audio = music_audio.subclip(0, remaining_duration)
+                music_audio = music_audio.volumex(music_volume)
+                # Fade out nhạc ở cuối (2s)
+                music_audio = music_audio.fx(vfx.audio_fadeout, 2)
+                # Offset music để bắt đầu sau SORA
+                music_audio = music_audio.set_start(audio_offset)
+                audio_clips.append(music_audio)
+
+            # ===== 5. Ghép audio =====
+            if audio_clips:
+                self.log("Ghép audio...")
+                final_audio = CompositeAudioClip(audio_clips)
+                final_clip = final_clip.set_audio(final_audio)
+
+            # ===== 6. Export =====
+            self.log(f"Xuất video: {output_path}")
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                fps=30,
+                preset='medium',
+                threads=4,
+                logger=None
+            )
+
+            self.log(f"✓ Hoàn thành: {output_path}")
+            return True
+
+        except Exception as e:
+            self.log(f"Lỗi merge_full: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+        finally:
+            for clip in all_clips:
                 try:
                     clip.close()
                 except:

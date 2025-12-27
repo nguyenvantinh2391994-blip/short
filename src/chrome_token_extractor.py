@@ -846,6 +846,13 @@ class ChromeTokenExtractor:
             if response.status_code != 200:
                 if callback:
                     callback(f"❌ Error {response.status_code}: {response.text[:200]}")
+                    # Log thêm thông tin debug
+                    if response.status_code == 400:
+                        callback(f"   Debug: requests count = {len(payload.get('requests', []))}")
+                        if payload.get('requests'):
+                            req0 = payload['requests'][0]
+                            callback(f"   Debug: prompt length = {len(req0.get('prompt', ''))}")
+                            callback(f"   Debug: imageInputs = {req0.get('imageInputs', 'none')[:100] if req0.get('imageInputs') else 'none'}")
                 return []
 
             # Parse response

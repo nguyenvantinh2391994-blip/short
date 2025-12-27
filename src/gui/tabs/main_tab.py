@@ -1039,9 +1039,22 @@ class MainTab:
                 code = item["code"]
                 # Grok lấy ảnh từ thư mục flow (ảnh do Flow generate)
                 flow_folder = input_folder / code / "flow"
+                video_folder = input_folder / code / "video"
+
                 if flow_folder.exists():
                     images = list(flow_folder.glob("*.jpg")) + list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.webp"))
                     if images:
+                        # === KIỂM TRA ĐÃ CÓ ĐỦ VIDEO GROK CHƯA ===
+                        # Đếm video Grok (không tính SORA video 00_sora_*)
+                        if video_folder.exists():
+                            grok_videos = [v for v in video_folder.glob("*.mp4")
+                                          if not v.name.startswith("00_sora_") and v.stat().st_size > 50000]
+                            if len(grok_videos) >= len(images):
+                                self.after_safe(lambda c=code, n=len(grok_videos):
+                                    self.add_log(f"⏭️ {c}: Đã có {n} video Grok - bỏ qua"))
+                                self.set_task_video_status(code, TaskItem.STATUS_SKIP)
+                                continue
+
                         item["images"] = images  # Thêm danh sách ảnh vào item
                         valid_items.append(item)
                         self.set_task_input_status(code, TaskItem.STATUS_DONE)
@@ -1444,7 +1457,15 @@ class MainTab:
 
                 code = item["code"]
 
-                # Lấy SORA prompt từ cột E (sora_prompt) hoặc fallback về prompt thường
+                # === KIỂM TRA ĐÃ CÓ VIDEO SORA CHƯA ===
+                video_folder = input_folder / code / "video"
+                sora_video_path = video_folder / f"00_sora_{code}.mp4"
+                if sora_video_path.exists() and sora_video_path.stat().st_size > 50000:
+                    self.after_safe(lambda c=code: self.add_log(f"⏭️ {c}: Đã có video SORA - bỏ qua"))
+                    self.set_task_video_status(code, TaskItem.STATUS_SKIP)
+                    continue
+
+                # Lấy SORA prompt từ cột F (sora_prompt) hoặc fallback về prompt thường
                 sora_prompt = item.get("sora_prompt", "") or item.get("prompt", "")
 
                 if not sora_prompt:
@@ -1637,6 +1658,7 @@ class MainTab:
             code_col = 0  # A
             name_col = 2  # C
             desc_col = 3  # D
+            sora_prompt_col = 5  # F - SORA prompt
             script_col = 6  # G
             # Flow prompts columns
             img_prompt_1_col = 8   # I - Image prompt 1
@@ -1651,6 +1673,7 @@ class MainTab:
             for row_idx, row in enumerate(data_rows, start=2):
                 code = row[code_col].strip() if len(row) > code_col else ""
                 name = row[name_col].strip() if len(row) > name_col else ""
+                existing_sora_prompt = row[sora_prompt_col].strip() if len(row) > sora_prompt_col else ""
                 existing_script = row[script_col].strip() if len(row) > script_col else ""
                 # Check existing flow prompts
                 existing_img_1 = row[img_prompt_1_col].strip() if len(row) > img_prompt_1_col else ""
@@ -1661,13 +1684,17 @@ class MainTab:
                 if not code or not name:
                     continue
 
-                # Kiểm tra đã có voice chưa
-                voice_path = voice_folder / f"{code}.wav"
+                # Kiểm tra đã có voice chưa (check cả .wav và .mp3)
+                voice_path_wav = voice_folder / f"{code}.wav"
+                voice_path_mp3 = voice_folder / f"{code}.mp3"
+                has_voice = voice_path_wav.exists() or voice_path_mp3.exists()
+
                 # Kiểm tra đã có đủ flow prompts chưa
                 has_all_flow_prompts = all([existing_img_1, existing_vid_1, existing_img_2, existing_vid_2])
 
-                if voice_path.exists() and existing_script and has_all_flow_prompts:
-                    continue  # Bỏ qua nếu đã có cả voice, script và flow prompts
+                # Bỏ qua nếu đã có đầy đủ: voice, script, SORA prompt, flow prompts
+                if has_voice and existing_script and existing_sora_prompt and has_all_flow_prompts:
+                    continue
 
                 pending.append({
                     "code": code,
@@ -1675,7 +1702,8 @@ class MainTab:
                     "description": row[desc_col].strip() if len(row) > desc_col else "",
                     "row": row_idx,
                     "has_script": bool(existing_script),
-                    "has_voice": voice_path.exists(),
+                    "has_sora_prompt": bool(existing_sora_prompt),
+                    "has_voice": has_voice,
                     "script": existing_script,
                     "has_flow_prompts": has_all_flow_prompts,
                 })
@@ -1732,6 +1760,20 @@ class MainTab:
                             self.set_task_input_status(code, TaskItem.STATUS_ERROR)
                             error_count += 1
                             continue
+
+                    # Bước 1b: Tạo SORA prompt riêng nếu chưa có (khi đã có script)
+                    if not item.get("has_sora_prompt", False) and item["has_script"]:
+                        self.after_safe(lambda c=code: self.add_log(f"  Tạo SORA prompt..."))
+                        sora_prompt = gemini.generate_sora_prompt(
+                            product_name=item["name"],
+                            product_description=item["description"]
+                        )
+                        if sora_prompt:
+                            try:
+                                reader.sheet.update_acell(f"F{item['row']}", sora_prompt)
+                                self.after_safe(lambda c=code: self.add_log(f"  ✓ Đã ghi SORA prompt vào F{item['row']}"))
+                            except Exception as e:
+                                self.after_safe(lambda e=e: self.add_log(f"  ⚠️ Lỗi ghi SORA prompt: {e}"))
 
                     self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
 
@@ -2604,12 +2646,14 @@ class MainTab:
                     skipped += 1
                     continue
 
-                # Kiểm tra đã có flow chưa
+                # Kiểm tra đã có đủ flow chưa (8 ảnh = 4 từ prompt I + 4 từ prompt K)
                 flow_folder = products_dir / code / "flow"
                 if flow_folder.exists():
                     existing_flow = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
-                    if existing_flow:
-                        self.after_safe(lambda c=code, n=len(existing_flow): self.add_log(f"  {c}: Đã có {n} ảnh flow - bỏ qua"))
+                    # Cần đủ 8 ảnh (hoặc ít nhất 4 nếu chỉ có 1 prompt)
+                    required_count = 8 if (flow_prompt_1 and flow_prompt_2) else 4
+                    if len(existing_flow) >= required_count:
+                        self.after_safe(lambda c=code, n=len(existing_flow): self.add_log(f"⏭️ {c}: Đã có {n} ảnh flow - bỏ qua"))
                         skipped += 1
                         continue
 

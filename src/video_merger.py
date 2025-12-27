@@ -672,12 +672,12 @@ class VideoMerger:
         """
         Ghép video hoàn chỉnh theo thứ tự:
         1. SORA videos (đầu tiên)
-        2. Grok videos (voice + music bắt đầu từ đây)
+        2. Grok videos (voice bắt đầu từ đây)
         3. Flow images (cuối cùng, mỗi ảnh 0.5s)
 
         Chuyển cảnh: Random giữa fade_black, crossfade, none
-        Music: Random từ thư mục music, 60% volume
-        Voice: Bắt đầu từ Grok video
+        Music: Random từ thư mục music, 60% volume, BẮT ĐẦU TỪ ĐẦU VIDEO
+        Voice: Bắt đầu từ Grok video (sau SORA)
 
         Args:
             sora_videos: Danh sách video SORA
@@ -780,50 +780,50 @@ class VideoMerger:
             total_duration = final_clip.duration
 
             # Tính thời lượng các phần
-            grok_start = sora_total_duration  # Voice/music bắt đầu từ đây
+            grok_start = sora_total_duration  # Voice bắt đầu từ đây
             grok_duration = sum(c.duration for c in grok_clips)
             image_total = sum(c.duration for c in image_clips)
 
             self.log(f"  Tổng: {total_duration:.1f}s")
             self.log(f"    SORA: {sora_total_duration:.1f}s")
-            self.log(f"    Grok: {grok_duration:.1f}s (voice/music từ đây)")
+            self.log(f"    Grok: {grok_duration:.1f}s (voice bắt đầu từ đây)")
             self.log(f"    Flow images: {image_total:.1f}s")
 
-            # ===== 4. Xử lý audio (bắt đầu từ Grok) =====
+            # ===== 4. Xử lý audio =====
+            # Music: bắt đầu từ ĐẦU video
+            # Voice: bắt đầu từ Grok (sau SORA)
             audio_clips = []
-            audio_offset = grok_start  # Voice/music bắt đầu sau SORA
-            remaining_duration = total_duration - grok_start
+            voice_offset = grok_start  # Voice bắt đầu sau SORA
 
-            # Voice
-            if voice_path and os.path.exists(voice_path):
-                self.log(f"Thêm voice (offset {audio_offset:.1f}s): {Path(voice_path).name}")
-                voice_audio = AudioFileClip(voice_path)
-                voice_audio = voice_audio.volumex(voice_volume)
-                # Offset voice để bắt đầu sau SORA
-                voice_audio = voice_audio.set_start(audio_offset)
-                audio_clips.append(voice_audio)
-
-            # Nhạc nền (random, 60% volume)
+            # Nhạc nền (từ đầu video, 60% volume)
             if music_path and os.path.exists(music_path):
-                self.log(f"Thêm nhạc (offset {audio_offset:.1f}s, volume {int(music_volume*100)}%): {Path(music_path).name}")
+                self.log(f"Thêm nhạc (từ đầu, volume {int(music_volume*100)}%): {Path(music_path).name}")
                 music_audio = AudioFileClip(music_path)
 
-                # Loop nhạc nếu cần
-                if music_audio.duration < remaining_duration:
-                    loops_needed = int(remaining_duration / music_audio.duration) + 1
+                # Loop nhạc nếu cần (cho toàn bộ video)
+                if music_audio.duration < total_duration:
+                    loops_needed = int(total_duration / music_audio.duration) + 1
                     self.log(f"  Loop nhạc {loops_needed} lần")
                     from moviepy.editor import concatenate_audioclips
                     music_clips_list = [music_audio] * loops_needed
                     music_audio = concatenate_audioclips(music_clips_list)
 
-                # Cắt nhạc = độ dài còn lại
-                music_audio = music_audio.subclip(0, remaining_duration)
+                # Cắt nhạc = tổng thời lượng video
+                music_audio = music_audio.subclip(0, total_duration)
                 music_audio = music_audio.volumex(music_volume)
                 # Fade out nhạc ở cuối (2s)
                 music_audio = music_audio.fx(vfx.audio_fadeout, 2)
-                # Offset music để bắt đầu sau SORA
-                music_audio = music_audio.set_start(audio_offset)
+                # Music bắt đầu từ đầu (offset = 0)
                 audio_clips.append(music_audio)
+
+            # Voice (bắt đầu từ Grok, sau SORA)
+            if voice_path and os.path.exists(voice_path):
+                self.log(f"Thêm voice (offset {voice_offset:.1f}s): {Path(voice_path).name}")
+                voice_audio = AudioFileClip(voice_path)
+                voice_audio = voice_audio.volumex(voice_volume)
+                # Offset voice để bắt đầu sau SORA
+                voice_audio = voice_audio.set_start(voice_offset)
+                audio_clips.append(voice_audio)
 
             # ===== 5. Ghép audio =====
             if audio_clips:

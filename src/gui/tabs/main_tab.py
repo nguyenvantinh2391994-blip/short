@@ -3443,10 +3443,11 @@ class MainTab:
 
         Thứ tự ghép:
         1. SORA videos (đầu tiên)
-        2. Grok videos (voice + music bắt đầu từ đây)
+        2. Grok videos (voice bắt đầu từ đây)
         3. Flow images (cuối, mỗi ảnh 0.5s)
 
-        Music: random từ music folder, 60% volume
+        Music: random từ music folder, 60% volume, BẮT ĐẦU TỪ ĐẦU VIDEO
+        Voice: bắt đầu từ Grok (sau SORA)
         Transitions: random (fade_black, crossfade, none)
         """
         try:
@@ -3569,7 +3570,7 @@ class MainTab:
 
                     # Sử dụng merge_full mới
                     # Thứ tự: SORA → Grok → Flow images
-                    # Music: 60% volume
+                    # Music: 60% volume, từ đầu video
                     # Voice: bắt đầu từ Grok
                     # Transitions: random
                     success = merger.merge_full(

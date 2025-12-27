@@ -268,69 +268,16 @@ class GrokWorker:
                 self.log(f"[{profile_name}] ✗ Không tạo được video nào cho {code}", "error")
                 return ProcessResult(False, error="Không tạo được video")
 
-            # ===== BƯỚC 2: Ghép video + nhạc + voice =====
-            self.log(f"[{profile_name}] Ghép {len(created_videos)} video...", "progress")
+            # ===== HOÀN THÀNH - Không edit tự động =====
+            # Edit sẽ được chạy riêng khi user nhấn nút Edit
+            self.log(f"[{profile_name}] ✓ Đã tạo {len(created_videos)} video cho {code}", "success")
 
-            # Lấy voice trước
-            voice_path = None
-            if self.voice_folder and self.voice_folder.exists():
-                voice_path = get_voice_for_code(str(self.voice_folder), code)
-                if voice_path:
-                    self.log(f"[{profile_name}] 🎤 Voice: {Path(voice_path).name}", "info")
+            # Update progress
+            with self._lock:
+                self._completed_count += 1
+                self.progress(self._completed_count, self._total_count, f"Hoàn thành: {code}")
 
-            # Lấy nhạc ngẫu nhiên từ thư mục music
-            music_path = None
-            if self.music_folder and self.music_folder.exists():
-                music_path = get_random_music(str(self.music_folder))
-                if music_path:
-                    self.log(f"[{profile_name}] 🎵 Nhạc (random): {Path(music_path).name}", "info")
-
-            # Đường dẫn output
-            final_video = self.output_folder / f"{code}.mp4"
-
-            # Kiểm tra video SORA (00_sora_{code}.mp4) trong thư mục video
-            sora_video_path = code_video_folder / f"00_sora_{code}.mp4"
-            has_sora = sora_video_path.exists() and sora_video_path.stat().st_size > 50000
-
-            if has_sora:
-                self.log(f"[{profile_name}] Có video SORA - dùng merge_with_sora", "info")
-                # Filter out SORA from created_videos (chỉ giữ Grok videos)
-                grok_videos = [v for v in created_videos if "00_sora_" not in v]
-                success = merger.merge_with_sora(
-                    sora_video=str(sora_video_path),
-                    grok_videos=grok_videos,
-                    output_path=str(final_video),
-                    music_path=music_path,
-                    voice_path=voice_path,
-                    music_volume=0.6,
-                    voice_volume=1.0,
-                    mute_original=True
-                )
-            else:
-                # Ghép video thường (không có SORA)
-                success = merger.merge_videos(
-                    video_paths=created_videos,
-                    output_path=str(final_video),
-                    music_path=music_path,
-                    voice_path=voice_path,
-                    music_volume=0.6,  # 60% volume
-                    voice_volume=1.0,
-                    mute_original=True  # Tắt âm thanh gốc của video
-                )
-
-            if success:
-                reader.update_status(row, "EDIT XONG", self.config.status_column)
-                self.log(f"[{profile_name}] ✓ Hoàn thành: {code}", "success")
-
-                # Update progress
-                with self._lock:
-                    self._completed_count += 1
-                    self.progress(self._completed_count, self._total_count, f"Hoàn thành: {code}")
-
-                return ProcessResult(True, output_path=str(final_video))
-            else:
-                self.log(f"[{profile_name}] ✗ Lỗi ghép video cho {code}", "error")
-                return ProcessResult(False, error="Lỗi ghép video")
+            return ProcessResult(True, output_path=str(code_video_folder))
 
         except Exception as e:
             self.log(f"[{profile_name}] Lỗi xử lý {code}: {e}", "error")

@@ -269,37 +269,7 @@ class MainTab:
         )
         self.script_btn.pack(side="left", padx=(0, 4))
 
-        # Nút Grok
-        self.start_btn = ctk.CTkButton(
-            bottom_row,
-            text="Grok",
-            command=self.start_process,
-            width=55,
-            height=32,
-            corner_radius=6,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            fg_color=self.COLORS["success"],
-            hover_color=self.COLORS["success_hover"],
-            text_color="white"
-        )
-        self.start_btn.pack(side="left", padx=(0, 4))
-
-        # Nút SORA
-        self.sora_btn = ctk.CTkButton(
-            bottom_row,
-            text="SORA",
-            command=self.start_sora_process,
-            width=55,
-            height=32,
-            corner_radius=6,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            fg_color="#7C3AED",
-            hover_color="#6D28D9",
-            text_color="white"
-        )
-        self.sora_btn.pack(side="left", padx=(0, 4))
-
-        # Nút Flow
+        # Nút Flow (tạo ảnh AI)
         self.flow_btn = ctk.CTkButton(
             bottom_row,
             text="Flow",
@@ -314,7 +284,37 @@ class MainTab:
         )
         self.flow_btn.pack(side="left", padx=(0, 4))
 
-        # Nút Edit
+        # Nút SORA (tạo video từ ảnh extracted)
+        self.sora_btn = ctk.CTkButton(
+            bottom_row,
+            text="SORA",
+            command=self.start_sora_process,
+            width=55,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#7C3AED",
+            hover_color="#6D28D9",
+            text_color="white"
+        )
+        self.sora_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Grok (tạo video từ ảnh flow)
+        self.start_btn = ctk.CTkButton(
+            bottom_row,
+            text="Grok",
+            command=self.start_process,
+            width=55,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.COLORS["success"],
+            hover_color=self.COLORS["success_hover"],
+            text_color="white"
+        )
+        self.start_btn.pack(side="left", padx=(0, 4))
+
+        # Nút Edit (ghép video)
         self.edit_btn = ctk.CTkButton(
             bottom_row,
             text="Edit",
@@ -1860,24 +1860,25 @@ class MainTab:
     # ===== FULL WORKFLOW =====
 
     def run_full_workflow(self):
-        """Chạy full quy trình: Tải ảnh → Làm kịch bản → Tạo video"""
+        """Chạy full quy trình: Tải ảnh → Tách SP → Lọc → Script → Flow → Sora → Grok → Edit"""
         if self.is_running:
             self.add_log("Đang chạy task khác...")
             return
 
-        # Kiểm tra API key cho phần làm kịch bản
+        # Kiểm tra API key
         if not self.app.config.gemini_api_key:
-            self.add_log("⚠️ Chưa có Gemini API key! Sẽ bỏ qua bước làm kịch bản.")
+            self.add_log("⚠️ Chưa có Gemini API key! Một số bước sẽ bị bỏ qua.")
 
         self.is_running = True
-        self.shopee_btn.configure(state="disabled")
-        self.script_btn.configure(state="disabled")
-        self.start_btn.configure(state="disabled")
-        self.full_btn.configure(state="disabled")
+        # Disable tất cả nút
+        for btn in [self.shopee_btn, self.extract_btn, self.filter_btn, self.script_btn,
+                    self.flow_btn, self.sora_btn, self.start_btn, self.edit_btn, self.full_btn]:
+            btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
         self.clear_table()
         self.add_log("🚀 Bắt đầu chạy FULL quy trình...")
+        self.add_log("📋 Thứ tự: Tải ảnh → Tách SP → Lọc → Script → Flow → Sora → Grok → Edit")
 
         thread = threading.Thread(target=self._run_full_workflow, daemon=True)
         thread.start()

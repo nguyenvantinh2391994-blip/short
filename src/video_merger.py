@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Callable
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, CompositeAudioClip,
-    concatenate_videoclips, vfx, ImageClip
+    concatenate_videoclips, vfx, afx, ImageClip
 )
 
 
@@ -192,7 +192,7 @@ class VideoMerger:
                 music_audio = music_audio.subclip(0, target_duration)
                 music_audio = music_audio.volumex(music_volume)
                 # Fade out nhạc ở cuối (2s)
-                music_audio = music_audio.fx(vfx.audio_fadeout, 2)
+                music_audio = music_audio.fx(afx.audio_fadeout, 2)
                 audio_clips.append(music_audio)
                 self.log(f"  ✓ Đã cắt nhạc = {target_duration:.1f}s")
 
@@ -414,7 +414,7 @@ class VideoMerger:
 
                 music_audio = music_audio.subclip(0, target_duration)
                 music_audio = music_audio.volumex(music_volume)
-                music_audio = music_audio.fx(vfx.audio_fadeout, 2)
+                music_audio = music_audio.fx(afx.audio_fadeout, 2)
                 audio_clips.append(music_audio)
 
             # Ghép audio
@@ -568,7 +568,7 @@ class VideoMerger:
                 # Cắt nhạc = độ dài Grok
                 music_audio = music_audio.subclip(0, grok_duration)
                 music_audio = music_audio.volumex(music_volume)
-                music_audio = music_audio.fx(vfx.audio_fadeout, 2)
+                music_audio = music_audio.fx(afx.audio_fadeout, 2)
                 # Offset music để bắt đầu sau SORA
                 music_audio = music_audio.set_start(audio_offset)
                 audio_clips.append(music_audio)
@@ -790,7 +790,7 @@ class VideoMerger:
                 music_audio = music_audio.subclip(0, total_duration)
                 music_audio = music_audio.volumex(music_volume)
                 # Fade out nhạc ở cuối (3s)
-                music_audio = music_audio.fx(vfx.audio_fadeout, 3)
+                music_audio = music_audio.fx(afx.audio_fadeout, 3)
                 music_audio = music_audio.set_start(0)
                 audio_clips.append(music_audio)
                 self.log(f"   ✓ Nhạc: {total_duration:.1f}s, volume={music_volume}, fade out 3s")
@@ -1087,7 +1087,7 @@ class VideoMerger:
                 music_audio = music_audio.subclip(0, total_duration)
                 music_audio = music_audio.volumex(music_volume)
                 # Fade out nhạc ở cuối (2s)
-                music_audio = music_audio.fx(vfx.audio_fadeout, 2)
+                music_audio = music_audio.fx(afx.audio_fadeout, 2)
                 # Music bắt đầu từ đầu (offset = 0)
                 music_audio = music_audio.set_start(0)
                 audio_clips.append(music_audio)

@@ -611,6 +611,228 @@ class VideoMerger:
                 except:
                     pass
 
+    def merge_voice_first(
+        self,
+        video_paths: List[str],
+        image_paths: List[str],
+        output_path: str,
+        voice_path: str,
+        music_path: Optional[str] = None,
+        music_volume: float = 0.3,
+        voice_volume: float = 1.0,
+        image_duration: float = 0.5
+    ) -> bool:
+        """
+        Ghép video với Voice làm chuẩn thời lượng
+
+        Logic mới:
+        - Voice bắt đầu từ đầu, thời lượng video = thời lượng voice
+        - Các video clips chia đều theo thời lượng voice, cắt bớt đầu/cuối
+        - Tắt âm thanh gốc của video (chỉ có Voice + Music)
+        - Sau khi voice hết → hiển thị ảnh (mỗi ảnh 0.5s)
+        - Nhạc chạy đến hết video, fade out cuối
+
+        Args:
+            video_paths: Danh sách video clips (Grok/SORA)
+            image_paths: Danh sách ảnh (hiển thị sau voice)
+            output_path: Đường dẫn output
+            voice_path: File voice (bắt buộc)
+            music_path: File nhạc nền
+            music_volume: Âm lượng nhạc (0-1)
+            voice_volume: Âm lượng voice (0-1)
+            image_duration: Thời lượng mỗi ảnh (giây)
+
+        Returns:
+            True nếu thành công
+        """
+        if not voice_path or not os.path.exists(voice_path):
+            self.log("❌ Cần có file voice!")
+            return False
+
+        if not video_paths:
+            self.log("❌ Không có video để ghép")
+            return False
+
+        clips = []
+        image_clips = []
+
+        try:
+            # 1. Load voice trước để lấy thời lượng
+            self.log(f"📢 Load voice: {Path(voice_path).name}")
+            voice_audio = AudioFileClip(voice_path)
+            voice_duration = voice_audio.duration
+            self.log(f"   Thời lượng voice: {voice_duration:.1f}s")
+
+            # 2. Load và tính toán cắt video clips
+            self.log(f"🎬 Load {len(video_paths)} video clips...")
+
+            raw_clips = []
+            total_raw_duration = 0
+            for i, path in enumerate(video_paths):
+                if not os.path.exists(path):
+                    self.log(f"   ⚠️ Không tìm thấy: {path}")
+                    continue
+
+                clip = VideoFileClip(path)
+                # Tắt âm thanh gốc
+                clip = clip.without_audio()
+                raw_clips.append(clip)
+                total_raw_duration += clip.duration
+                self.log(f"   [{i+1}] {Path(path).name}: {clip.duration:.1f}s")
+
+            if not raw_clips:
+                self.log("❌ Không có video hợp lệ")
+                return False
+
+            self.log(f"   Tổng thời lượng gốc: {total_raw_duration:.1f}s")
+
+            # 3. Tính thời lượng mỗi clip để vừa với voice
+            num_clips = len(raw_clips)
+            duration_per_clip = voice_duration / num_clips
+            self.log(f"   Thời lượng mỗi clip: {duration_per_clip:.2f}s")
+
+            # 4. Cắt mỗi clip (lấy phần giữa)
+            for i, clip in enumerate(raw_clips):
+                clip_duration = clip.duration
+
+                if clip_duration > duration_per_clip:
+                    # Cắt đều đầu và cuối
+                    trim_total = clip_duration - duration_per_clip
+                    trim_start = trim_total / 2
+                    trim_end = clip_duration - trim_total / 2
+                    trimmed_clip = clip.subclip(trim_start, trim_end)
+                    self.log(f"   Clip {i+1}: cắt {trim_total:.1f}s ({trim_start:.1f}s đầu + {trim_start:.1f}s cuối)")
+                else:
+                    # Clip ngắn hơn, giữ nguyên
+                    trimmed_clip = clip
+                    self.log(f"   Clip {i+1}: giữ nguyên {clip_duration:.1f}s")
+
+                clips.append(trimmed_clip)
+
+            # 5. Áp dụng chuyển cảnh
+            if len(clips) > 1:
+                self.log(f"✨ Áp dụng chuyển cảnh: {self.transition_type}")
+                processed_clips = []
+                for i, clip in enumerate(clips):
+                    if i < len(clips) - 1:
+                        clip = clip.fx(vfx.fadeout, self.transition_duration)
+                    if i > 0:
+                        clip = clip.fx(vfx.fadein, self.transition_duration)
+                    processed_clips.append(clip)
+                clips = processed_clips
+
+            # 6. Ghép video clips (phần voice)
+            self.log("🔗 Ghép video clips...")
+            video_part = concatenate_videoclips(clips, method="compose")
+            actual_video_duration = video_part.duration
+            self.log(f"   Thời lượng video: {actual_video_duration:.1f}s (target: {voice_duration:.1f}s)")
+
+            # Điều chỉnh nếu cần
+            if abs(actual_video_duration - voice_duration) > 0.5:
+                if actual_video_duration > voice_duration:
+                    video_part = video_part.subclip(0, voice_duration)
+                # Nếu ngắn hơn, để nguyên (sẽ có khoảng trống nhỏ)
+
+            # 7. Tạo image clips (sau voice)
+            if image_paths:
+                self.log(f"🖼️ Tạo {len(image_paths)} ảnh (mỗi ảnh {image_duration}s)...")
+                for img_path in image_paths:
+                    if os.path.exists(img_path):
+                        try:
+                            img_clip = ImageClip(img_path, duration=image_duration)
+                            # Resize nếu cần (giữ tỷ lệ video)
+                            if video_part.size:
+                                img_clip = img_clip.resize(video_part.size)
+                            image_clips.append(img_clip)
+                        except Exception as e:
+                            self.log(f"   ⚠️ Lỗi load ảnh {img_path}: {e}")
+
+                if image_clips:
+                    # Fade in ảnh đầu, fade out ảnh cuối
+                    image_clips[0] = image_clips[0].fx(vfx.fadein, 0.2)
+                    image_clips[-1] = image_clips[-1].fx(vfx.fadeout, 0.2)
+                    self.log(f"   ✓ Đã tạo {len(image_clips)} ảnh clips")
+
+            # 8. Ghép video + images
+            all_clips = [video_part]
+            if image_clips:
+                # Fade out video cuối trước khi chuyển sang ảnh
+                video_part = video_part.fx(vfx.fadeout, 0.3)
+                all_clips = [video_part] + image_clips
+
+            final_clip = concatenate_videoclips(all_clips, method="compose")
+            total_duration = final_clip.duration
+            self.log(f"📊 Tổng thời lượng: {total_duration:.1f}s (voice: {voice_duration:.1f}s + ảnh: {total_duration - voice_duration:.1f}s)")
+
+            # 9. Xử lý audio
+            audio_clips = []
+
+            # Voice - bắt đầu từ 0
+            voice_audio = voice_audio.volumex(voice_volume)
+            voice_audio = voice_audio.set_start(0)
+            audio_clips.append(voice_audio)
+            self.log(f"🔊 Voice: volume={voice_volume}, start=0s")
+
+            # Nhạc nền - chạy từ đầu đến cuối video
+            if music_path and os.path.exists(music_path):
+                self.log(f"🎵 Thêm nhạc: {Path(music_path).name}")
+                music_audio = AudioFileClip(music_path)
+
+                # Loop nhạc nếu cần
+                if music_audio.duration < total_duration:
+                    loops_needed = int(total_duration / music_audio.duration) + 1
+                    self.log(f"   Loop nhạc {loops_needed} lần")
+                    from moviepy.editor import concatenate_audioclips
+                    music_clips_list = [music_audio] * loops_needed
+                    music_audio = concatenate_audioclips(music_clips_list)
+
+                # Cắt nhạc = tổng thời lượng video
+                music_audio = music_audio.subclip(0, total_duration)
+                music_audio = music_audio.volumex(music_volume)
+                # Fade out nhạc ở cuối (3s)
+                music_audio = music_audio.fx(vfx.audio_fadeout, 3)
+                music_audio = music_audio.set_start(0)
+                audio_clips.append(music_audio)
+                self.log(f"   ✓ Nhạc: {total_duration:.1f}s, volume={music_volume}, fade out 3s")
+
+            # 10. Ghép audio
+            if audio_clips:
+                self.log("🔗 Ghép audio...")
+                final_audio = CompositeAudioClip(audio_clips)
+                final_clip = final_clip.set_audio(final_audio)
+
+            # 11. Export
+            self.log(f"💾 Xuất video: {output_path}")
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                fps=30,
+                preset='medium',
+                threads=4,
+                logger=None
+            )
+
+            self.log(f"✅ Hoàn thành: {output_path}")
+            return True
+
+        except Exception as e:
+            self.log(f"❌ Lỗi merge_voice_first: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+        finally:
+            for clip in clips + image_clips:
+                try:
+                    clip.close()
+                except:
+                    pass
+
     def _get_random_transition(self) -> str:
         """Chọn ngẫu nhiên 1 trong 3 loại transition"""
         return random.choice([

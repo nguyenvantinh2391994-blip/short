@@ -3375,46 +3375,72 @@ class MainTab:
                         image_ref = extractor.upload_image(str(ref_image), callback=chrome_log)
 
                     total_downloaded = []
+                    max_retries = 5
+                    retry_delays = [30, 45, 60, 90, 120]
 
                     # === PROMPT 1 (Cột I) - Tạo 4 ảnh (chỉ nếu thiếu) ===
                     if need_prompt_1:
                         self.after_safe(lambda c=code, n=len(existing_I): self.add_log(f"   📸 Prompt 1 (cột I): Đã có {n}/4, tạo thêm..."))
 
-                        # Trigger Chrome để capture payload
-                        if extractor.trigger_and_capture(flow_prompt_1, callback=chrome_log):
-                            # Gọi API với prompt 1
-                            downloaded_1 = extractor.call_api_with_captured_payload(
-                                custom_prompt=flow_prompt_1,
-                                output_dir=flow_folder,
-                                prefix=f"{code}_I",
-                                image_ref=image_ref,
-                                callback=chrome_log
-                            )
-                            if downloaded_1:
-                                total_downloaded.extend(downloaded_1)
-                                self.after_safe(lambda n=len(downloaded_1): self.add_log(f"   ✅ Prompt 1: +{n} ảnh"))
-                        else:
-                            self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 1: Không capture được payload"))
+                        downloaded_1 = None
+                        for attempt in range(max_retries + 1):
+                            # Trigger Chrome để capture payload (mỗi lần retry đều capture mới)
+                            if extractor.trigger_and_capture(flow_prompt_1, callback=chrome_log):
+                                # Gọi API với prompt 1
+                                downloaded_1 = extractor.call_api_with_captured_payload(
+                                    custom_prompt=flow_prompt_1,
+                                    output_dir=flow_folder,
+                                    prefix=f"{code}_I",
+                                    image_ref=image_ref,
+                                    callback=chrome_log
+                                )
+                                if downloaded_1:
+                                    total_downloaded.extend(downloaded_1)
+                                    self.after_safe(lambda n=len(downloaded_1): self.add_log(f"   ✅ Prompt 1: +{n} ảnh"))
+                                    break  # Thành công, thoát vòng lặp
+                                else:
+                                    # API call thất bại, thử lại
+                                    if attempt < max_retries:
+                                        wait_time = retry_delays[attempt]
+                                        self.after_safe(lambda w=wait_time, a=attempt+1:
+                                            self.add_log(f"   🔄 Thử lại Prompt 1 ({a}/{max_retries}) - đợi {w}s..."))
+                                        import time
+                                        time.sleep(wait_time)
+                            else:
+                                self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 1: Không capture được payload"))
+                                break  # Không capture được, thoát
 
                     # === PROMPT 2 (Cột K) - Tạo 4 ảnh (chỉ nếu thiếu) ===
                     if need_prompt_2:
                         self.after_safe(lambda c=code, n=len(existing_K): self.add_log(f"   📸 Prompt 2 (cột K): Đã có {n}/4, tạo thêm..."))
 
-                        # Trigger Chrome để capture payload mới
-                        if extractor.trigger_and_capture(flow_prompt_2, callback=chrome_log):
-                            # Gọi API với prompt 2
-                            downloaded_2 = extractor.call_api_with_captured_payload(
-                                custom_prompt=flow_prompt_2,
-                                output_dir=flow_folder,
-                                prefix=f"{code}_K",
-                                image_ref=image_ref,
-                                callback=chrome_log
-                            )
-                            if downloaded_2:
-                                total_downloaded.extend(downloaded_2)
-                                self.after_safe(lambda n=len(downloaded_2): self.add_log(f"   ✅ Prompt 2: +{n} ảnh"))
-                        else:
-                            self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 2: Không capture được payload"))
+                        downloaded_2 = None
+                        for attempt in range(max_retries + 1):
+                            # Trigger Chrome để capture payload mới (mỗi lần retry đều capture mới)
+                            if extractor.trigger_and_capture(flow_prompt_2, callback=chrome_log):
+                                # Gọi API với prompt 2
+                                downloaded_2 = extractor.call_api_with_captured_payload(
+                                    custom_prompt=flow_prompt_2,
+                                    output_dir=flow_folder,
+                                    prefix=f"{code}_K",
+                                    image_ref=image_ref,
+                                    callback=chrome_log
+                                )
+                                if downloaded_2:
+                                    total_downloaded.extend(downloaded_2)
+                                    self.after_safe(lambda n=len(downloaded_2): self.add_log(f"   ✅ Prompt 2: +{n} ảnh"))
+                                    break  # Thành công, thoát vòng lặp
+                                else:
+                                    # API call thất bại, thử lại
+                                    if attempt < max_retries:
+                                        wait_time = retry_delays[attempt]
+                                        self.after_safe(lambda w=wait_time, a=attempt+1:
+                                            self.add_log(f"   🔄 Thử lại Prompt 2 ({a}/{max_retries}) - đợi {w}s..."))
+                                        import time
+                                        time.sleep(wait_time)
+                            else:
+                                self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 2: Không capture được payload"))
+                                break  # Không capture được, thoát
 
                     if total_downloaded:
                         processed += 1

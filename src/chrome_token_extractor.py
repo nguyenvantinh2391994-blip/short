@@ -816,97 +816,126 @@ class ChromeTokenExtractor:
         if callback:
             callback(f"Calling API: {url[:60]}...")
 
-        try:
-            # Gọi API với data=json.dumps (giống debug script)
-            response = requests.post(
-                url,
-                headers=headers,
-                data=json.dumps(payload),  # QUAN TRỌNG: data=, không phải json=
-                timeout=120
-            )
+        # Retry logic cho 429 errors
+        max_retries = 5
+        retry_delays = [30, 45, 60, 90, 120]  # Đợi tăng dần
 
-            if callback:
-                callback(f"Response status: {response.status_code}")
+        for attempt in range(max_retries + 1):
+            try:
+                # Gọi API với data=json.dumps (giống debug script)
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    data=json.dumps(payload),  # QUAN TRỌNG: data=, không phải json=
+                    timeout=120
+                )
 
-            if response.status_code == 401:
                 if callback:
-                    callback("❌ Token hết hạn!")
-                return []
+                    callback(f"Response status: {response.status_code}")
 
-            if response.status_code == 403:
-                resp_text = response.text.lower()
-                if "recaptcha" in resp_text:
-                    if callback:
-                        callback("❌ recaptchaToken đã hết hạn - cần tạo ảnh mới trong Chrome")
-                else:
-                    if callback:
-                        callback(f"❌ Forbidden: {response.text[:200]}")
-                return []
-
-            if response.status_code != 200:
-                if callback:
-                    callback(f"❌ Error {response.status_code}: {response.text[:200]}")
-                    # Log thêm thông tin debug
-                    if response.status_code == 400:
-                        callback(f"   Debug: requests count = {len(payload.get('requests', []))}")
-                        if payload.get('requests'):
-                            req0 = payload['requests'][0]
-                            callback(f"   Debug: prompt length = {len(req0.get('prompt', ''))}")
-                            callback(f"   Debug: imageInputs = {req0.get('imageInputs', 'none')[:100] if req0.get('imageInputs') else 'none'}")
-                return []
-
-            # Parse response
-            result = response.json()
-            media_list = result.get("media", [])
-
-            if not media_list:
-                if callback:
-                    callback("⚠️ Không có ảnh trong response")
-                return []
-
-            if callback:
-                callback(f"✅ Nhận được {len(media_list)} ảnh!")
-
-            # Download images
-            if output_dir:
-                output_dir = Path(output_dir)
-                output_dir.mkdir(parents=True, exist_ok=True)
-
-            downloaded = []
-            for i, media in enumerate(media_list):
-                fife_url = media.get("image", {}).get("generatedImage", {}).get("fifeUrl")
-
-                if fife_url:
-                    try:
+                # Xử lý 429 - Rate limit / Quota exhausted
+                if response.status_code == 429:
+                    if attempt < max_retries:
+                        wait_time = retry_delays[attempt]
                         if callback:
-                            callback(f"Downloading image {i+1}/{len(media_list)}...")
-
-                        img_resp = requests.get(fife_url, timeout=60)
-                        if img_resp.status_code == 200:
-                            timestamp = datetime.now().strftime("%H%M%S")
-                            filename = f"{prefix}_{timestamp}_{i+1}.png"
-
-                            if output_dir:
-                                filepath = output_dir / filename
-                                with open(filepath, 'wb') as f:
-                                    f.write(img_resp.content)
-                                downloaded.append(str(filepath))
-                                if callback:
-                                    callback(f"✅ Saved: {filename}")
-                    except Exception as e:
+                            callback(f"⚠️ Quota limit (429) - Đợi {wait_time}s rồi thử lại ({attempt + 1}/{max_retries})...")
+                        import time
+                        time.sleep(wait_time)
+                        continue  # Retry
+                    else:
                         if callback:
-                            callback(f"❌ Download error: {e}")
+                            callback(f"❌ Đã thử {max_retries} lần nhưng vẫn bị quota limit")
+                        return []
 
-            return downloaded
+                if response.status_code == 401:
+                    if callback:
+                        callback("❌ Token hết hạn!")
+                    return []
 
-        except requests.exceptions.Timeout:
-            if callback:
-                callback("❌ Request timeout")
-            return []
-        except Exception as e:
-            if callback:
-                callback(f"❌ Error: {e}")
-            return []
+                if response.status_code == 403:
+                    resp_text = response.text.lower()
+                    if "recaptcha" in resp_text:
+                        if callback:
+                            callback("❌ recaptchaToken đã hết hạn - cần tạo ảnh mới trong Chrome")
+                    else:
+                        if callback:
+                            callback(f"❌ Forbidden: {response.text[:200]}")
+                    return []
+
+                if response.status_code != 200:
+                    if callback:
+                        callback(f"❌ Error {response.status_code}: {response.text[:200]}")
+                        # Log thêm thông tin debug
+                        if response.status_code == 400:
+                            callback(f"   Debug: requests count = {len(payload.get('requests', []))}")
+                            if payload.get('requests'):
+                                req0 = payload['requests'][0]
+                                callback(f"   Debug: prompt length = {len(req0.get('prompt', ''))}")
+                                callback(f"   Debug: imageInputs = {req0.get('imageInputs', 'none')[:100] if req0.get('imageInputs') else 'none'}")
+                    return []
+
+                # Parse response
+                result = response.json()
+                media_list = result.get("media", [])
+
+                if not media_list:
+                    if callback:
+                        callback("⚠️ Không có ảnh trong response")
+                    return []
+
+                if callback:
+                    callback(f"✅ Nhận được {len(media_list)} ảnh!")
+
+                # Download images
+                if output_dir:
+                    output_dir = Path(output_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+
+                downloaded = []
+                for i, media in enumerate(media_list):
+                    fife_url = media.get("image", {}).get("generatedImage", {}).get("fifeUrl")
+
+                    if fife_url:
+                        try:
+                            if callback:
+                                callback(f"Downloading image {i+1}/{len(media_list)}...")
+
+                            img_resp = requests.get(fife_url, timeout=60)
+                            if img_resp.status_code == 200:
+                                timestamp = datetime.now().strftime("%H%M%S")
+                                filename = f"{prefix}_{timestamp}_{i+1}.png"
+
+                                if output_dir:
+                                    filepath = output_dir / filename
+                                    with open(filepath, 'wb') as f:
+                                        f.write(img_resp.content)
+                                    downloaded.append(str(filepath))
+                                    if callback:
+                                        callback(f"✅ Saved: {filename}")
+                        except Exception as e:
+                            if callback:
+                                callback(f"❌ Download error: {e}")
+
+                return downloaded
+
+            except requests.exceptions.Timeout:
+                if callback:
+                    callback("❌ Request timeout")
+                if attempt < max_retries:
+                    wait_time = retry_delays[attempt]
+                    if callback:
+                        callback(f"⚠️ Timeout - Đợi {wait_time}s rồi thử lại ({attempt + 1}/{max_retries})...")
+                    import time
+                    time.sleep(wait_time)
+                    continue
+                return []
+            except Exception as e:
+                if callback:
+                    callback(f"❌ Error: {e}")
+                return []
+
+        # Nếu hết vòng lặp mà không return được
+        return []
 
     def trigger_and_capture(self, prompt: str, callback=None) -> bool:
         """

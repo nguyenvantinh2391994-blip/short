@@ -27,7 +27,8 @@ class ImageFilterResult:
     path: str
     has_person: bool
     is_collage: bool
-    should_keep: bool
+    is_logo: bool = False  # Ảnh logo/icon
+    should_keep: bool = True
     reason: str = ""
 
 
@@ -38,10 +39,12 @@ class ImageFilter:
         self,
         require_person: bool = True,
         reject_collage: bool = True,
+        reject_logo: bool = True,  # Loại ảnh logo/icon
         min_person_confidence: float = 0.5,
     ):
         self.require_person = require_person
         self.reject_collage = reject_collage
+        self.reject_logo = reject_logo
         self.min_person_confidence = min_person_confidence
 
         # Khởi tạo mediapipe pose detector
@@ -237,6 +240,92 @@ class ImageFilter:
         except Exception:
             return 0.0
 
+    def detect_logo(self, image: np.ndarray) -> Tuple[bool, float]:
+        """
+        Phát hiện ảnh logo/icon - không phải ảnh sản phẩm thật
+
+        Đặc điểm của ảnh logo:
+        1. Ít màu (color palette đơn giản)
+        2. Nhiều vùng màu đồng nhất (solid colors)
+        3. Entropy thấp (ít chi tiết)
+        4. Thường có nền trắng/đen chiếm diện tích lớn
+        5. Tỉ lệ edge cao ở vùng nhỏ (text/graphics)
+        """
+        if image is None:
+            return False, 0.0
+
+        try:
+            h, w = image.shape[:2]
+            total_pixels = h * w
+
+            # === 1. Đếm số màu unique (quantize về 32 levels mỗi channel) ===
+            # Logo thường có ít màu
+            quantized = (image // 32) * 32
+            pixels = quantized.reshape(-1, 3)
+            unique_colors = len(np.unique(pixels, axis=0))
+
+            # Chuẩn hóa: < 50 màu unique là rất ít
+            color_simplicity = 1.0 if unique_colors < 30 else (1.0 - min(unique_colors / 500, 1.0))
+
+            # === 2. Tính tỉ lệ vùng nền đồng nhất ===
+            # Logo thường có nền trắng hoặc đen lớn
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+            # Đếm pixel gần trắng (> 240) hoặc gần đen (< 15)
+            white_pixels = np.sum(gray > 240)
+            black_pixels = np.sum(gray < 15)
+            background_ratio = (white_pixels + black_pixels) / total_pixels
+
+            # === 3. Tính entropy (độ phức tạp thông tin) ===
+            # Logo có entropy thấp
+            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+            hist = hist / total_pixels  # Normalize
+            hist = hist[hist > 0]  # Remove zeros
+            entropy = -np.sum(hist * np.log2(hist))
+
+            # Entropy max = 8 (8 bit), logo thường < 5
+            entropy_score = 1.0 if entropy < 4 else (1.0 - min((entropy - 4) / 4, 1.0))
+
+            # === 4. Kiểm tra có phải ảnh vuông nhỏ (icon) ===
+            aspect_ratio = w / h
+            is_square_ish = 0.8 <= aspect_ratio <= 1.2
+            is_small = max(w, h) < 500
+
+            # === 5. Tính điểm tổng hợp ===
+            logo_score = 0.0
+            reasons = []
+
+            # Ít màu + nền lớn = rất có thể là logo
+            if unique_colors < 30 and background_ratio > 0.6:
+                logo_score += 0.5
+                reasons.append(f"ít màu ({unique_colors}) + nền lớn ({background_ratio:.0%})")
+
+            # Entropy rất thấp = logo/graphic
+            if entropy < 4.5:
+                logo_score += 0.3
+                reasons.append(f"entropy thấp ({entropy:.1f})")
+
+            # Nền chiếm > 80% = có thể là logo trên nền trắng
+            if background_ratio > 0.8:
+                logo_score += 0.2
+                reasons.append(f"nền {background_ratio:.0%}")
+
+            # Icon vuông nhỏ
+            if is_square_ish and is_small:
+                logo_score += 0.2
+                reasons.append(f"icon {w}x{h}")
+
+            is_logo = logo_score >= 0.6
+
+            if is_logo:
+                console.print(f"[dim]Logo detected: score={logo_score:.2f}, {', '.join(reasons)}[/]")
+
+            return is_logo, logo_score
+
+        except Exception as e:
+            console.print(f"[dim]Logo detection error: {e}[/]")
+            return False, 0.0
+
     def filter_image(self, image_path: str) -> ImageFilterResult:
         """Lọc một ảnh"""
         path = Path(image_path)
@@ -269,16 +358,26 @@ class ImageFilter:
         if self.reject_collage:
             is_collage, collage_conf = self.detect_collage(image)
 
+        # Detect logo (chỉ khi reject_logo = True)
+        is_logo = False
+        logo_conf = 0.0
+        if self.reject_logo:
+            is_logo, logo_conf = self.detect_logo(image)
+
         # Quyết định giữ hay bỏ
         should_keep = True
         reason = ""
 
-        # Logic đơn giản:
-        # 1. Nếu là collage -> BỎ
-        # 2. Nếu không có người VÀ require_person -> BỎ
-        # 3. Còn lại -> GIỮ
+        # Logic lọc:
+        # 1. Nếu là logo/icon -> BỎ
+        # 2. Nếu là collage -> BỎ
+        # 3. Nếu không có người VÀ require_person -> BỎ
+        # 4. Còn lại -> GIỮ
 
-        if is_collage:
+        if is_logo:
+            should_keep = False
+            reason = f"Ảnh logo/icon (conf: {logo_conf:.2f})"
+        elif is_collage:
             should_keep = False
             reason = f"Ảnh ghép (conf: {collage_conf:.2f})"
         elif self.require_person and not has_person:
@@ -287,7 +386,7 @@ class ImageFilter:
         elif has_person:
             reason = f"Có người (conf: {person_conf:.2f})"
         else:
-            # Không require person, không phải collage -> giữ
+            # Không require person, không phải collage/logo -> giữ
             should_keep = True
             reason = "OK"
 
@@ -295,6 +394,7 @@ class ImageFilter:
             path=str(path),
             has_person=has_person,
             is_collage=is_collage,
+            is_logo=is_logo,
             should_keep=should_keep,
             reason=reason
         )
@@ -373,6 +473,7 @@ def filter_product_images(
     folder_path: str,
     require_person: bool = True,
     reject_collage: bool = True,
+    reject_logo: bool = True,
     move_rejected: bool = True,
     on_log: callable = None
 ) -> Tuple[int, int]:
@@ -383,6 +484,7 @@ def filter_product_images(
         folder_path: Thư mục chứa ảnh
         require_person: Yêu cầu có người
         reject_collage: Loại ảnh ghép
+        reject_logo: Loại ảnh logo/icon (không có sản phẩm thật)
         move_rejected: Di chuyển ảnh bị loại vào _rejected
         on_log: Callback log
 
@@ -393,7 +495,8 @@ def filter_product_images(
 
     filter_obj = ImageFilter(
         require_person=require_person,
-        reject_collage=reject_collage
+        reject_collage=reject_collage,
+        reject_logo=reject_logo
     )
 
     try:

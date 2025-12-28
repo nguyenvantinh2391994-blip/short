@@ -42,37 +42,51 @@ class ExtractResult:
 
 EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
-Goal:
-Return ONE clean image of the product only.
+This is an IMAGE EDITING task.
+You must PROCESS the input image and RETURN a NEW IMAGE as output.
 
-Product:
-- Product name: {product_name}
-- The product is a standalone physical object.
+Task description:
+Extract (cut out) the MAIN PRODUCT from the image.
 
-Source images:
-- Images may contain people or multiple versions.
+Target product:
+- The product to extract is: {product_name}
+- The product must be treated as a single, standalone physical object.
 
-STRICT SELECTION RULE:
-- Select EXACTLY ONE product version that contains NO human presence.
-- Any image version containing ANY human or body part
-  (face, head, skin, hair, hands, arms, legs, feet)
-  MUST be discarded entirely and MUST NOT be edited.
+Input image note:
+- The input image may be a collage or contain multiple versions.
 
-If no human-free version exists:
-- Remove ALL human parts completely.
-- The final image MUST contain ZERO human body parts.
+Single-version constraint (CRITICAL):
+- You must select EXACTLY ONE product version.
+- All other versions MUST be discarded completely.
+- The output must NOT contain duplicates or multiple instances.
 
-Editing:
+Explicit exclusions:
+- Any human, child, model, mannequin
+- Any body part: face, skin, hair, hands, arms, legs, feet
+- Any background scene
+- Any text, logo, watermark
+
+ABSOLUTE RULE:
+If a product version contains ANY human presence,
+that version MUST be completely discarded
+and MUST NOT appear in the output.
+
+Editing instructions:
 - Remove the entire background
-- Keep ONLY the product
-- Preserve ALL physically attached product details
+- Keep ONLY the selected single product
+- Preserve all physically attached details
 - Do NOT stylize or redesign
 
-Output:
-- ONE product only
-- NO humans, NO body parts
-- White background (#FFFFFF)
-- IMAGE OUTPUT ONLY (no text)"""
+Output requirements:
+- Output must be an IMAGE
+- EXACTLY ONE product only
+- Pure white background (#FFFFFF)
+- No shadows, no reflections
+- No text
+
+Final rule:
+You must return ONLY the edited product image.
+Do NOT return any text."""
 
 
 class GeminiExtract:

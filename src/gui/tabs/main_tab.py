@@ -3304,20 +3304,33 @@ class MainTab:
                     skipped += 1
                     continue
 
-                # Kiểm tra đã có đủ flow chưa (8 ảnh = 4 từ prompt I + 4 từ prompt K)
+                # Kiểm tra ảnh đã có cho từng prompt (cho phép chạy lại để bổ sung thiếu)
                 flow_folder = products_dir / code / "flow"
+                existing_I = []
+                existing_K = []
                 if flow_folder.exists():
-                    existing_flow = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
-                    # Cần đủ 8 ảnh (hoặc ít nhất 4 nếu chỉ có 1 prompt)
-                    required_count = 8 if (flow_prompt_1 and flow_prompt_2) else 4
-                    if len(existing_flow) >= required_count:
-                        self.after_safe(lambda c=code, n=len(existing_flow): self.add_log(f"⏭️ {c}: Đã có {n} ảnh flow - bỏ qua"))
-                        skipped += 1
-                        continue
+                    existing_I = [f for f in flow_folder.glob(f"{code}_I*") if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.webp']]
+                    existing_K = [f for f in flow_folder.glob(f"{code}_K*") if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.webp']]
 
-                # Log prompt nếu có
-                self.after_safe(lambda c=code, i=i, t=total:
-                    self.add_log(f"[{i}/{t}] 🌀 {c}: Đang tạo 8 ảnh flow (2 prompts x 4 ảnh)..."))
+                # Kiểm tra đủ ảnh cho từng prompt (mỗi prompt cần 4 ảnh)
+                need_prompt_1 = flow_prompt_1 and len(existing_I) < 4
+                need_prompt_2 = flow_prompt_2 and len(existing_K) < 4
+
+                # Nếu đã đủ cả 2 prompt thì bỏ qua
+                if not need_prompt_1 and not need_prompt_2:
+                    total_existing = len(existing_I) + len(existing_K)
+                    self.after_safe(lambda c=code, n=total_existing: self.add_log(f"⏭️ {c}: Đã đủ {n} ảnh flow - bỏ qua"))
+                    skipped += 1
+                    continue
+
+                # Log số ảnh còn thiếu
+                missing_info = []
+                if need_prompt_1:
+                    missing_info.append(f"I: cần thêm {4 - len(existing_I)} ảnh")
+                if need_prompt_2:
+                    missing_info.append(f"K: cần thêm {4 - len(existing_K)} ảnh")
+                self.after_safe(lambda c=code, i=i, t=total, info=", ".join(missing_info):
+                    self.add_log(f"[{i}/{t}] 🌀 {c}: Tạo ảnh flow ({info})..."))
 
                 try:
                     # Sử dụng Chrome trigger + API call để tạo ảnh
@@ -3363,9 +3376,9 @@ class MainTab:
 
                     total_downloaded = []
 
-                    # === PROMPT 1 (Cột I) - Tạo 4 ảnh ===
-                    if flow_prompt_1:
-                        self.after_safe(lambda c=code: self.add_log(f"   📸 Prompt 1 (cột I): Tạo 4 ảnh..."))
+                    # === PROMPT 1 (Cột I) - Tạo 4 ảnh (chỉ nếu thiếu) ===
+                    if need_prompt_1:
+                        self.after_safe(lambda c=code, n=len(existing_I): self.add_log(f"   📸 Prompt 1 (cột I): Đã có {n}/4, tạo thêm..."))
 
                         # Trigger Chrome để capture payload
                         if extractor.trigger_and_capture(flow_prompt_1, callback=chrome_log):
@@ -3379,13 +3392,13 @@ class MainTab:
                             )
                             if downloaded_1:
                                 total_downloaded.extend(downloaded_1)
-                                self.after_safe(lambda n=len(downloaded_1): self.add_log(f"   ✅ Prompt 1: {n} ảnh"))
+                                self.after_safe(lambda n=len(downloaded_1): self.add_log(f"   ✅ Prompt 1: +{n} ảnh"))
                         else:
                             self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 1: Không capture được payload"))
 
-                    # === PROMPT 2 (Cột K) - Tạo 4 ảnh ===
-                    if flow_prompt_2:
-                        self.after_safe(lambda c=code: self.add_log(f"   📸 Prompt 2 (cột K): Tạo 4 ảnh..."))
+                    # === PROMPT 2 (Cột K) - Tạo 4 ảnh (chỉ nếu thiếu) ===
+                    if need_prompt_2:
+                        self.after_safe(lambda c=code, n=len(existing_K): self.add_log(f"   📸 Prompt 2 (cột K): Đã có {n}/4, tạo thêm..."))
 
                         # Trigger Chrome để capture payload mới
                         if extractor.trigger_and_capture(flow_prompt_2, callback=chrome_log):
@@ -3399,7 +3412,7 @@ class MainTab:
                             )
                             if downloaded_2:
                                 total_downloaded.extend(downloaded_2)
-                                self.after_safe(lambda n=len(downloaded_2): self.add_log(f"   ✅ Prompt 2: {n} ảnh"))
+                                self.after_safe(lambda n=len(downloaded_2): self.add_log(f"   ✅ Prompt 2: +{n} ảnh"))
                         else:
                             self.after_safe(lambda: self.add_log(f"   ⚠️ Prompt 2: Không capture được payload"))
 

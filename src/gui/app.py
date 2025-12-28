@@ -288,14 +288,25 @@ class VideoCreatorApp(ctk.CTk):
 
     def load_config(self) -> AppConfig:
         """Load config từ file"""
+        config = AppConfig()
         if CONFIG_FILE.exists():
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                return AppConfig.from_dict(data)
+                config = AppConfig.from_dict(data)
             except Exception as e:
                 print(f"Lỗi load config: {e}")
-        return AppConfig()
+
+        # Auto-detect music folder nếu chưa set
+        if not config.music_folder:
+            # Thư mục gốc của tool
+            tool_root = Path(__file__).parent.parent.parent
+            music_dir = tool_root / "music"
+            if music_dir.exists() and music_dir.is_dir():
+                config.music_folder = str(music_dir)
+                print(f"✅ Auto-detect music folder: {music_dir}")
+
+        return config
 
     def save_config(self):
         """Save config ra file"""

@@ -30,9 +30,64 @@ class VideoMerger:
         self.transition_duration = transition_duration
         self.on_log = on_log or print
 
+        # Target size for 9:16 HD
+        self.TARGET_WIDTH = 1080
+        self.TARGET_HEIGHT = 1920
+        self.TARGET_RATIO = 9 / 16  # 0.5625
+
     def log(self, msg: str):
         """Log message"""
         self.on_log(msg)
+
+    def resize_to_9_16(self, clip: "VideoFileClip") -> "VideoFileClip":
+        """
+        Resize video clip to 9:16 (1080x1920) without black bars.
+
+        Logic:
+        - Scale video to fill entire frame (no black bars)
+        - Crop excess to fit exactly 9:16
+        - Uses the smaller ratio to ensure full coverage
+        """
+        from moviepy.video.fx.resize import resize
+        from moviepy.video.fx.crop import crop
+
+        w, h = clip.size
+        current_ratio = w / h
+
+        if abs(current_ratio - self.TARGET_RATIO) < 0.01:
+            # Already 9:16, just resize to target resolution
+            return clip.fx(resize, (self.TARGET_WIDTH, self.TARGET_HEIGHT))
+
+        if current_ratio > self.TARGET_RATIO:
+            # Video is wider than 9:16 - scale by height, crop sides
+            scale_factor = self.TARGET_HEIGHT / h
+            new_w = int(w * scale_factor)
+            new_h = self.TARGET_HEIGHT
+
+            # Resize first
+            resized = clip.fx(resize, (new_w, new_h))
+
+            # Crop sides (center crop)
+            x_center = new_w / 2
+            x1 = int(x_center - self.TARGET_WIDTH / 2)
+            x2 = int(x_center + self.TARGET_WIDTH / 2)
+            cropped = resized.fx(crop, x1=x1, x2=x2, y1=0, y2=self.TARGET_HEIGHT)
+        else:
+            # Video is taller/narrower than 9:16 - scale by width, crop top/bottom
+            scale_factor = self.TARGET_WIDTH / w
+            new_w = self.TARGET_WIDTH
+            new_h = int(h * scale_factor)
+
+            # Resize first
+            resized = clip.fx(resize, (new_w, new_h))
+
+            # Crop top/bottom (center crop)
+            y_center = new_h / 2
+            y1 = int(y_center - self.TARGET_HEIGHT / 2)
+            y2 = int(y_center + self.TARGET_HEIGHT / 2)
+            cropped = resized.fx(crop, x1=0, x2=self.TARGET_WIDTH, y1=y1, y2=y2)
+
+        return cropped
 
     def merge_videos(
         self,
@@ -663,22 +718,33 @@ class VideoMerger:
             voice_duration = voice_audio.duration
             self.log(f"   Thời lượng voice: {voice_duration:.1f}s")
 
-            # 2. Load và tính toán cắt video clips
-            self.log(f"🎬 Load {len(video_paths)} video clips...")
+            # 2. Lọc bỏ video SORA (tạm thời)
+            filtered_paths = [p for p in video_paths if "00_sora_" not in Path(p).name]
+            if len(filtered_paths) < len(video_paths):
+                skipped = len(video_paths) - len(filtered_paths)
+                self.log(f"   ⏭️ Bỏ qua {skipped} video SORA (tạm thời)")
+
+            # 3. Load và resize video clips về 9:16 HD
+            self.log(f"🎬 Load {len(filtered_paths)} video clips...")
 
             raw_clips = []
             total_raw_duration = 0
-            for i, path in enumerate(video_paths):
+            for i, path in enumerate(filtered_paths):
                 if not os.path.exists(path):
                     self.log(f"   ⚠️ Không tìm thấy: {path}")
                     continue
 
                 clip = VideoFileClip(path)
+                orig_size = clip.size
+
+                # Resize về 9:16 HD (1080x1920)
+                clip = self.resize_to_9_16(clip)
+
                 # Tắt âm thanh gốc
                 clip = clip.without_audio()
                 raw_clips.append(clip)
                 total_raw_duration += clip.duration
-                self.log(f"   [{i+1}] {Path(path).name}: {clip.duration:.1f}s")
+                self.log(f"   [{i+1}] {Path(path).name}: {clip.duration:.1f}s ({orig_size[0]}x{orig_size[1]} → {self.TARGET_WIDTH}x{self.TARGET_HEIGHT})")
 
             if not raw_clips:
                 self.log("❌ Không có video hợp lệ")
@@ -733,16 +799,36 @@ class VideoMerger:
                     video_part = video_part.subclip(0, voice_duration)
                 # Nếu ngắn hơn, để nguyên (sẽ có khoảng trống nhỏ)
 
-            # 7. Tạo image clips (sau voice)
+            # 7. Tạo image clips (sau voice) - resize về 9:16 HD
             if image_paths:
                 self.log(f"🖼️ Tạo {len(image_paths)} ảnh (mỗi ảnh {image_duration}s)...")
+                from moviepy.video.fx.resize import resize
+                from moviepy.video.fx.crop import crop
+
                 for img_path in image_paths:
                     if os.path.exists(img_path):
                         try:
                             img_clip = ImageClip(img_path, duration=image_duration)
-                            # Resize nếu cần (giữ tỷ lệ video)
-                            if video_part.size:
-                                img_clip = img_clip.resize(video_part.size)
+
+                            # Resize về 9:16 HD (scale to fill + crop)
+                            w, h = img_clip.size
+                            img_ratio = w / h
+
+                            if img_ratio > self.TARGET_RATIO:
+                                # Ảnh rộng hơn - scale theo height, crop sides
+                                scale = self.TARGET_HEIGHT / h
+                                new_w = int(w * scale)
+                                img_clip = img_clip.fx(resize, (new_w, self.TARGET_HEIGHT))
+                                x1 = int((new_w - self.TARGET_WIDTH) / 2)
+                                img_clip = img_clip.fx(crop, x1=x1, x2=x1+self.TARGET_WIDTH, y1=0, y2=self.TARGET_HEIGHT)
+                            else:
+                                # Ảnh cao hơn - scale theo width, crop top/bottom
+                                scale = self.TARGET_WIDTH / w
+                                new_h = int(h * scale)
+                                img_clip = img_clip.fx(resize, (self.TARGET_WIDTH, new_h))
+                                y1 = int((new_h - self.TARGET_HEIGHT) / 2)
+                                img_clip = img_clip.fx(crop, x1=0, x2=self.TARGET_WIDTH, y1=y1, y2=y1+self.TARGET_HEIGHT)
+
                             image_clips.append(img_clip)
                         except Exception as e:
                             self.log(f"   ⚠️ Lỗi load ảnh {img_path}: {e}")
@@ -801,8 +887,8 @@ class VideoMerger:
                 final_audio = CompositeAudioClip(audio_clips)
                 final_clip = final_clip.set_audio(final_audio)
 
-            # 11. Export
-            self.log(f"💾 Xuất video: {output_path}")
+            # 11. Export với chất lượng cao
+            self.log(f"💾 Xuất video HD: {output_path}")
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
             final_clip.write_videofile(
@@ -812,7 +898,8 @@ class VideoMerger:
                 temp_audiofile='temp-audio.m4a',
                 remove_temp=True,
                 fps=30,
-                preset='medium',
+                preset='slow',  # Chất lượng cao hơn (slower = better)
+                bitrate='8000k',  # Bitrate cao cho video nét
                 threads=4,
                 logger=None
             )

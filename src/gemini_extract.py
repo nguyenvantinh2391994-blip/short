@@ -40,27 +40,37 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — PRODUCT EXTRACTION
+EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
 Goal:
-Return ONE clean product image only.
+Return ONE clean image of the product only.
 
-Rules:
-- The product is: {product_name}
-- If an image version contains ANY human or body part
-  (face, head, hands, arms, legs, feet),
-  DISCARD that entire version completely.
-- Select ONLY ONE version with NO human presence.
+Product:
+- Product name: {product_name}
+- The product is a standalone physical object.
+
+Source images:
+- Images may contain people or multiple versions.
+
+STRICT SELECTION RULE:
+- Select EXACTLY ONE product version that contains NO human presence.
+- Any image version containing ANY human or body part
+  (face, head, skin, hair, hands, arms, legs, feet)
+  MUST be discarded entirely and MUST NOT be edited.
+
+If no human-free version exists:
+- Remove ALL human parts completely.
+- The final image MUST contain ZERO human body parts.
 
 Editing:
-- Remove the background
+- Remove the entire background
 - Keep ONLY the product
-- Preserve ALL physically attached details
-- Do NOT remove buttons, ornaments, or decorations
+- Preserve ALL physically attached product details
+- Do NOT stylize or redesign
 
 Output:
 - ONE product only
-- No human, no body parts
+- NO humans, NO body parts
 - White background (#FFFFFF)
 - IMAGE OUTPUT ONLY (no text)"""
 

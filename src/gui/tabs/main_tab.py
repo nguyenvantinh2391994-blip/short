@@ -224,6 +224,21 @@ class MainTab:
         )
         self.shopee_btn.pack(side="left", padx=(0, 4))
 
+        # Nút Lọc ảnh (sau Tải ảnh)
+        self.filter_btn = ctk.CTkButton(
+            bottom_row,
+            text="Lọc",
+            command=self.filter_images,
+            width=50,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#EC4899",
+            hover_color="#DB2777",
+            text_color="white"
+        )
+        self.filter_btn.pack(side="left", padx=(0, 4))
+
         # Nút Tách SP (Gemini)
         self.extract_btn = ctk.CTkButton(
             bottom_row,
@@ -238,21 +253,6 @@ class MainTab:
             text_color="white"
         )
         self.extract_btn.pack(side="left", padx=(0, 4))
-
-        # Nút Lọc ảnh
-        self.filter_btn = ctk.CTkButton(
-            bottom_row,
-            text="Lọc",
-            command=self.filter_images,
-            width=50,
-            height=32,
-            corner_radius=6,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            fg_color="#EC4899",
-            hover_color="#DB2777",
-            text_color="white"
-        )
-        self.filter_btn.pack(side="left", padx=(0, 4))
 
         # Nút Làm kịch bản
         self.script_btn = ctk.CTkButton(

@@ -304,28 +304,28 @@ class ImageFilter:
                 logo_score += 0.4
                 reasons.append(f"nền trắng {white_ratio:.0%}")
 
-            # Nền trắng RẤT lớn (> 60%) = gần như chắc chắn
-            if white_ratio > 0.6:
-                logo_score += 0.3
+            # Nền trắng RẤT lớn (> 55%) = gần như chắc chắn là logo
+            if white_ratio > 0.55:
+                logo_score += 0.4
                 reasons.append(f"nền trắng lớn")
 
-            # Texture thấp (graphic/vector style)
-            if is_low_texture:
+            # Texture thấp (graphic/vector style) - điều chỉnh threshold cao hơn
+            if texture_score < 800:
                 logo_score += 0.3
                 reasons.append(f"texture thấp ({texture_score:.0f})")
 
-            # Ít màu
-            if unique_colors < 50:
+            # Ít màu (tăng threshold vì logo nhiều màu vẫn có < 100 màu)
+            if unique_colors < 100:
                 logo_score += 0.2
                 reasons.append(f"ít màu ({unique_colors})")
 
-            # Entropy thấp
-            if entropy < 5.5:
+            # Entropy thấp (tăng threshold)
+            if entropy < 6.0:
                 logo_score += 0.2
                 reasons.append(f"entropy thấp ({entropy:.1f})")
 
-            # Edge đơn giản
-            if is_simple_edges:
+            # Edge đơn giản (tăng threshold)
+            if edge_ratio < 0.2:
                 logo_score += 0.1
                 reasons.append(f"edge đơn giản ({edge_ratio:.1%})")
 
@@ -338,6 +338,9 @@ class ImageFilter:
                 reasons.append(f"icon {w}x{h}")
 
             is_logo = logo_score >= 0.6
+
+            # Debug logging
+            console.print(f"[dim]Logo check: white={white_ratio:.0%}, texture={texture_score:.0f}, colors={unique_colors}, entropy={entropy:.1f}, edges={edge_ratio:.1%} → score={logo_score:.2f}[/]")
 
             if is_logo:
                 console.print(f"[dim]Logo detected: score={logo_score:.2f}, {', '.join(reasons)}[/]")

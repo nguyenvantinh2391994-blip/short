@@ -3065,10 +3065,18 @@ class MainTab:
 
             self.after_safe(lambda n=len(folders): self.add_log(f"📁 Tìm thấy {n} folder"))
 
-            # Khởi tạo filter (không cần API key)
+            # Khởi tạo filter với tham số mới:
+            # - reject_logo=True: Loại ảnh logo/icon
+            # - reject_collage=False: Giữ ảnh ghép
+            # - require_person=True: Yêu cầu có người
+            # - max_images=5: Giữ tối đa 5 ảnh/folder
+            MAX_IMAGES = 5
+
             img_filter = ImageFilter(
                 require_person=True,
-                reject_collage=True
+                reject_collage=False,  # Giữ ảnh ghép
+                reject_logo=True,      # Loại logo/icon
+                max_images=MAX_IMAGES
             )
 
             total_kept = 0
@@ -3081,8 +3089,8 @@ class MainTab:
 
                     # Đếm ảnh trong folder
                     extensions = {'.jpg', '.jpeg', '.png', '.webp'}
-                    images = [f for f in folder.iterdir()
-                             if f.suffix.lower() in extensions and not f.name.startswith('_')]
+                    images = sorted([f for f in folder.iterdir()
+                             if f.suffix.lower() in extensions and not f.name.startswith('_')])
 
                     if not images:
                         continue
@@ -3093,6 +3101,9 @@ class MainTab:
                     # Tạo thư mục _rejected trong folder
                     rejected_folder = folder / "_rejected"
 
+                    # Đếm số ảnh đã giữ trong folder này
+                    folder_kept_count = 0
+
                     for img_path in images:
                         if self.stop_flag.is_set():
                             break
@@ -3100,7 +3111,14 @@ class MainTab:
                         try:
                             result = img_filter.filter_image(str(img_path))
 
+                            # Kiểm tra giới hạn max_images cho folder này
                             if result.should_keep:
+                                if folder_kept_count >= MAX_IMAGES:
+                                    result.should_keep = False
+                                    result.reason = f"Vượt quá giới hạn {MAX_IMAGES} ảnh"
+
+                            if result.should_keep:
+                                folder_kept_count += 1
                                 total_kept += 1
                                 self.after_safe(lambda p=img_path.name, r=result.reason:
                                     self.add_log(f"  ✓ {p}: {r}"))

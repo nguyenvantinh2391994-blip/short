@@ -282,6 +282,13 @@ class SoraAutomation:
                     "--window-position=50,50",
                 ])
 
+            # Tắt Safe Browsing để không bị chặn download video
+            cmd.extend([
+                "--safebrowsing-disable-download-protection",
+                "--disable-features=SafeBrowsingEnhancedProtection",
+                "--safebrowsing-disable-extension-blacklist",
+            ])
+
             cmd.append(url)
 
             self.log(f"   CMD: {' '.join(cmd[:5])}...")

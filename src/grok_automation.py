@@ -190,6 +190,10 @@ class GrokBrowserAutomation:
             cmd.extend([
                 "--window-size=1200,800",
                 "--window-position=50,50",
+                # Tắt Safe Browsing để không bị chặn download video
+                "--safebrowsing-disable-download-protection",
+                "--disable-features=SafeBrowsingEnhancedProtection",
+                "--safebrowsing-disable-extension-blacklist",
                 url
             ])
 

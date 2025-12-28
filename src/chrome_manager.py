@@ -83,6 +83,10 @@ class ChromeManager:
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--start-maximized",
+                # Tắt Safe Browsing để không bị chặn download video
+                "--safebrowsing-disable-download-protection",
+                "--disable-features=SafeBrowsingEnhancedProtection",
+                "--safebrowsing-disable-extension-blacklist",
             ]
 
             if url:

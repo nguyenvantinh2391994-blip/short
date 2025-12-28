@@ -2490,7 +2490,13 @@ class MainTab:
 
                 # Lấy voice và music
                 voice_path = get_voice_for_code(voice_folder, code) if voice_folder else None
+                self.after_safe(lambda mf=music_folder: self.add_log(f"    [DEBUG] Music folder: {mf}"))
                 music_path = get_random_music(music_folder) if music_folder else None
+                self.after_safe(lambda mp=music_path: self.add_log(f"    [DEBUG] Music path: {mp}"))
+                if music_path:
+                    self.after_safe(lambda p=Path(music_path).name: self.add_log(f"    🎵 Nhạc: {p}"))
+                else:
+                    self.after_safe(lambda: self.add_log(f"    ⚠️ Không tìm được nhạc!"))
 
                 # Sử dụng merge_full mới
                 merger.merge_full(
@@ -3550,9 +3556,13 @@ class MainTab:
                                 break
 
                     # Tìm music RANDOM từ music folder
+                    self.after_safe(lambda mf=music_folder: self.add_log(f"  [DEBUG] Music folder: {mf}"))
                     music_path = get_random_music(music_folder) if music_folder else None
+                    self.after_safe(lambda mp=music_path: self.add_log(f"  [DEBUG] Music path: {mp}"))
                     if music_path:
                         self.after_safe(lambda p=Path(music_path).name: self.add_log(f"  🎵 Nhạc: {p}"))
+                    else:
+                        self.after_safe(lambda: self.add_log(f"  ⚠️ Không tìm được nhạc!"))
 
                     # Tìm ảnh Flow từ input/{code}/flow/
                     flow_images = []

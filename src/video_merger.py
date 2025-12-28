@@ -667,7 +667,9 @@ class VideoMerger:
         music_volume: float = 0.6,
         voice_volume: float = 1.0,
         image_duration: float = 0.5,
-        mute_original: bool = True
+        mute_original: bool = True,
+        target_width: int = 1080,
+        target_height: int = 1920
     ) -> bool:
         """
         Ghép video hoàn chỉnh theo thứ tự:
@@ -678,6 +680,7 @@ class VideoMerger:
         Chuyển cảnh: Random giữa fade_black, crossfade, none
         Music: Random từ thư mục music, 60% volume, BẮT ĐẦU TỪ ĐẦU VIDEO
         Voice: Bắt đầu từ Grok video (sau SORA)
+        Output: 9:16 (1080x1920)
 
         Args:
             sora_videos: Danh sách video SORA
@@ -690,6 +693,8 @@ class VideoMerger:
             voice_volume: Âm lượng voice
             image_duration: Thời lượng mỗi ảnh (default 0.5s)
             mute_original: Tắt âm thanh gốc của video
+            target_width: Chiều rộng output (default 1080)
+            target_height: Chiều cao output (default 1920 - tỉ lệ 9:16)
 
         Returns:
             True nếu thành công
@@ -700,17 +705,54 @@ class VideoMerger:
         image_clips = []
         sora_total_duration = 0
 
+        def resize_clip(clip, width, height):
+            """Resize clip về kích thước target, giữ tỉ lệ và crop/pad nếu cần"""
+            from moviepy.video.fx.resize import resize
+            from moviepy.video.fx.crop import crop
+
+            clip_w, clip_h = clip.size
+            target_ratio = width / height
+            clip_ratio = clip_w / clip_h
+
+            if abs(clip_ratio - target_ratio) < 0.01:
+                # Tỉ lệ gần giống, chỉ resize
+                return clip.resize((width, height))
+            elif clip_ratio > target_ratio:
+                # Clip rộng hơn, resize theo height rồi crop width
+                new_h = height
+                new_w = int(clip_w * (height / clip_h))
+                clip = clip.resize((new_w, new_h))
+                # Crop giữa
+                x_center = new_w // 2
+                x1 = x_center - width // 2
+                return clip.crop(x1=x1, y1=0, x2=x1 + width, y2=height)
+            else:
+                # Clip cao hơn, resize theo width rồi crop height
+                new_w = width
+                new_h = int(clip_h * (width / clip_w))
+                clip = clip.resize((new_w, new_h))
+                # Crop giữa
+                y_center = new_h // 2
+                y1 = y_center - height // 2
+                return clip.crop(x1=0, y1=y1, x2=width, y2=y1 + height)
+
         try:
+            self.log(f"Output: {target_width}x{target_height} (9:16)")
+
             # ===== 1. Load SORA videos =====
             if sora_videos:
                 self.log(f"Đang load {len(sora_videos)} video SORA...")
                 for i, path in enumerate(sora_videos):
                     if not os.path.exists(path):
+                        self.log(f"  ⚠️ Không tìm thấy: {path}")
                         continue
                     self.log(f"  SORA [{i+1}]: {Path(path).name}")
                     clip = VideoFileClip(path)
                     if mute_original:
                         clip = clip.without_audio()
+
+                    # Resize về 9:16
+                    clip = resize_clip(clip, target_width, target_height)
 
                     # Random transition
                     transition = self._get_random_transition()
@@ -728,11 +770,15 @@ class VideoMerger:
                 self.log(f"Đang load {len(grok_videos)} video Grok...")
                 for i, path in enumerate(grok_videos):
                     if not os.path.exists(path):
+                        self.log(f"  ⚠️ Không tìm thấy: {path}")
                         continue
                     self.log(f"  Grok [{i+1}]: {Path(path).name}")
                     clip = VideoFileClip(path)
                     if mute_original:
                         clip = clip.without_audio()
+
+                    # Resize về 9:16
+                    clip = resize_clip(clip, target_width, target_height)
 
                     # Random transition
                     transition = self._get_random_transition()
@@ -750,6 +796,9 @@ class VideoMerger:
                         continue
                     try:
                         clip = ImageClip(img_path, duration=image_duration)
+
+                        # Resize về 9:16
+                        clip = resize_clip(clip, target_width, target_height)
 
                         # Random transition cho ảnh
                         transition = self._get_random_transition()
@@ -772,10 +821,10 @@ class VideoMerger:
             all_clips = sora_clips + grok_clips + image_clips
 
             if not all_clips:
-                self.log("Không có video/ảnh hợp lệ để ghép")
+                self.log("❌ Không có video/ảnh hợp lệ để ghép")
                 return False
 
-            self.log("Ghép video...")
+            self.log(f"Ghép video: {len(sora_clips)} SORA + {len(grok_clips)} Grok + {len(image_clips)} ảnh")
             final_clip = concatenate_videoclips(all_clips, method="compose")
             total_duration = final_clip.duration
 
@@ -796,9 +845,13 @@ class VideoMerger:
             voice_offset = grok_start  # Voice bắt đầu sau SORA
 
             # Nhạc nền (từ đầu video, 60% volume)
+            self.log(f"[DEBUG] Music path: {music_path}")
+            self.log(f"[DEBUG] Music exists: {os.path.exists(music_path) if music_path else 'No path'}")
+
             if music_path and os.path.exists(music_path):
                 self.log(f"Thêm nhạc (từ đầu, volume {int(music_volume*100)}%): {Path(music_path).name}")
                 music_audio = AudioFileClip(music_path)
+                self.log(f"  Nhạc gốc: {music_audio.duration:.1f}s")
 
                 # Loop nhạc nếu cần (cho toàn bộ video)
                 if music_audio.duration < total_duration:
@@ -814,7 +867,11 @@ class VideoMerger:
                 # Fade out nhạc ở cuối (2s)
                 music_audio = music_audio.fx(vfx.audio_fadeout, 2)
                 # Music bắt đầu từ đầu (offset = 0)
+                music_audio = music_audio.set_start(0)
                 audio_clips.append(music_audio)
+                self.log(f"  ✓ Đã thêm nhạc vào audio_clips")
+            else:
+                self.log(f"⚠️ Không có nhạc hoặc file không tồn tại")
 
             # Voice (bắt đầu từ Grok, sau SORA)
             if voice_path and os.path.exists(voice_path):
@@ -826,10 +883,16 @@ class VideoMerger:
                 audio_clips.append(voice_audio)
 
             # ===== 5. Ghép audio =====
+            self.log(f"[DEBUG] Số audio clips: {len(audio_clips)}")
             if audio_clips:
-                self.log("Ghép audio...")
+                self.log(f"Ghép {len(audio_clips)} audio clips...")
+                for i, ac in enumerate(audio_clips):
+                    self.log(f"  Audio [{i}]: duration={ac.duration:.1f}s, start={getattr(ac, 'start', 0):.1f}s")
                 final_audio = CompositeAudioClip(audio_clips)
                 final_clip = final_clip.set_audio(final_audio)
+                self.log(f"  ✓ Đã set audio cho video")
+            else:
+                self.log(f"⚠️ Không có audio clips - video sẽ không có âm thanh!")
 
             # ===== 6. Export =====
             self.log(f"Xuất video: {output_path}")

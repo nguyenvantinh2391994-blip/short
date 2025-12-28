@@ -50,42 +50,33 @@ Extract (cut out) the MAIN PRODUCT from the image.
 
 Target product:
 - The product to extract is: {product_name}
-- The product must be treated as a single, standalone physical object.
+- The product must be treated as a standalone physical object.
 
-Input image note:
-- The input image may be a collage or contain multiple versions.
-
-Single-version constraint (CRITICAL):
-- You must select EXACTLY ONE product version.
-- All other versions MUST be discarded completely.
-- The output must NOT contain duplicates or multiple instances.
-
-Explicit exclusions:
+Explicit exclusions (VERY IMPORTANT):
 - Any human presence or human representation
 - Any human body part: face, skin, hair, hands, arms, legs, feet
-- Any background scene
-- Any text, logo, watermark
+- Any human silhouette or body shape
+- Any text, logo, watermark, branding
+NONE of the above are part of the product and must be COMPLETELY REMOVED.
 
 ABSOLUTE RULE:
-- If ANY human presence OR ANY human body part
-  appears in the selected product version,
-  that version MUST be completely discarded.
-- The output image must contain ZERO human pixels.
+- The final output image must contain ZERO human pixels.
+- If any human body part appears, the result is INVALID.
 
 Editing instructions:
 - Remove the entire background
-- Keep ONLY the selected single product
-- Preserve all physically attached details
-- Do NOT stylize or redesign
-- Treat any human-related pixel as contamination and remove it entirely
+- Keep ONLY the main product object
+- Preserve real-world shape, proportions, and surface details
+- Maintain natural structure (do NOT flatten unless the real product is flat)
+- Do NOT stylize, beautify, redesign, or invent details
+- Actively verify that no human-related pixel remains in the final image
 
 Output requirements:
 - Output must be an IMAGE
-- EXACTLY ONE product only
-- Aspect ratio: 9:16
+- ONE product object only
 - Pure white background (#FFFFFF)
-- No shadows, no reflections
-- No text
+- No shadows, no reflections, no floor
+- No text in the output
 
 Final rule:
 You must return ONLY the edited product image.

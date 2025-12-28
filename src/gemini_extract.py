@@ -67,19 +67,23 @@ Explicit exclusions:
 - Any text, logo, watermark
 
 ABSOLUTE RULE:
-If a product version contains ANY human presence,
-that version MUST be completely discarded
-and MUST NOT appear in the output.
+- If ANY human presence OR ANY human body part
+  (including hands, arms, legs, feet, face, skin, hair)
+  appears in the selected product version,
+  that version MUST be completely discarded.
+- The output image must contain ZERO human pixels.
 
 Editing instructions:
 - Remove the entire background
 - Keep ONLY the selected single product
 - Preserve all physically attached details
 - Do NOT stylize or redesign
+- Actively verify that no human body part remains in the final image
 
 Output requirements:
 - Output must be an IMAGE
 - EXACTLY ONE product only
+- Aspect ratio: 9:16
 - Pure white background (#FFFFFF)
 - No shadows, no reflections
 - No text

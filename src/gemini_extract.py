@@ -51,15 +51,14 @@ Extract (cut out) the MAIN PRODUCT from the image.
 Target product:
 - The product to extract is: {product_name}
 - The product must be treated as a single, standalone physical object.
-- The product includes ALL physically attached components:
-  buttons, clasps, ornaments, decorative elements, fasteners,
-  embroidery, sewn labels.
-- NO physically attached detail may be removed or simplified.
 
 Input image note:
 - The input image may be a collage or contain multiple versions.
-- Select ONLY ONE complete version.
-- Do NOT merge versions.
+
+Single-version constraint (CRITICAL):
+- You must select EXACTLY ONE product version.
+- All other versions MUST be discarded completely.
+- The output must NOT contain duplicates or multiple instances.
 
 Explicit exclusions:
 - Any human, child, model, mannequin
@@ -67,17 +66,20 @@ Explicit exclusions:
 - Any background scene
 - Any text, logo, watermark
 
+ABSOLUTE RULE:
+If a product version contains ANY human presence,
+that version MUST be completely discarded
+and MUST NOT appear in the output.
+
 Editing instructions:
 - Remove the entire background
-- Keep ONLY the selected product
-- Preserve ALL product details, including small or subtle elements
-- Do NOT remove, alter, recolor, resize, or simplify any attached detail
-- Maintain natural structure and proportions
+- Keep ONLY the selected single product
+- Preserve all physically attached details
 - Do NOT stylize or redesign
 
 Output requirements:
 - Output must be an IMAGE
-- ONE product only
+- EXACTLY ONE product only
 - Aspect ratio: 9:16
 - Pure white background (#FFFFFF)
 - No shadows, no reflections

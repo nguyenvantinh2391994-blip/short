@@ -40,28 +40,34 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT = """IMAGE EDITING TASK — OBJECT EXTRACTION
+EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
-This is an IMAGE EDITING task. You must PROCESS the input image and RETURN a NEW IMAGE as output.
+Product to extract: {product_name}
+
+This is an IMAGE EDITING task. You must EXTRACT (cut out) the product from the input image.
+
+CRITICAL: Do NOT redraw or recreate the product. You must CUT OUT the actual product from the image, preserving ALL original details, textures, colors, and patterns exactly as they appear.
 
 Task description: Extract (cut out) the MAIN PRODUCT from the image.
 
 Definition of the product:
-- The product is the CLOTHING ONLY.
+- The product is: {product_name}
 - Any human, child, model, body part, face, skin, hair, or watermark is NOT part of the product and must be completely removed.
 
 Editing instructions:
+- EXTRACT the product from the original image (do NOT redraw)
 - Remove the entire background
 - Remove all people and body parts
 - Remove all text, logos, and watermarks
-- Keep ONLY the clothing item itself
-- Preserve realistic fabric shape and folds
+- Keep ONLY the product item itself
+- PRESERVE all original details, fabric texture, colors, patterns EXACTLY
 - Do NOT flatten the clothing
-- Do NOT stylize or redesign
+- Do NOT simplify or stylize
+- Do NOT recreate or regenerate the product
 
 Output requirements:
 - Output must be an IMAGE
-- ONE clothing item only
+- ONE item only (the {product_name})
 - Pure white background (#FFFFFF)
 - No shadows, no reflections
 - No text in the output
@@ -69,6 +75,7 @@ Output requirements:
 IMPORTANT - Additional requirements:
 - Return EXACTLY ONE image only (even if input shows multiple items or is a collage, pick the best/clearest one)
 - Output aspect ratio must be 9:16 (vertical/portrait)
+- MUST preserve original product appearance - do NOT redraw
 
 Final rule: You must return ONLY the edited image. Do NOT return any text."""
 
@@ -120,11 +127,13 @@ class GeminiExtract:
         """Chay JS qua DevTools Console - dùng chrome_manager"""
         return chrome_manager.run_js(js)
 
-    def type_prompt(self) -> bool:
+    def type_prompt(self, product_name: str = "clothing item") -> bool:
         """Nhap prompt vao textarea"""
-        self.log("Nhap prompt...")
+        self.log(f"Nhap prompt (san pham: {product_name})...")
 
-        escaped_prompt = EXTRACT_PROMPT.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        # Format prompt với tên sản phẩm
+        prompt = EXTRACT_PROMPT_TEMPLATE.format(product_name=product_name)
+        escaped_prompt = prompt.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
 
         js = f'''
         (function() {{
@@ -409,9 +418,17 @@ class GeminiExtract:
         self,
         image_paths: List[str],
         output_folder: str,
-        product_code: str = ""
+        product_code: str = "",
+        product_name: str = ""
     ) -> ExtractResult:
-        """Tach san pham tu anh"""
+        """Tach san pham tu anh
+
+        Args:
+            image_paths: Danh sách đường dẫn ảnh
+            output_folder: Thư mục output
+            product_code: Mã sản phẩm
+            product_name: Tên sản phẩm (từ cột C) - giúp Gemini hiểu cần tách gì
+        """
         if not HAS_PAG:
             return ExtractResult(False, error="Thieu pyautogui/pyperclip")
 
@@ -420,6 +437,7 @@ class GeminiExtract:
 
         try:
             self.log(f"\n=== GEMINI EXTRACT: {product_code or 'images'} ===")
+            self.log(f"   San pham: {product_name or 'N/A'}")
             self.log(f"   {len(image_paths)} anh can xu ly")
 
             # Mo Gemini
@@ -428,8 +446,8 @@ class GeminiExtract:
 
             time.sleep(3)
 
-            # Nhap prompt
-            if not self.type_prompt():
+            # Nhap prompt với tên sản phẩm
+            if not self.type_prompt(product_name=product_name or "clothing item"):
                 return ExtractResult(False, error="Khong nhap duoc prompt")
 
             time.sleep(1)
@@ -479,9 +497,17 @@ class GeminiExtract:
         self,
         image_paths: List[str],
         output_folder: str,
-        product_code: str = ""
+        product_code: str = "",
+        product_name: str = ""
     ) -> ExtractResult:
-        """Tach san pham (tiep tuc, khong mo Chrome moi)"""
+        """Tach san pham (tiep tuc, khong mo Chrome moi)
+
+        Args:
+            image_paths: Danh sách đường dẫn ảnh
+            output_folder: Thư mục output
+            product_code: Mã sản phẩm
+            product_name: Tên sản phẩm (từ cột C)
+        """
         if not HAS_PAG:
             return ExtractResult(False, error="Thieu pyautogui/pyperclip")
 
@@ -490,6 +516,7 @@ class GeminiExtract:
 
         try:
             self.log(f"\n=== GEMINI EXTRACT (continue): {product_code or 'images'} ===")
+            self.log(f"   San pham: {product_name or 'N/A'}")
             self.log(f"   {len(image_paths)} anh can xu ly")
 
             # Navigate den URL moi de tao conversation moi
@@ -500,8 +527,8 @@ class GeminiExtract:
             chrome_manager.navigate_to("https://gemini.google.com/app?hl=vi")
             time.sleep(5)  # Doi page load
 
-            # Nhap prompt
-            if not self.type_prompt():
+            # Nhap prompt với tên sản phẩm
+            if not self.type_prompt(product_name=product_name or "clothing item"):
                 return ExtractResult(False, error="Khong nhap duoc prompt")
 
             time.sleep(1)

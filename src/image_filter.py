@@ -38,13 +38,15 @@ class ImageFilter:
     def __init__(
         self,
         require_person: bool = True,
-        reject_collage: bool = True,
+        reject_collage: bool = False,  # Không loại ảnh ghép
         reject_logo: bool = True,  # Loại ảnh logo/icon
+        max_images: int = 5,  # Giới hạn số ảnh giữ lại
         min_person_confidence: float = 0.5,
     ):
         self.require_person = require_person
         self.reject_collage = reject_collage
         self.reject_logo = reject_logo
+        self.max_images = max_images
         self.min_person_confidence = min_person_confidence
 
         # Khởi tạo mediapipe pose detector
@@ -245,11 +247,10 @@ class ImageFilter:
         Phát hiện ảnh logo/icon - không phải ảnh sản phẩm thật
 
         Đặc điểm của ảnh logo:
-        1. Ít màu (color palette đơn giản)
-        2. Nhiều vùng màu đồng nhất (solid colors)
-        3. Entropy thấp (ít chi tiết)
-        4. Thường có nền trắng/đen chiếm diện tích lớn
-        5. Tỉ lệ edge cao ở vùng nhỏ (text/graphics)
+        1. Nền trắng/đen chiếm diện tích lớn (> 40%)
+        2. Ít texture (graphic/vector style, không phải ảnh chụp)
+        3. Màu sắc đơn giản hoặc solid colors
+        4. Entropy thấp
         """
         if image is None:
             return False, 0.0
@@ -258,59 +259,80 @@ class ImageFilter:
             h, w = image.shape[:2]
             total_pixels = h * w
 
-            # === 1. Đếm số màu unique (quantize về 32 levels mỗi channel) ===
-            # Logo thường có ít màu
-            quantized = (image // 32) * 32
-            pixels = quantized.reshape(-1, 3)
-            unique_colors = len(np.unique(pixels, axis=0))
-
-            # Chuẩn hóa: < 50 màu unique là rất ít
-            color_simplicity = 1.0 if unique_colors < 30 else (1.0 - min(unique_colors / 500, 1.0))
-
-            # === 2. Tính tỉ lệ vùng nền đồng nhất ===
-            # Logo thường có nền trắng hoặc đen lớn
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-            # Đếm pixel gần trắng (> 240) hoặc gần đen (< 15)
+            # === 1. Tính tỉ lệ nền trắng/đen ===
             white_pixels = np.sum(gray > 240)
             black_pixels = np.sum(gray < 15)
             background_ratio = (white_pixels + black_pixels) / total_pixels
 
-            # === 3. Tính entropy (độ phức tạp thông tin) ===
-            # Logo có entropy thấp
+            # Chỉ tính nền trắng riêng (logo thường nền trắng)
+            white_ratio = white_pixels / total_pixels
+
+            # === 2. Phát hiện texture (Laplacian variance) ===
+            # Ảnh chụp thật có texture cao, logo/graphic có texture thấp
+            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+            texture_score = laplacian.var()
+            # Ảnh thật: texture > 500-1000, logo/graphic: texture < 300
+            is_low_texture = texture_score < 400
+
+            # === 3. Đếm số màu unique (quantize) ===
+            quantized = (image // 32) * 32
+            pixels = quantized.reshape(-1, 3)
+            unique_colors = len(np.unique(pixels, axis=0))
+
+            # === 4. Tính entropy ===
             hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
-            hist = hist / total_pixels  # Normalize
-            hist = hist[hist > 0]  # Remove zeros
+            hist = hist / total_pixels
+            hist = hist[hist > 0]
             entropy = -np.sum(hist * np.log2(hist))
 
-            # Entropy max = 8 (8 bit), logo thường < 5
-            entropy_score = 1.0 if entropy < 4 else (1.0 - min((entropy - 4) / 4, 1.0))
+            # === 5. Phát hiện solid color blocks ===
+            # Logo thường có các vùng màu đồng nhất rõ ràng
+            # Dùng edge detection để đếm tỉ lệ edge pixels
+            edges = cv2.Canny(gray, 50, 150)
+            edge_ratio = np.sum(edges > 0) / total_pixels
+            # Logo có edge ratio thấp hoặc trung bình (không quá nhiều chi tiết)
+            is_simple_edges = edge_ratio < 0.15
 
-            # === 4. Kiểm tra có phải ảnh vuông nhỏ (icon) ===
-            aspect_ratio = w / h
-            is_square_ish = 0.8 <= aspect_ratio <= 1.2
-            is_small = max(w, h) < 500
-
-            # === 5. Tính điểm tổng hợp ===
+            # === 6. Tính điểm tổng hợp ===
             logo_score = 0.0
             reasons = []
 
-            # Ít màu + nền lớn = rất có thể là logo
-            if unique_colors < 30 and background_ratio > 0.6:
-                logo_score += 0.5
-                reasons.append(f"ít màu ({unique_colors}) + nền lớn ({background_ratio:.0%})")
+            # Nền trắng lớn (> 40%) = dấu hiệu mạnh
+            if white_ratio > 0.4:
+                logo_score += 0.4
+                reasons.append(f"nền trắng {white_ratio:.0%}")
 
-            # Entropy rất thấp = logo/graphic
-            if entropy < 4.5:
+            # Nền trắng RẤT lớn (> 60%) = gần như chắc chắn
+            if white_ratio > 0.6:
                 logo_score += 0.3
+                reasons.append(f"nền trắng lớn")
+
+            # Texture thấp (graphic/vector style)
+            if is_low_texture:
+                logo_score += 0.3
+                reasons.append(f"texture thấp ({texture_score:.0f})")
+
+            # Ít màu
+            if unique_colors < 50:
+                logo_score += 0.2
+                reasons.append(f"ít màu ({unique_colors})")
+
+            # Entropy thấp
+            if entropy < 5.5:
+                logo_score += 0.2
                 reasons.append(f"entropy thấp ({entropy:.1f})")
 
-            # Nền chiếm > 80% = có thể là logo trên nền trắng
-            if background_ratio > 0.8:
-                logo_score += 0.2
-                reasons.append(f"nền {background_ratio:.0%}")
+            # Edge đơn giản
+            if is_simple_edges:
+                logo_score += 0.1
+                reasons.append(f"edge đơn giản ({edge_ratio:.1%})")
 
-            # Icon vuông nhỏ
+            # Ảnh vuông nhỏ (icon)
+            aspect_ratio = w / h
+            is_square_ish = 0.8 <= aspect_ratio <= 1.2
+            is_small = max(w, h) < 500
             if is_square_ish and is_small:
                 logo_score += 0.2
                 reasons.append(f"icon {w}x{h}")
@@ -406,7 +428,11 @@ class ImageFilter:
         move_rejected: bool = False,
         on_progress: callable = None
     ) -> Tuple[List[ImageFilterResult], List[ImageFilterResult]]:
-        """Lọc tất cả ảnh trong thư mục"""
+        """Lọc tất cả ảnh trong thư mục
+
+        Giữ tối đa max_images ảnh đầu tiên (theo thứ tự tên file).
+        Ảnh vượt quá giới hạn sẽ bị loại.
+        """
         folder = Path(folder_path)
         if not folder.exists():
             return [], []
@@ -434,18 +460,26 @@ class ImageFilter:
             result = self.filter_image(str(img_path))
 
             if result.should_keep:
-                kept.append(result)
+                # Kiểm tra giới hạn số ảnh
+                if self.max_images > 0 and len(kept) >= self.max_images:
+                    # Vượt quá giới hạn -> loại
+                    result.should_keep = False
+                    result.reason = f"Vượt quá giới hạn {self.max_images} ảnh"
+                    rejected.append(result)
+                else:
+                    kept.append(result)
             else:
                 rejected.append(result)
 
-                if move_rejected:
-                    rejected_folder = folder / "_rejected"
-                    rejected_folder.mkdir(exist_ok=True)
-                    try:
-                        import shutil
-                        shutil.move(str(img_path), str(rejected_folder / img_path.name))
-                    except Exception as e:
-                        console.print(f"[yellow]Không di chuyển được {img_path.name}: {e}[/]")
+            # Di chuyển ảnh bị loại
+            if not result.should_keep and move_rejected:
+                rejected_folder = folder / "_rejected"
+                rejected_folder.mkdir(exist_ok=True)
+                try:
+                    import shutil
+                    shutil.move(str(img_path), str(rejected_folder / img_path.name))
+                except Exception as e:
+                    console.print(f"[yellow]Không di chuyển được {img_path.name}: {e}[/]")
 
         # Copy ảnh tốt vào output folder nếu có
         if output_folder and kept:
@@ -472,8 +506,9 @@ class ImageFilter:
 def filter_product_images(
     folder_path: str,
     require_person: bool = True,
-    reject_collage: bool = True,
-    reject_logo: bool = True,
+    reject_collage: bool = False,  # Không loại ảnh ghép
+    reject_logo: bool = True,  # Loại ảnh logo/icon
+    max_images: int = 5,  # Giới hạn 5 ảnh
     move_rejected: bool = True,
     on_log: callable = None
 ) -> Tuple[int, int]:
@@ -483,8 +518,9 @@ def filter_product_images(
     Args:
         folder_path: Thư mục chứa ảnh
         require_person: Yêu cầu có người
-        reject_collage: Loại ảnh ghép
-        reject_logo: Loại ảnh logo/icon (không có sản phẩm thật)
+        reject_collage: Loại ảnh ghép (default: False)
+        reject_logo: Loại ảnh logo/icon (default: True)
+        max_images: Giới hạn số ảnh giữ lại (default: 5, 0 = không giới hạn)
         move_rejected: Di chuyển ảnh bị loại vào _rejected
         on_log: Callback log
 
@@ -496,7 +532,8 @@ def filter_product_images(
     filter_obj = ImageFilter(
         require_person=require_person,
         reject_collage=reject_collage,
-        reject_logo=reject_logo
+        reject_logo=reject_logo,
+        max_images=max_images
     )
 
     try:

@@ -50,25 +50,34 @@ Extract (cut out) the MAIN PRODUCT from the image.
 
 Target product:
 - The product to extract is: {product_name}
-- The product must be treated as a standalone physical object.
+- The product must be treated as a single, standalone physical object.
+
+Input image note (IMPORTANT):
+- The input image may be a collage or contain multiple versions of the product.
+- You must SELECT ONLY ONE version of the product.
+- Choose the most complete, most representative version.
+- Do NOT combine or merge multiple versions.
 
 Explicit exclusions (VERY IMPORTANT):
 - Any human, child, model, mannequin
 - Any body part: face, skin, hair, hands, arms, legs, feet
 - Any human silhouette or body shape
+- Any background scene
 - Any text, logo, watermark, branding
 NONE of the above are part of the product and must be COMPLETELY REMOVED.
 
 Editing instructions:
 - Remove the entire background
-- Keep ONLY the main product object
+- Keep ONLY the selected single product
 - Preserve real-world shape, proportions, and surface details
 - Maintain natural structure (do NOT flatten unless the real product is flat)
 - Do NOT stylize, beautify, redesign, or invent details
 
 Output requirements:
 - Output must be an IMAGE
-- ONE product object only
+- ONE product only (one complete version)
+- Aspect ratio: 9:16
+- Product centered and fully visible
 - Pure white background (#FFFFFF)
 - No shadows, no reflections, no floor
 - No text in the output

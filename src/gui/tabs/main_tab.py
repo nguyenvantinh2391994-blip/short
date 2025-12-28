@@ -1322,8 +1322,8 @@ class MainTab:
 
                 self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
 
-                # Tach san pham - truyền tên sản phẩm từ cột C
-                product_name = item.get("name", "")
+                # Tach san pham - lấy tên sản phẩm từ cột C (index 2 trong data)
+                product_name = item["data"][2] if len(item.get("data", [])) > 2 else ""
                 if first_extract:
                     result = gemini.extract_product(
                         image_paths=images,

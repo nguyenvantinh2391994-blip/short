@@ -40,39 +40,37 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT = """IMAGE EDITING TASK — PRODUCT EXTRACTION
+EXTRACT_PROMPT = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
-This is an IMAGE EDITING task. You will receive MULTIPLE product images. Analyze ALL images to understand the product details, then CREATE and RETURN ONE SINGLE clean product image.
+This is an IMAGE EDITING task. You must PROCESS the input image and RETURN a NEW IMAGE as output.
 
-IMPORTANT: Even if input images show multiple items or are collages, you must output ONLY ONE product image.
+Task description: Extract (cut out) the MAIN PRODUCT from the image.
 
-Task description:
-- Analyze all provided images to understand the product (clothing, accessories, etc.)
-- Extract and create ONE clean product image based on your understanding
-- If images show the same product in different sizes/angles, pick the clearest representation
+Definition of the product:
+- The product is the CLOTHING ONLY.
+- Any human, child, model, body part, face, skin, hair, or watermark is NOT part of the product and must be completely removed.
 
-Product definition:
-- The product is the MAIN ITEM (clothing, bag, shoes, etc.) - NOT people
-- Any human, model, body part, face, skin, hair is NOT the product
-- Watermarks, logos, text are NOT the product
+Editing instructions:
+- Remove the entire background
+- Remove all people and body parts
+- Remove all text, logos, and watermarks
+- Keep ONLY the clothing item itself
+- Preserve realistic fabric shape and folds
+- Do NOT flatten the clothing
+- Do NOT stylize or redesign
 
-Editing requirements:
-- Remove entire background → pure white (#FFFFFF)
-- Remove all people and body parts completely
-- Remove all text, logos, watermarks
-- Keep ONLY the product item itself
-- Preserve realistic shape, fabric texture, and natural folds
-- Do NOT flatten or stylize the product
-
-OUTPUT REQUIREMENTS (CRITICAL):
-- Return EXACTLY ONE image
-- Aspect ratio: 9:16 (vertical/portrait orientation)
+Output requirements:
+- Output must be an IMAGE
+- ONE clothing item only
 - Pure white background (#FFFFFF)
-- Product centered in frame
-- No shadows, no reflections, no text
-- High quality, clean edges
+- No shadows, no reflections
+- No text in the output
 
-Final rule: Return ONLY ONE edited product image. No text response."""
+IMPORTANT - Additional requirements:
+- Return EXACTLY ONE image only (even if input shows multiple items or is a collage, pick the best/clearest one)
+- Output aspect ratio must be 9:16 (vertical/portrait)
+
+Final rule: You must return ONLY the edited image. Do NOT return any text."""
 
 
 class GeminiExtract:

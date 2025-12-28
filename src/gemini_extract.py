@@ -51,36 +51,37 @@ Extract (cut out) the MAIN PRODUCT from the image.
 Target product:
 - The product to extract is: {product_name}
 - The product must be treated as a single, standalone physical object.
+- The product includes ALL physically attached components:
+  buttons, clasps, ornaments, decorative elements, fasteners,
+  embroidery, sewn labels.
+- NO physically attached detail may be removed or simplified.
 
-Input image note (IMPORTANT):
-- The input image may be a collage or contain multiple versions of the product.
-- You must SELECT ONLY ONE version of the product.
-- Choose the most complete, most representative version.
-- Do NOT combine or merge multiple versions.
+Input image note:
+- The input image may be a collage or contain multiple versions.
+- Select ONLY ONE complete version.
+- Do NOT merge versions.
 
-Explicit exclusions (VERY IMPORTANT):
+Explicit exclusions:
 - Any human, child, model, mannequin
 - Any body part: face, skin, hair, hands, arms, legs, feet
-- Any human silhouette or body shape
 - Any background scene
-- Any text, logo, watermark, branding
-NONE of the above are part of the product and must be COMPLETELY REMOVED.
+- Any text, logo, watermark
 
 Editing instructions:
 - Remove the entire background
-- Keep ONLY the selected single product
-- Preserve real-world shape, proportions, and surface details
-- Maintain natural structure (do NOT flatten unless the real product is flat)
-- Do NOT stylize, beautify, redesign, or invent details
+- Keep ONLY the selected product
+- Preserve ALL product details, including small or subtle elements
+- Do NOT remove, alter, recolor, resize, or simplify any attached detail
+- Maintain natural structure and proportions
+- Do NOT stylize or redesign
 
 Output requirements:
 - Output must be an IMAGE
-- ONE product only (one complete version)
+- ONE product only
 - Aspect ratio: 9:16
-- Product centered and fully visible
 - Pure white background (#FFFFFF)
-- No shadows, no reflections, no floor
-- No text in the output
+- No shadows, no reflections
+- No text
 
 Final rule:
 You must return ONLY the edited product image.

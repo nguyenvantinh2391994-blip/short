@@ -61,14 +61,13 @@ Single-version constraint (CRITICAL):
 - The output must NOT contain duplicates or multiple instances.
 
 Explicit exclusions:
-- Any human, child, model, mannequin
-- Any body part: face, skin, hair, hands, arms, legs, feet
+- Any human presence or human representation
+- Any human body part: face, skin, hair, hands, arms, legs, feet
 - Any background scene
 - Any text, logo, watermark
 
 ABSOLUTE RULE:
 - If ANY human presence OR ANY human body part
-  (including hands, arms, legs, feet, face, skin, hair)
   appears in the selected product version,
   that version MUST be completely discarded.
 - The output image must contain ZERO human pixels.
@@ -78,7 +77,7 @@ Editing instructions:
 - Keep ONLY the selected single product
 - Preserve all physically attached details
 - Do NOT stylize or redesign
-- Actively verify that no human body part remains in the final image
+- Treat any human-related pixel as contamination and remove it entirely
 
 Output requirements:
 - Output must be an IMAGE

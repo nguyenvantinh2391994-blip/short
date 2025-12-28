@@ -1322,19 +1322,22 @@ class MainTab:
 
                 self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
 
-                # Tach san pham
+                # Tach san pham - truyền tên sản phẩm từ cột C
+                product_name = item.get("name", "")
                 if first_extract:
                     result = gemini.extract_product(
                         image_paths=images,
                         output_folder=str(extract_folder),
-                        product_code=code
+                        product_code=code,
+                        product_name=product_name
                     )
                     first_extract = False
                 else:
                     result = gemini.extract_product_continue(
                         image_paths=images,
                         output_folder=str(extract_folder),
-                        product_code=code
+                        product_code=code,
+                        product_name=product_name
                     )
 
                 if result and result.success:

@@ -2074,16 +2074,14 @@ class MainTab:
                                 pass
 
     def _run_extract_internal(self):
-        """Chạy tách sản phẩm (internal) - dùng GeminiExtract"""
+        """Chạy tách sản phẩm (internal) - dùng GeminiExtract với Chrome
+        Tự động chuyển Chrome profile khác khi bị rate limit
+        """
         try:
             from ...gemini_extract import GeminiExtract
             from ...sheets_reader import SheetsReader
             from pathlib import Path
             import time
-
-            if not self.app.config.gemini_api_key:
-                self.after_safe(lambda: self.add_log("  ⚠️ Chưa có Gemini API - bỏ qua"))
-                return
 
             reader = SheetsReader(
                 credentials_file=self.app.config.credentials_file,
@@ -2100,8 +2098,36 @@ class MainTab:
             if not pending:
                 return
 
-            extractor = GeminiExtract(self.app.config.gemini_api_key)
             input_folder = Path(self.app.config.input_folder)
+            profiles = self.app.config.browser_profiles or []
+
+            if not profiles:
+                self.after_safe(lambda: self.add_log("  ⚠️ Chưa cấu hình Chrome profile"))
+                return
+
+            current_profile_idx = 0
+            extractor = None
+
+            def init_extractor(profile_idx):
+                """Khởi tạo extractor với profile chỉ định"""
+                nonlocal extractor
+                if profile_idx >= len(profiles):
+                    return False
+                profile = profiles[profile_idx]
+                chrome_path = profile.get("chrome_path")
+                profile_path = profile.get("profile_path")
+                self.after_safe(lambda n=profile.get("name", f"Profile {profile_idx+1}"):
+                    self.add_log(f"  🔄 Dùng Chrome: {n}"))
+                extractor = GeminiExtract(
+                    chrome_path=chrome_path,
+                    profile_path=profile_path,
+                    headless=not getattr(self.app.config, 'show_chrome', True)
+                )
+                return True
+
+            # Khởi tạo với profile đầu tiên
+            if not init_extractor(current_profile_idx):
+                return
 
             for item in pending:
                 if self.stop_flag.is_set():
@@ -2130,17 +2156,38 @@ class MainTab:
                 for img in images[:3]:  # Tối đa 3 ảnh
                     if self.stop_flag.is_set():
                         break
-                    try:
-                        result = extractor.extract_product(
-                            image_path=str(img),
-                            output_dir=str(extracted_folder),
-                            product_name=product_name
-                        )
-                        if result and result.success:
-                            self.after_safe(lambda c=code: self.add_log(f"    ✓ Tách xong 1 ảnh"))
-                        time.sleep(1)  # Delay để tránh rate limit
-                    except Exception as e:
-                        self.after_safe(lambda c=code, e=str(e): self.add_log(f"    ⚠️ Lỗi: {e}"))
+
+                    max_profile_tries = len(profiles)
+                    success = False
+
+                    for try_count in range(max_profile_tries):
+                        try:
+                            result = extractor.extract_product(
+                                image_path=str(img),
+                                output_dir=str(extracted_folder),
+                                product_name=product_name
+                            )
+                            if result and result.success:
+                                self.after_safe(lambda c=code: self.add_log(f"    ✓ Tách xong 1 ảnh"))
+                                success = True
+                                break
+                            time.sleep(1)
+                        except Exception as e:
+                            error_str = str(e).lower()
+                            # Kiểm tra nếu bị rate limit
+                            if "limit" in error_str or "quota" in error_str or "429" in error_str:
+                                self.after_safe(lambda e=str(e): self.add_log(f"    ⚠️ Rate limit: {e}"))
+                                # Thử Chrome profile khác
+                                current_profile_idx += 1
+                                if current_profile_idx < len(profiles):
+                                    if init_extractor(current_profile_idx):
+                                        continue
+                                self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
+                                break
+                            else:
+                                self.after_safe(lambda c=code, e=str(e): self.add_log(f"    ⚠️ Lỗi: {e}"))
+                                break
+
         except ImportError as e:
             self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Module GeminiExtract không có: {e}"))
         except Exception as e:
@@ -2266,7 +2313,7 @@ class MainTab:
             self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
 
     def _run_flow_internal(self):
-        """Chạy Flow tạo ảnh (internal) - có retry đến khi đủ ảnh"""
+        """Chạy Flow tạo ảnh (internal) - có retry và chuyển Chrome khi rate limit"""
         import time
 
         MAX_RETRIES = 5
@@ -2277,14 +2324,17 @@ class MainTab:
             from ...sheets_reader import SheetsReader
             from pathlib import Path
 
-            chrome_path, profile_path = None, None
-            if self.app.config.browser_profiles:
-                chrome_path = self.app.config.browser_profiles[0].get("chrome_path")
-                profile_path = self.app.config.browser_profiles[0].get("profile_path")
-
-            if not chrome_path or not profile_path:
+            profiles = self.app.config.browser_profiles or []
+            if not profiles:
                 self.after_safe(lambda: self.add_log("  ⚠️ Chưa cấu hình Chrome - bỏ qua"))
                 return
+
+            current_profile_idx = 0
+
+            def get_current_profile():
+                if current_profile_idx < len(profiles):
+                    return profiles[current_profile_idx]
+                return None
 
             reader = SheetsReader(
                 credentials_file=self.app.config.credentials_file,
@@ -2333,7 +2383,7 @@ class MainTab:
 
                 return missing
 
-            # Retry loop
+            # Retry loop - chuyển Chrome khi rate limit
             for attempt in range(MAX_RETRIES + 1):
                 if self.stop_flag.is_set():
                     break
@@ -2350,17 +2400,34 @@ class MainTab:
                         self.add_log(f"  🔄 Retry {a}/{MAX_RETRIES}: còn {n} sản phẩm thiếu ảnh"))
                     time.sleep(RETRY_DELAY)
 
+                # Lấy Chrome profile hiện tại
+                profile = get_current_profile()
+                if not profile:
+                    self.after_safe(lambda: self.add_log("  ❌ Hết Chrome profile để thử"))
+                    break
+
+                chrome_path = profile.get("chrome_path")
+                profile_path = profile.get("profile_path")
+                profile_name = profile.get("name", f"Profile {current_profile_idx + 1}")
+                self.after_safe(lambda n=profile_name: self.add_log(f"  🔄 Dùng Chrome: {n}"))
+
                 # Lấy token mới cho mỗi lần thử
                 extractor = ChromeTokenExtractor(chrome_path, profile_path, timeout=120)
                 self.after_safe(lambda: self.add_log("  Đang lấy token..."))
                 bearer_token, project_id, error = extractor.extract_token()
                 if not bearer_token:
+                    error_lower = error.lower() if error else ""
+                    if "limit" in error_lower or "quota" in error_lower or "429" in error_lower:
+                        self.after_safe(lambda e=error: self.add_log(f"  ⚠️ Rate limit: {e}"))
+                        current_profile_idx += 1
+                        continue
                     self.after_safe(lambda e=error: self.add_log(f"  ⚠️ Không lấy được token: {e}"))
                     continue
 
                 # Xử lý từng sản phẩm thiếu ảnh
+                rate_limited = False
                 for product in missing_products:
-                    if self.stop_flag.is_set():
+                    if self.stop_flag.is_set() or rate_limited:
                         break
 
                     code = product.get("code", "")
@@ -2382,9 +2449,14 @@ class MainTab:
                     # Tạo ảnh với mỗi prompt
                     def chrome_log(msg):
                         self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
+                        # Kiểm tra rate limit trong log
+                        if "limit" in msg.lower() or "quota" in msg.lower() or "429" in msg.lower():
+                            nonlocal rate_limited, current_profile_idx
+                            rate_limited = True
+                            current_profile_idx += 1
 
                     for i, prompt in enumerate([flow_prompt_1, flow_prompt_2], 1):
-                        if not prompt or self.stop_flag.is_set():
+                        if not prompt or self.stop_flag.is_set() or rate_limited:
                             continue
 
                         prefix = f"{code}_I" if i == 1 else f"{code}_K"
@@ -2394,14 +2466,29 @@ class MainTab:
                         if len(existing_for_prefix) >= 4:
                             continue
 
-                        if extractor.trigger_and_capture(prompt, callback=chrome_log):
-                            extractor.call_api_with_captured_payload(
-                                custom_prompt=prompt,
-                                output_dir=flow_folder,
-                                prefix=prefix,
-                                image_ref=image_ref,
-                                callback=chrome_log
-                            )
+                        try:
+                            if extractor.trigger_and_capture(prompt, callback=chrome_log):
+                                result = extractor.call_api_with_captured_payload(
+                                    custom_prompt=prompt,
+                                    output_dir=flow_folder,
+                                    prefix=prefix,
+                                    image_ref=image_ref,
+                                    callback=chrome_log
+                                )
+                                # Nếu không có kết quả, có thể bị rate limit
+                                if not result:
+                                    rate_limited = True
+                                    current_profile_idx += 1
+                        except Exception as e:
+                            error_str = str(e).lower()
+                            if "limit" in error_str or "quota" in error_str or "429" in error_str:
+                                self.after_safe(lambda e=str(e): self.add_log(f"    ⚠️ Rate limit: {e}"))
+                                rate_limited = True
+                                current_profile_idx += 1
+                                break
+
+                if rate_limited:
+                    self.after_safe(lambda: self.add_log("  🔄 Chuyển sang Chrome profile khác..."))
 
             # Báo cáo cuối
             final_missing = get_missing_products()

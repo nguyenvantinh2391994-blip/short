@@ -52,23 +52,16 @@ Target product:
 - The product to extract is: {product_name}
 - The product must be treated as a standalone physical object.
 
-CRITICAL SAFETY RULES:
-- DO NOT generate, describe, or reference any humans, especially minors/children
-- DO NOT create any human figures, faces, or body representations
-- This is ONLY about extracting a PRODUCT OBJECT, nothing else
-
 Explicit exclusions (VERY IMPORTANT):
-- Any human presence or human representation (adults or minors)
+- Any human presence or human representation
 - Any human body part: face, skin, hair, hands, arms, legs, feet
 - Any human silhouette or body shape
 - Any text, logo, watermark, branding
-- Any depiction of people of any age
 NONE of the above are part of the product and must be COMPLETELY REMOVED.
 
 ABSOLUTE RULE:
 - The final output image must contain ZERO human pixels.
-- Output must contain ONLY the product object, no human elements.
-- If any human element appears, the result is INVALID.
+- If any human body part appears, the result is INVALID.
 
 Editing instructions:
 - Remove the entire background
@@ -84,11 +77,10 @@ Output requirements:
 - Pure white background (#FFFFFF)
 - No shadows, no reflections, no floor
 - No text in the output
-- No human elements whatsoever
 
 Final rule:
 You must return ONLY the edited product image.
-Do NOT return any text or descriptions."""
+Do NOT return any text."""
 
 
 class GeminiExtract:

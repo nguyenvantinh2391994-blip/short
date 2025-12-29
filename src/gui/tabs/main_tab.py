@@ -2504,16 +2504,38 @@ class MainTab:
             self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
 
     def _run_sora_internal(self):
-        """Chạy SORA tạo video (internal)"""
+        """Chạy SORA tạo video (internal) - chuyển Chrome khi rate limit"""
         try:
             from ...sora_automation import SoraAutomation, find_sora_image
             from ...sheets_reader import SheetsReader
             from pathlib import Path
 
-            chrome_path, profile_path = None, None
-            if self.app.config.browser_profiles:
-                chrome_path = self.app.config.browser_profiles[0].get("chrome_path")
-                profile_path = self.app.config.browser_profiles[0].get("profile_path")
+            profiles = self.app.config.browser_profiles or []
+            if not profiles:
+                self.after_safe(lambda: self.add_log("  ⚠️ Chưa cấu hình Chrome"))
+                return
+
+            current_profile_idx = 0
+            sora = None
+
+            def init_sora(profile_idx):
+                """Khởi tạo SORA với profile chỉ định"""
+                nonlocal sora
+                if profile_idx >= len(profiles):
+                    return False
+                profile = profiles[profile_idx]
+                chrome_path = profile.get("chrome_path")
+                profile_path = profile.get("profile_path")
+                profile_name = profile.get("name", f"Profile {profile_idx + 1}")
+                self.after_safe(lambda n=profile_name: self.add_log(f"  🔄 SORA dùng Chrome: {n}"))
+                sora = SoraAutomation(
+                    chrome_path=chrome_path,
+                    profile_path=profile_path,
+                    output_folder=str(output_folder),
+                    input_folder=str(input_folder),
+                    headless=not getattr(self.app.config, 'show_chrome', True)
+                )
+                return True
 
             reader = SheetsReader(
                 credentials_file=self.app.config.credentials_file,
@@ -2533,13 +2555,9 @@ class MainTab:
             input_folder = Path(self.app.config.input_folder)
             output_folder = Path(self.app.config.output_folder)
 
-            sora = SoraAutomation(
-                chrome_path=chrome_path,
-                profile_path=profile_path,
-                output_folder=str(output_folder),
-                input_folder=str(input_folder),
-                headless=not getattr(self.app.config, 'show_chrome', True)
-            )
+            # Khởi tạo với profile đầu tiên
+            if not init_sora(current_profile_idx):
+                return
 
             first_video = True
             for item in pending:
@@ -2564,14 +2582,39 @@ class MainTab:
 
                 self.after_safe(lambda c=code: self.add_log(f"  🎬 {c}: tạo video SORA..."))
 
-                if first_video:
-                    result = sora.create_video(image_path, sora_prompt, code)
-                    first_video = False
-                else:
-                    result = sora.create_video_continue(image_path, sora_prompt, code)
+                # Thử tạo video, chuyển profile nếu rate limit
+                max_tries = len(profiles)
+                for try_count in range(max_tries):
+                    try:
+                        if first_video:
+                            result = sora.create_video(image_path, sora_prompt, code)
+                            first_video = False
+                        else:
+                            result = sora.create_video_continue(image_path, sora_prompt, code)
 
-                if result and result.success:
-                    self.after_safe(lambda c=code: self.add_log(f"    ✓ {c}: SORA xong"))
+                        if result and result.success:
+                            self.after_safe(lambda c=code: self.add_log(f"    ✓ {c}: SORA xong"))
+                            break
+                        elif result and hasattr(result, 'error'):
+                            error_str = str(result.error).lower()
+                            if "limit" in error_str or "quota" in error_str or "429" in error_str:
+                                current_profile_idx += 1
+                                if init_sora(current_profile_idx):
+                                    first_video = True  # Reset cho profile mới
+                                    continue
+                            break
+                        else:
+                            break
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if "limit" in error_str or "quota" in error_str or "429" in error_str:
+                            self.after_safe(lambda e=str(e): self.add_log(f"    ⚠️ Rate limit: {e}"))
+                            current_profile_idx += 1
+                            if init_sora(current_profile_idx):
+                                first_video = True
+                                continue
+                        self.after_safe(lambda e=str(e): self.add_log(f"    ⚠️ Lỗi: {e}"))
+                        break
 
         except ImportError:
             self.after_safe(lambda: self.add_log("  ⚠️ Module SoraAutomation không có"))

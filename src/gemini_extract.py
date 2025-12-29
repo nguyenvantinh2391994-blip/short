@@ -40,33 +40,24 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — PRODUCT CUTOUT
+EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — PRODUCT EXTRACTION
 
-You must extract the product from this image and return a NEW IMAGE.
+I am providing multiple reference images of the same product: {product_name}
 
-Product to extract: {product_name}
+YOUR TASK:
+Study all reference images to understand the product, then generate ONE clean product image.
 
-CRITICAL RULES:
-1. Return ONLY ONE product image - not multiple versions
-2. Keep the product EXACTLY as shown - do not modify, redesign, or reinterpret
-3. If input has multiple views, pick only the FRONT view or the FIRST one
+RULES:
+1. Output exactly ONE image showing ONE product
+2. The product must match the references - same colors, patterns, details
+3. Show the product from front view, complete and clear
+4. Remove all backgrounds, people, models, mannequins, text, logos
 
-What to REMOVE:
-- Background (replace with pure white #FFFFFF)
-- Any person, model, mannequin, body parts
-- Text, logos, watermarks
-- Shadows, reflections
-
-What to KEEP:
-- The exact product as it appears in the input
-- All details: buttons, patterns, textures, colors
-- Original proportions and shape
-
-OUTPUT:
-- ONE image only
-- ONE product only
-- White background
-- No text response - return IMAGE only"""
+OUTPUT REQUIREMENTS:
+- Single product on pure white background (#FFFFFF)
+- No shadows, no reflections
+- Preserve exact colors, textures, and details from references
+- Return IMAGE only, no text"""
 
 
 class GeminiExtract:

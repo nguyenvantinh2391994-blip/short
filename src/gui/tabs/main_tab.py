@@ -2217,16 +2217,10 @@ class MainTab:
             self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi tách SP: {e}"))
 
     def _run_filter_internal(self):
-        """Chạy lọc ảnh (internal)"""
+        """Chạy lọc ảnh (internal) - giữ tối đa 5 ảnh mỗi sản phẩm"""
         try:
-            from ...image_processor import ImageFilter
             from ...sheets_reader import SheetsReader
             from pathlib import Path
-            import time
-
-            if not self.app.config.gemini_api_key:
-                self.after_safe(lambda: self.add_log("  ⚠️ Chưa có Gemini API - bỏ qua"))
-                return
 
             reader = SheetsReader(
                 credentials_file=self.app.config.credentials_file,
@@ -2243,8 +2237,8 @@ class MainTab:
             if not pending:
                 return
 
-            img_filter = ImageFilter(self.app.config.gemini_api_key)
             input_folder = Path(self.app.config.input_folder)
+            MAX_IMAGES = 5  # Giữ tối đa 5 ảnh
 
             total_codes = len(pending)
             for idx, item in enumerate(pending, 1):
@@ -2259,31 +2253,27 @@ class MainTab:
                          list(code_folder.glob("*.jpeg")) +
                          list(code_folder.glob("*.png")) +
                          list(code_folder.glob("*.webp")))
-                if not images:
-                    continue
 
-                self.after_safe(lambda c=code, i=idx, t=total_codes, n=len(images):
-                    self.add_log(f"  [{i}/{t}] {c}: lọc {n} ảnh..."))
+                if len(images) <= MAX_IMAGES:
+                    continue  # Đã ít hơn hoặc bằng 5 ảnh, không cần lọc
 
-                removed = 0
-                for img in images:
-                    if self.stop_flag.is_set():
-                        break
+                # Sắp xếp theo thời gian sửa đổi (mới nhất trước)
+                images.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+                # Xóa các ảnh thừa (giữ 5 ảnh đầu)
+                to_delete = images[MAX_IMAGES:]
+                for img in to_delete:
                     try:
-                        analysis = img_filter.analyze_image(str(img))
-                        if not analysis.should_keep:
-                            img.unlink()
-                            removed += 1
-                        time.sleep(0.3)
+                        img.unlink()
                     except:
                         pass
 
-                if removed > 0:
-                    self.after_safe(lambda c=code, r=removed: self.add_log(f"    ✗ Xóa {r} ảnh"))
+                self.after_safe(lambda c=code, i=idx, t=total_codes, d=len(to_delete):
+                    self.add_log(f"  [{i}/{t}] {c}: xóa {d} ảnh (giữ {MAX_IMAGES})"))
 
             self.after_safe(lambda: self.add_log("  ✓ Lọc xong"))
-        except ImportError:
-            self.after_safe(lambda: self.add_log("  ⚠️ Module ImageFilter không có"))
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi lọc: {e}"))
 
     def _run_script_creation_internal(self):
         """Chạy tạo script (internal)"""

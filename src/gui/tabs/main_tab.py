@@ -2565,9 +2565,19 @@ class MainTab:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: không có video"))
                     continue
 
-                # Chỉ dùng Grok videos (tạm bỏ SORA)
+                # Ưu tiên Grok videos, fallback sang SORA nếu không có Grok
                 grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
-                video_paths = grok_videos  # Tạm bỏ SORA
+                sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
+
+                if grok_videos:
+                    video_paths = grok_videos
+                    self.after_safe(lambda c=code, n=len(grok_videos): self.add_log(f"  📹 {c}: dùng {n} Grok videos"))
+                elif sora_videos:
+                    video_paths = sora_videos
+                    self.after_safe(lambda c=code, n=len(sora_videos): self.add_log(f"  📹 {c}: dùng {n} SORA videos (fallback)"))
+                else:
+                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: không có video hợp lệ"))
+                    continue
 
                 # Tìm ảnh Flow từ input/{code}/flow/
                 flow_images = []
@@ -3656,15 +3666,22 @@ class MainTab:
                 if code_video_folder.exists():
                     all_videos = list(code_video_folder.glob("*.mp4"))
                     if all_videos:
-                        # Chỉ dùng Grok videos (tạm bỏ SORA)
+                        # Ưu tiên Grok, fallback SORA
                         grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
+                        sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
 
                         if grok_videos:
-                            item["video_paths"] = grok_videos  # Tạm bỏ SORA
+                            item["video_paths"] = grok_videos
                             item["voice_path"] = voice_path
                             valid_items.append(item)
                             self.after_safe(lambda c=code, n=len(grok_videos):
                                 self.add_log(f"  📹 {c}: {n} Grok videos"))
+                        elif sora_videos:
+                            item["video_paths"] = sora_videos
+                            item["voice_path"] = voice_path
+                            valid_items.append(item)
+                            self.after_safe(lambda c=code, n=len(sora_videos):
+                                self.add_log(f"  📹 {c}: {n} SORA videos (fallback)"))
 
             if not valid_items:
                 self.after_safe(lambda: self.add_log("❌ Không có video nào để edit"))

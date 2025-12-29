@@ -107,12 +107,32 @@ class GeminiExtract:
         """Chay JS qua DevTools Console - dùng chrome_manager"""
         return chrome_manager.run_js(js)
 
+    def _sanitize_product_name(self, name: str) -> str:
+        """Lọc bỏ các từ khóa nhạy cảm khỏi tên sản phẩm"""
+        import re
+        # Các từ cần loại bỏ
+        remove_words = [
+            r'\bbé gái\b', r'\bbé trai\b', r'\btrẻ em\b', r'\btrẻ con\b',
+            r'\bnhí\b', r'\bthiếu nhi\b', r'\bkids?\b', r'\bchildren\b',
+            r'\bchild\b', r'\bboy\b', r'\bgirl\b', r'\bbaby\b', r'\binfant\b',
+            r'\bcông chúa\b', r'\bhoàng tử\b', r'\bprincess\b', r'\bprince\b',
+        ]
+        result = name
+        for pattern in remove_words:
+            result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+        # Xóa khoảng trắng thừa
+        result = re.sub(r'\s+', ' ', result).strip()
+        # Nếu rỗng thì dùng mặc định
+        return result if result else "sản phẩm"
+
     def type_prompt(self, product_name: str = "sản phẩm") -> bool:
         """Nhap prompt vao textarea"""
-        self.log(f"Nhap prompt (san pham: {product_name})...")
+        # Lọc từ khóa nhạy cảm
+        safe_name = self._sanitize_product_name(product_name)
+        self.log(f"Nhap prompt (san pham: {safe_name})...")
 
-        # Format prompt với tên sản phẩm
-        prompt = EXTRACT_PROMPT_TEMPLATE.format(product_name=product_name)
+        # Format prompt với tên sản phẩm đã lọc
+        prompt = EXTRACT_PROMPT_TEMPLATE.format(product_name=safe_name)
         escaped_prompt = prompt.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
 
         js = f'''

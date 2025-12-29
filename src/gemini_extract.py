@@ -40,47 +40,33 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
+EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — PRODUCT CUTOUT
 
-This is an IMAGE EDITING task.
-You must PROCESS the input image and RETURN a NEW IMAGE as output.
+You must extract the product from this image and return a NEW IMAGE.
 
-Task description:
-Extract (cut out) the MAIN PRODUCT from the image.
+Product to extract: {product_name}
 
-Target product:
-- The product to extract is: {product_name}
-- The product must be treated as a standalone physical object.
+CRITICAL RULES:
+1. Return ONLY ONE product image - not multiple versions
+2. Keep the product EXACTLY as shown - do not modify, redesign, or reinterpret
+3. If input has multiple views, pick only the FRONT view or the FIRST one
 
-Explicit exclusions (VERY IMPORTANT):
-- Any human presence or human representation
-- Any human body part: face, skin, hair, hands, arms, legs, feet
-- Any human silhouette or body shape
-- Any text, logo, watermark, branding
-NONE of the above are part of the product and must be COMPLETELY REMOVED.
+What to REMOVE:
+- Background (replace with pure white #FFFFFF)
+- Any person, model, mannequin, body parts
+- Text, logos, watermarks
+- Shadows, reflections
 
-ABSOLUTE RULE:
-- The final output image must contain ZERO human pixels.
-- If any human body part appears, the result is INVALID.
+What to KEEP:
+- The exact product as it appears in the input
+- All details: buttons, patterns, textures, colors
+- Original proportions and shape
 
-Editing instructions:
-- Remove the entire background
-- Keep ONLY the main product object
-- Preserve real-world shape, proportions, and surface details
-- Maintain natural structure (do NOT flatten unless the real product is flat)
-- Do NOT stylize, beautify, redesign, or invent details
-- Actively verify that no human-related pixel remains in the final image
-
-Output requirements:
-- Output must be an IMAGE
-- ONE product object only
-- Pure white background (#FFFFFF)
-- No shadows, no reflections, no floor
-- No text in the output
-
-Final rule:
-You must return ONLY the edited product image.
-Do NOT return any text."""
+OUTPUT:
+- ONE image only
+- ONE product only
+- White background
+- No text response - return IMAGE only"""
 
 
 class GeminiExtract:

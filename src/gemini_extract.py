@@ -40,19 +40,50 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT_TEMPLATE = """PRODUCT PHOTO EDITING
+EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
-Task: Create a clean product-only image from the input.
+This is an IMAGE EDITING task.
+You must PROCESS the input image and RETURN a NEW IMAGE as output.
 
-Instructions:
-1. Extract ONLY the clothing/accessory item
-2. Remove ALL backgrounds, props, and everything else
-3. Output: Single item on pure white background (#FFFFFF)
-4. Preserve exact colors, patterns, textures, and details
-5. Keep original proportions - do not resize or reshape
-6. No shadows, no reflections
+Input note:
+I may provide MULTIPLE images of the SAME product.
+These images are provided ONLY to help you understand
+the product's full structure, details, and overall appearance.
 
-Output: ONE product image only. No text response."""
+Task description:
+Extract (cut out) the MAIN PHYSICAL PRODUCT from the image.
+
+Definition of the product:
+- The product is the CLOTHING ITEM ITSELF as a standalone physical object.
+- The product must NOT be worn by anyone.
+- Any human, model, mannequin, body part, face, skin, hair, hands, arms,
+  legs, feet, neck, or human silhouette is NOT part of the product
+  and must be completely removed.
+
+Editing instructions:
+- Remove the entire background
+- Remove all people and all body parts completely
+- Remove mannequins, body shapes, or human outlines
+- Remove all text, logos, and watermarks
+- Keep ONLY the clothing item itself as an independent object
+- Clothing must NOT appear worn or attached to a body
+- Preserve ALL product details including fabric texture,
+  patterns, embroidery, decorations, buttons, accessories, and stitching
+- Do NOT remove or simplify any visual detail of the product
+- Preserve realistic fabric shape and natural folds
+- Do NOT flatten the clothing
+- Do NOT stylize, beautify, or redesign
+
+Output requirements:
+- Output must be an IMAGE
+- ONE clothing item only
+- Pure white background (#FFFFFF)
+- No shadows, no reflections
+- No text in the output
+
+Final rule:
+Return ONLY the edited product image.
+ABSOLUTELY NO humans, NO body parts, and NO text."""
 
 
 class GeminiExtract:

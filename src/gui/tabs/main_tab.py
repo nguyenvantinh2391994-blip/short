@@ -3652,7 +3652,13 @@ class MainTab:
                 need_prompt_1 = flow_prompt_1 and len(existing_I) < 4
                 need_prompt_2 = flow_prompt_2 and len(existing_K) < 4
 
-                # Nếu đã đủ cả 2 prompt thì bỏ qua
+                # Nếu không có prompt nào thì bỏ qua
+                if not flow_prompt_1 and not flow_prompt_2:
+                    self.after_safe(lambda c=code: self.add_log(f"⏭️ {c}: Không có prompt (cột I, K trống) - bỏ qua"))
+                    skipped += 1
+                    continue
+
+                # Nếu đã đủ ảnh cho tất cả prompt thì bỏ qua
                 if not need_prompt_1 and not need_prompt_2:
                     total_existing = len(existing_I) + len(existing_K)
                     self.after_safe(lambda c=code, n=total_existing: self.add_log(f"⏭️ {c}: Đã đủ {n} ảnh flow - bỏ qua"))
@@ -3671,11 +3677,6 @@ class MainTab:
                 try:
                     # Sử dụng Chrome trigger + API call để tạo ảnh
                     # Flow: trigger Chrome (capture payload, cancel request) → gọi API với payload
-
-                    if not flow_prompt_1 and not flow_prompt_2:
-                        self.after_safe(lambda c=code: self.add_log(f"  ⚠️ {c}: Không có prompt từ cột I và K - bỏ qua"))
-                        skipped += 1
-                        continue
 
                     # Tạo thư mục flow
                     flow_folder = products_dir / code / "flow"

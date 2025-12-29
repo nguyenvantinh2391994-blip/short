@@ -40,47 +40,20 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
+EXTRACT_PROMPT_TEMPLATE = """PRODUCT IMAGE EDITING
 
-This is an IMAGE EDITING task.
-You must PROCESS the input image and RETURN a NEW IMAGE as output.
+Task: Extract the product from this image.
 
-Task description:
-Extract (cut out) the MAIN PRODUCT from the image.
+Product: {product_name}
 
-Target product:
-- The product to extract is: {product_name}
-- The product must be treated as a standalone physical object.
+Instructions:
+1. Keep ONLY the product (clothing/accessory item)
+2. Remove everything else: background, props, decorations
+3. Place product on pure white background (#FFFFFF)
+4. Preserve original colors, patterns, textures exactly
+5. Output ONE product image only
 
-Explicit exclusions (VERY IMPORTANT):
-- Any human presence or human representation
-- Any human body part: face, skin, hair, hands, arms, legs, feet
-- Any human silhouette or body shape
-- Any text, logo, watermark, branding
-NONE of the above are part of the product and must be COMPLETELY REMOVED.
-
-ABSOLUTE RULE:
-- The final output image must contain ZERO human pixels.
-- If any human body part appears, the result is INVALID.
-
-Editing instructions:
-- Remove the entire background
-- Keep ONLY the main product object
-- Preserve real-world shape, proportions, and surface details
-- Maintain natural structure (do NOT flatten unless the real product is flat)
-- Do NOT stylize, beautify, redesign, or invent details
-- Actively verify that no human-related pixel remains in the final image
-
-Output requirements:
-- Output must be an IMAGE
-- ONE product object only
-- Pure white background (#FFFFFF)
-- No shadows, no reflections, no floor
-- No text in the output
-
-Final rule:
-You must return ONLY the edited product image.
-Do NOT return any text."""
+Do NOT include any text in your response - return IMAGE only."""
 
 
 class GeminiExtract:

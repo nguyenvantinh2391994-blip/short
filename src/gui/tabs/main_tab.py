@@ -918,7 +918,10 @@ class MainTab:
 
                 # Check existing
                 if code_folder.exists():
-                    existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                    existing = (list(code_folder.glob("*.jpg")) +
+                               list(code_folder.glob("*.jpeg")) +
+                               list(code_folder.glob("*.png")) +
+                               list(code_folder.glob("*.webp")))
                     if existing:
                         self.set_task_input_status(code, TaskItem.STATUS_SKIP)
                         self.after_safe(lambda c=code: self.add_log(f"⏭️ {c}: đã có ảnh"))
@@ -1042,7 +1045,10 @@ class MainTab:
                 video_folder = input_folder / code / "video"
 
                 if flow_folder.exists():
-                    images = list(flow_folder.glob("*.jpg")) + list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.webp"))
+                    images = (list(flow_folder.glob("*.jpg")) +
+                             list(flow_folder.glob("*.jpeg")) +
+                             list(flow_folder.glob("*.png")) +
+                             list(flow_folder.glob("*.webp")))
                     if images:
                         # === KIỂM TRA ĐÃ CÓ ĐỦ VIDEO GROK CHƯA ===
                         # Đếm video Grok (không tính SORA video 00_sora_*)
@@ -1159,7 +1165,10 @@ class MainTab:
 
             # Đã có ảnh?
             if code_folder.exists():
-                existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                existing = (list(code_folder.glob("*.jpg")) +
+                           list(code_folder.glob("*.jpeg")) +
+                           list(code_folder.glob("*.png")) +
+                           list(code_folder.glob("*.webp")))
                 if existing:
                     self.set_task_input_status(code, TaskItem.STATUS_SKIP)
                     continue
@@ -1309,7 +1318,10 @@ class MainTab:
 
                 # Kiểm tra xem đã tách chưa (thư mục extracted đã có ảnh)
                 if extract_folder.exists():
-                    existing_extracted = list(extract_folder.glob("*.png")) + list(extract_folder.glob("*.jpg")) + list(extract_folder.glob("*.webp"))
+                    existing_extracted = (list(extract_folder.glob("*.png")) +
+                                         list(extract_folder.glob("*.jpg")) +
+                                         list(extract_folder.glob("*.jpeg")) +
+                                         list(extract_folder.glob("*.webp")))
                     if existing_extracted:
                         self.after_safe(lambda c=code, n=len(existing_extracted): self.add_log(f"  {c}: Đã tách ({n} ảnh) - bỏ qua"))
                         continue
@@ -2050,11 +2062,14 @@ class MainTab:
             code = item["code"]
             code_folder = input_folder / code
 
-            # Skip nếu đã có ảnh
+            # Skip nếu đã có ảnh (kiểm tra tất cả định dạng)
             if code_folder.exists():
-                existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                existing = (list(code_folder.glob("*.jpg")) +
+                           list(code_folder.glob("*.jpeg")) +
+                           list(code_folder.glob("*.png")) +
+                           list(code_folder.glob("*.webp")))
                 if existing:
-                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có ảnh"))
+                    self.after_safe(lambda c=code, n=len(existing): self.add_log(f"  ⏭️ {c}: đã có {n} ảnh"))
                     continue
 
             row_idx = item["row"] - 1
@@ -2063,7 +2078,7 @@ class MainTab:
                 if link and "shopee" in link.lower():
                     product, images = downloader.get_product_and_download(link.strip(), code, True)
                     if images:
-                        self.after_safe(lambda c=code, n=len(images): self.add_log(f"  ✓ {c}: {n} ảnh"))
+                        self.after_safe(lambda c=code, n=len(images): self.add_log(f"  ✓ {c}: tải {n} ảnh"))
                         if product:
                             try:
                                 if product.name:
@@ -2139,14 +2154,22 @@ class MainTab:
                 extracted_folder = code_folder / "extracted"
 
                 # Skip nếu đã có ảnh extracted
-                if extracted_folder.exists() and list(extracted_folder.glob("*.png")):
-                    self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã tách"))
-                    continue
+                if extracted_folder.exists():
+                    existing_extracted = (list(extracted_folder.glob("*.png")) +
+                                         list(extracted_folder.glob("*.jpg")) +
+                                         list(extracted_folder.glob("*.jpeg")) +
+                                         list(extracted_folder.glob("*.webp")))
+                    if existing_extracted:
+                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã tách"))
+                        continue
 
                 if not code_folder.exists():
                     continue
 
-                images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                images = (list(code_folder.glob("*.jpg")) +
+                         list(code_folder.glob("*.jpeg")) +
+                         list(code_folder.glob("*.png")) +
+                         list(code_folder.glob("*.webp")))
                 if not images:
                     continue
 
@@ -2231,7 +2254,10 @@ class MainTab:
                 if not code_folder.exists():
                     continue
 
-                images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png"))
+                images = (list(code_folder.glob("*.jpg")) +
+                         list(code_folder.glob("*.jpeg")) +
+                         list(code_folder.glob("*.png")) +
+                         list(code_folder.glob("*.webp")))
                 if not images:
                     continue
 
@@ -2376,7 +2402,10 @@ class MainTab:
                     required = 8 if (flow_prompt_1 and flow_prompt_2) else 4
                     existing = []
                     if flow_folder.exists():
-                        existing = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
+                        existing = (list(flow_folder.glob("*.png")) +
+                                   list(flow_folder.glob("*.jpg")) +
+                                   list(flow_folder.glob("*.jpeg")) +
+                                   list(flow_folder.glob("*.webp")))
 
                     if len(existing) < required:
                         missing.append(product)
@@ -2441,7 +2470,10 @@ class MainTab:
                     flow_folder.mkdir(parents=True, exist_ok=True)
 
                     # Upload reference image
-                    ref_images = list(extracted_folder.glob("*.png")) + list(extracted_folder.glob("*.jpg"))
+                    ref_images = (list(extracted_folder.glob("*.png")) +
+                                 list(extracted_folder.glob("*.jpg")) +
+                                 list(extracted_folder.glob("*.jpeg")) +
+                                 list(extracted_folder.glob("*.webp")))
                     image_ref = None
                     if ref_images:
                         image_ref = extractor.upload_image(str(ref_images[0]))
@@ -2462,7 +2494,10 @@ class MainTab:
                         prefix = f"{code}_I" if i == 1 else f"{code}_K"
 
                         # Kiểm tra đã có đủ ảnh cho prompt này chưa
-                        existing_for_prefix = list(flow_folder.glob(f"{prefix}*.png")) + list(flow_folder.glob(f"{prefix}*.jpg"))
+                        existing_for_prefix = (list(flow_folder.glob(f"{prefix}*.png")) +
+                                              list(flow_folder.glob(f"{prefix}*.jpg")) +
+                                              list(flow_folder.glob(f"{prefix}*.jpeg")) +
+                                              list(flow_folder.glob(f"{prefix}*.webp")))
                         if len(existing_for_prefix) >= 4:
                             continue
 
@@ -2654,7 +2689,10 @@ class MainTab:
                 video_folder = input_folder / code / "video"
 
                 if flow_folder.exists():
-                    images = list(flow_folder.glob("*.jpg")) + list(flow_folder.glob("*.png"))
+                    images = (list(flow_folder.glob("*.jpg")) +
+                             list(flow_folder.glob("*.jpeg")) +
+                             list(flow_folder.glob("*.png")) +
+                             list(flow_folder.glob("*.webp")))
                     if images:
                         # Skip nếu đã có đủ video
                         if video_folder.exists():
@@ -2895,7 +2933,10 @@ class MainTab:
 
                 # Check existing images
                 if code_folder.exists():
-                    existing = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png")) + list(code_folder.glob("*.webp"))
+                    existing = (list(code_folder.glob("*.jpg")) +
+                               list(code_folder.glob("*.jpeg")) +
+                               list(code_folder.glob("*.png")) +
+                               list(code_folder.glob("*.webp")))
                     if existing:
                         self.set_task_input_status(code, TaskItem.STATUS_SKIP)
                         self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có ảnh"))
@@ -3017,7 +3058,10 @@ class MainTab:
                 code = item["code"]
                 code_folder = input_folder / code
                 if code_folder.exists():
-                    images = list(code_folder.glob("*.jpg")) + list(code_folder.glob("*.png")) + list(code_folder.glob("*.webp"))
+                    images = (list(code_folder.glob("*.jpg")) +
+                             list(code_folder.glob("*.jpeg")) +
+                             list(code_folder.glob("*.png")) +
+                             list(code_folder.glob("*.webp")))
                     if images:
                         item["images"] = images
                         valid_items.append(item)
@@ -3587,9 +3631,10 @@ class MainTab:
                     skipped += 1
                     continue
 
-                extracted_images = list(extracted_folder.glob("*.png")) + \
-                                   list(extracted_folder.glob("*.jpg")) + \
-                                   list(extracted_folder.glob("*.webp"))
+                extracted_images = (list(extracted_folder.glob("*.png")) +
+                                   list(extracted_folder.glob("*.jpg")) +
+                                   list(extracted_folder.glob("*.jpeg")) +
+                                   list(extracted_folder.glob("*.webp")))
                 if not extracted_images:
                     self.after_safe(lambda c=code: self.add_log(f"  {c}: Không có ảnh extracted - bỏ qua"))
                     skipped += 1

@@ -2074,12 +2074,12 @@ class MainTab:
                                 pass
 
     def _run_extract_internal(self):
-        """Chạy tách sản phẩm (internal)"""
-        # Gọi logic từ start_extract_process nhưng không quản lý UI state
+        """Chạy tách sản phẩm (internal) - dùng GeminiExtract"""
         try:
-            from ...image_processor import ImageExtractor
+            from ...gemini_extract import GeminiExtract
             from ...sheets_reader import SheetsReader
             from pathlib import Path
+            import time
 
             if not self.app.config.gemini_api_key:
                 self.after_safe(lambda: self.add_log("  ⚠️ Chưa có Gemini API - bỏ qua"))
@@ -2100,17 +2100,19 @@ class MainTab:
             if not pending:
                 return
 
-            extractor = ImageExtractor(self.app.config.gemini_api_key)
+            extractor = GeminiExtract(self.app.config.gemini_api_key)
             input_folder = Path(self.app.config.input_folder)
 
             for item in pending:
                 if self.stop_flag.is_set():
                     break
                 code = item["code"]
+                # Lấy tên sản phẩm từ cột C (index 2)
+                product_name = item["data"][2] if len(item.get("data", [])) > 2 else ""
                 code_folder = input_folder / code
                 extracted_folder = code_folder / "extracted"
 
-                # Skip nếu đã có
+                # Skip nếu đã có ảnh extracted
                 if extracted_folder.exists() and list(extracted_folder.glob("*.png")):
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã tách"))
                     continue
@@ -2123,17 +2125,26 @@ class MainTab:
                     continue
 
                 self.after_safe(lambda c=code: self.add_log(f"  🔬 {c}: đang tách..."))
+                extracted_folder.mkdir(parents=True, exist_ok=True)
+
                 for img in images[:3]:  # Tối đa 3 ảnh
                     if self.stop_flag.is_set():
                         break
                     try:
-                        result = extractor.extract_product(str(img), str(extracted_folder))
-                        if result:
+                        result = extractor.extract_product(
+                            image_path=str(img),
+                            output_dir=str(extracted_folder),
+                            product_name=product_name
+                        )
+                        if result and result.success:
                             self.after_safe(lambda c=code: self.add_log(f"    ✓ Tách xong 1 ảnh"))
+                        time.sleep(1)  # Delay để tránh rate limit
                     except Exception as e:
-                        pass
-        except ImportError:
-            self.after_safe(lambda: self.add_log("  ⚠️ Module ImageExtractor không có"))
+                        self.after_safe(lambda c=code, e=str(e): self.add_log(f"    ⚠️ Lỗi: {e}"))
+        except ImportError as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Module GeminiExtract không có: {e}"))
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi tách SP: {e}"))
 
     def _run_filter_internal(self):
         """Chạy lọc ảnh (internal)"""
@@ -2255,8 +2266,12 @@ class MainTab:
             self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
 
     def _run_flow_internal(self):
-        """Chạy Flow tạo ảnh (internal)"""
-        # Gọi logic từ _run_flow_process
+        """Chạy Flow tạo ảnh (internal) - có retry đến khi đủ ảnh"""
+        import time
+
+        MAX_RETRIES = 5
+        RETRY_DELAY = 30  # giây
+
         try:
             from ...chrome_token_extractor import ChromeTokenExtractor
             from ...sheets_reader import SheetsReader
@@ -2288,61 +2303,113 @@ class MainTab:
             if not products:
                 return
 
-            extractor = ChromeTokenExtractor(chrome_path, profile_path, timeout=120)
-            self.after_safe(lambda: self.add_log("  Đang lấy token..."))
-            bearer_token, project_id, error = extractor.extract_token()
-            if not bearer_token:
-                self.after_safe(lambda e=error: self.add_log(f"  ❌ Không lấy được token: {e}"))
-                return
-
             input_folder = Path(self.app.config.input_folder)
 
-            for product in products:
+            # Hàm kiểm tra sản phẩm còn thiếu ảnh
+            def get_missing_products():
+                missing = []
+                for product in products:
+                    code = product.get("code", "")
+                    flow_prompt_1 = product.get("flow_prompt", "")
+                    flow_prompt_2 = product.get("flow_prompt_2", "")
+
+                    if not code or (not flow_prompt_1 and not flow_prompt_2):
+                        continue
+
+                    flow_folder = input_folder / code / "flow"
+                    extracted_folder = input_folder / code / "extracted"
+
+                    if not extracted_folder.exists():
+                        continue
+
+                    # Kiểm tra số ảnh cần có
+                    required = 8 if (flow_prompt_1 and flow_prompt_2) else 4
+                    existing = []
+                    if flow_folder.exists():
+                        existing = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
+
+                    if len(existing) < required:
+                        missing.append(product)
+
+                return missing
+
+            # Retry loop
+            for attempt in range(MAX_RETRIES + 1):
                 if self.stop_flag.is_set():
                     break
 
-                code = product.get("code", "")
-                flow_prompt_1 = product.get("flow_prompt", "")
-                flow_prompt_2 = product.get("flow_prompt_2", "")
+                # Lấy danh sách sản phẩm còn thiếu ảnh
+                missing_products = get_missing_products()
 
-                if not code or (not flow_prompt_1 and not flow_prompt_2):
+                if not missing_products:
+                    self.after_safe(lambda: self.add_log("  ✅ Tất cả sản phẩm đã có đủ ảnh Flow"))
+                    break
+
+                if attempt > 0:
+                    self.after_safe(lambda a=attempt, n=len(missing_products):
+                        self.add_log(f"  🔄 Retry {a}/{MAX_RETRIES}: còn {n} sản phẩm thiếu ảnh"))
+                    time.sleep(RETRY_DELAY)
+
+                # Lấy token mới cho mỗi lần thử
+                extractor = ChromeTokenExtractor(chrome_path, profile_path, timeout=120)
+                self.after_safe(lambda: self.add_log("  Đang lấy token..."))
+                bearer_token, project_id, error = extractor.extract_token()
+                if not bearer_token:
+                    self.after_safe(lambda e=error: self.add_log(f"  ⚠️ Không lấy được token: {e}"))
                     continue
 
-                flow_folder = input_folder / code / "flow"
-                extracted_folder = input_folder / code / "extracted"
+                # Xử lý từng sản phẩm thiếu ảnh
+                for product in missing_products:
+                    if self.stop_flag.is_set():
+                        break
 
-                # Skip nếu đã có đủ ảnh
-                if flow_folder.exists():
-                    existing = list(flow_folder.glob("*.png")) + list(flow_folder.glob("*.jpg"))
-                    required = 8 if (flow_prompt_1 and flow_prompt_2) else 4
-                    if len(existing) >= required:
-                        self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có ảnh flow"))
-                        continue
+                    code = product.get("code", "")
+                    flow_prompt_1 = product.get("flow_prompt", "")
+                    flow_prompt_2 = product.get("flow_prompt_2", "")
 
-                if not extracted_folder.exists():
-                    continue
+                    flow_folder = input_folder / code / "flow"
+                    extracted_folder = input_folder / code / "extracted"
 
-                self.after_safe(lambda c=code: self.add_log(f"  🌀 {c}: tạo ảnh flow..."))
-                flow_folder.mkdir(parents=True, exist_ok=True)
+                    self.after_safe(lambda c=code: self.add_log(f"  🌀 {c}: tạo ảnh flow..."))
+                    flow_folder.mkdir(parents=True, exist_ok=True)
 
-                # Upload reference image
-                ref_images = list(extracted_folder.glob("*.png")) + list(extracted_folder.glob("*.jpg"))
-                image_ref = None
-                if ref_images:
-                    image_ref = extractor.upload_image(str(ref_images[0]))
+                    # Upload reference image
+                    ref_images = list(extracted_folder.glob("*.png")) + list(extracted_folder.glob("*.jpg"))
+                    image_ref = None
+                    if ref_images:
+                        image_ref = extractor.upload_image(str(ref_images[0]))
 
-                # Tạo ảnh với mỗi prompt
-                for i, prompt in enumerate([flow_prompt_1, flow_prompt_2], 1):
-                    if not prompt or self.stop_flag.is_set():
-                        continue
-                    prefix = f"{code}_I" if i == 1 else f"{code}_K"
-                    if extractor.trigger_and_capture(prompt):
-                        extractor.call_api_with_captured_payload(
-                            custom_prompt=prompt,
-                            output_dir=flow_folder,
-                            prefix=prefix,
-                            image_ref=image_ref
-                        )
+                    # Tạo ảnh với mỗi prompt
+                    def chrome_log(msg):
+                        self.after_safe(lambda m=msg: self.add_log(f"    {m}"))
+
+                    for i, prompt in enumerate([flow_prompt_1, flow_prompt_2], 1):
+                        if not prompt or self.stop_flag.is_set():
+                            continue
+
+                        prefix = f"{code}_I" if i == 1 else f"{code}_K"
+
+                        # Kiểm tra đã có đủ ảnh cho prompt này chưa
+                        existing_for_prefix = list(flow_folder.glob(f"{prefix}*.png")) + list(flow_folder.glob(f"{prefix}*.jpg"))
+                        if len(existing_for_prefix) >= 4:
+                            continue
+
+                        if extractor.trigger_and_capture(prompt, callback=chrome_log):
+                            extractor.call_api_with_captured_payload(
+                                custom_prompt=prompt,
+                                output_dir=flow_folder,
+                                prefix=prefix,
+                                image_ref=image_ref,
+                                callback=chrome_log
+                            )
+
+            # Báo cáo cuối
+            final_missing = get_missing_products()
+            if final_missing:
+                self.after_safe(lambda n=len(final_missing):
+                    self.add_log(f"  ⚠️ Vẫn còn {n} sản phẩm thiếu ảnh sau {MAX_RETRIES} lần thử"))
+            else:
+                self.after_safe(lambda: self.add_log("  ✅ Đã tạo đủ ảnh Flow cho tất cả sản phẩm"))
 
         except ImportError:
             self.after_safe(lambda: self.add_log("  ⚠️ Module ChromeTokenExtractor không có"))

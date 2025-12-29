@@ -2246,7 +2246,8 @@ class MainTab:
             img_filter = ImageFilter(self.app.config.gemini_api_key)
             input_folder = Path(self.app.config.input_folder)
 
-            for item in pending:
+            total_codes = len(pending)
+            for idx, item in enumerate(pending, 1):
                 if self.stop_flag.is_set():
                     break
                 code = item["code"]
@@ -2261,6 +2262,10 @@ class MainTab:
                 if not images:
                     continue
 
+                self.after_safe(lambda c=code, i=idx, t=total_codes, n=len(images):
+                    self.add_log(f"  [{i}/{t}] {c}: lọc {n} ảnh..."))
+
+                removed = 0
                 for img in images:
                     if self.stop_flag.is_set():
                         break
@@ -2268,10 +2273,15 @@ class MainTab:
                         analysis = img_filter.analyze_image(str(img))
                         if not analysis.should_keep:
                             img.unlink()
-                            self.after_safe(lambda p=img.name: self.add_log(f"    ✗ Xóa: {p}"))
+                            removed += 1
                         time.sleep(0.3)
                     except:
                         pass
+
+                if removed > 0:
+                    self.after_safe(lambda c=code, r=removed: self.add_log(f"    ✗ Xóa {r} ảnh"))
+
+            self.after_safe(lambda: self.add_log("  ✓ Lọc xong"))
         except ImportError:
             self.after_safe(lambda: self.add_log("  ⚠️ Module ImageFilter không có"))
 

@@ -40,24 +40,52 @@ class ExtractResult:
     error: str = ""
 
 
-EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — PRODUCT EXTRACTION
+EXTRACT_PROMPT_TEMPLATE = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
-I am providing multiple reference images of the same product: {product_name}
+This is an IMAGE EDITING task.
+You must PROCESS the input image and RETURN a NEW IMAGE as output.
 
-YOUR TASK:
-Study all reference images to understand the product, then generate ONE clean product image.
+Task description:
+Extract (cut out) the MAIN PRODUCT from the image.
 
-RULES:
-1. Output exactly ONE image showing ONE product
-2. The product must match the references - same colors, patterns, details
-3. Show the product from front view, complete and clear
-4. Remove all backgrounds, people, models, mannequins, text, logos
+Target product:
+- The product to extract is: {product_name}
+- The product must be treated as a single, standalone physical object.
+- The product includes ALL physically attached components:
+  buttons, clasps, ornaments, decorative elements, fasteners,
+  embroidery, sewn labels.
+- NO physically attached detail may be removed or simplified.
 
-OUTPUT REQUIREMENTS:
-- Single product on pure white background (#FFFFFF)
+Input image note:
+- The input image may be a collage or contain multiple versions.
+- Select ONLY ONE complete version.
+- Do NOT merge versions.
+
+Explicit exclusions:
+- Any human, model, mannequin
+- Any body part: face, skin, hair, hands, arms, legs, feet
+- Any background scene
+- Any text, logo, watermark
+
+Editing instructions:
+- Remove the entire background
+- Keep ONLY the selected product
+- Preserve ALL product details, including small or subtle elements
+- Do NOT remove, alter, recolor, resize, or simplify any attached detail
+- Maintain natural structure and proportions
+- Do NOT stylize or redesign
+
+Output requirements:
+- Output must be an IMAGE
+- ONE product only
+- Aspect ratio: 9:16
+- Pure white background (#FFFFFF)
 - No shadows, no reflections
-- Preserve exact colors, textures, and details from references
-- Return IMAGE only, no text"""
+- No text
+
+Final rule:
+You must return ONLY the edited product image.
+Do NOT return any text."""
 
 
 class GeminiExtract:

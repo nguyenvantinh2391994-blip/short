@@ -135,18 +135,28 @@ class GeminiExtract:
         import re
         # Các từ cần loại bỏ
         remove_words = [
+            # Trẻ em
             r'\bbé gái\b', r'\bbé trai\b', r'\btrẻ em\b', r'\btrẻ con\b',
             r'\bnhí\b', r'\bthiếu nhi\b', r'\bkids?\b', r'\bchildren\b',
             r'\bchild\b', r'\bboy\b', r'\bgirl\b', r'\bbaby\b', r'\binfant\b',
             r'\bcông chúa\b', r'\bhoàng tử\b', r'\bprincess\b', r'\bprince\b',
+            # Gia đình
+            r'\bmẹ\b', r'\bbố\b', r'\bcon\b', r'\bmom\b', r'\bdad\b',
+            r'\bmother\b', r'\bfather\b', r'\bparent\b', r'\bfamily\b',
+            r'\bgia đình\b', r'\bset cặp\b', r'\bcặp\b',
+            # Người
+            r'\bngười\b', r'\bphụ nữ\b', r'\bđàn ông\b', r'\bnam\b', r'\bnữ\b',
+            r'\bwoman\b', r'\bman\b', r'\bfemale\b', r'\bmale\b',
         ]
         result = name
         for pattern in remove_words:
             result = re.sub(pattern, '', result, flags=re.IGNORECASE)
-        # Xóa khoảng trắng thừa
+        # Xóa khoảng trắng thừa và ký tự đặc biệt thừa
+        result = re.sub(r'\s*[,\-–&]\s*[,\-–&]*\s*', ' ', result)
         result = re.sub(r'\s+', ' ', result).strip()
+        result = re.sub(r'^[\s,\-–&]+|[\s,\-–&]+$', '', result)
         # Nếu rỗng thì dùng mặc định
-        return result if result else "sản phẩm"
+        return result if result else "sản phẩm thời trang"
 
     def type_prompt(self, product_name: str = "sản phẩm") -> bool:
         """Nhap prompt vao textarea"""

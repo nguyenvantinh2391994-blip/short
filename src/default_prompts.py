@@ -60,43 +60,46 @@ ABSOLUTELY NO humans, NO body parts, and NO text."""
 
 
 # =============================================================================
-# 2. SCRIPT PROMPT - Kịch bản bán hàng (20-30s) cho video AFFILIATE
+# 2. SCRIPT PROMPT - Kịch bản bán hàng (~30s) cho video AFFILIATE thời trang
 # =============================================================================
-DEFAULT_SCRIPT_PROMPT = """Bạn là cô gái trẻ đang review sản phẩm tự nhiên cho video TikTok/Reels.
+DEFAULT_SCRIPT_PROMPT = """Bạn là cô gái trẻ đang review đồ thời trang cho video TikTok/Reels.
 
-SẢN PHẨM:
-- Tên: {product_name}
-- Mô tả: {product_description}
+SẢN PHẨM CẦN REVIEW:
+- Tên sản phẩm: {product_name}
+- Thông tin chi tiết: {product_description}
 
-NHIỆM VỤ: Viết kịch bản NGẮN GỌN 20-30 giây, như đang chia sẻ với bạn bè.
+NHIỆM VỤ: Dựa vào tên và mô tả sản phẩm trên, viết kịch bản review khoảng 30 giây.
 
-CẤU TRÚC (3 phần ngắn):
+CẤU TRÚC KỊCH BẢN:
 
-1. MỞ ĐẦU (1 câu ngắn):
-   - "Mấy bạn ơi cái này xinh lắm nè"
-   - "Review nhanh món này cho mấy bạn nha"
-   - "Ai đang tìm [loại SP] thì xem nè"
+1. HOOK (1 câu gây tò mò, thu hút ngay):
+   - "Cái [tên SP] này mà không review thì tiếc lắm"
+   - "Ai đang tìm [loại đồ] xinh thì dừng lại đây"
+   - "Mình vừa order cái này về mà ưng quá trời"
+   - "Đồ này đang hot mà giá lại mềm nữa"
 
-2. ĐIỂM NỔI BẬT (2-3 ý ngắn):
-   - Chất liệu/chất lượng thế nào
-   - Mặc/dùng có ưng không
-   - 1 điểm đặc biệt
+2. NỘI DUNG (3-4 câu ngắn về sản phẩm):
+   - Chất vải/chất liệu như thế nào (lấy từ mô tả)
+   - Form dáng mặc lên ra sao
+   - Điểm đặc biệt/nổi bật của sản phẩm
+   - Phù hợp mặc dịp nào, phối với gì
 
-3. KẾT (1 câu):
-   - "Bấm giỏ hàng vàng trong video nha"
-   - "Thích thì bấm giỏ hàng để xem giá"
+3. KẾT + CTA (1 câu):
+   - "Bấm vào giỏ hàng vàng trong video để xem giá nha"
+   - "Thích thì bấm giỏ hàng màu vàng để mua nha"
 
 YÊU CẦU:
-- Độ dài: 50-70 từ (20-30 giây)
-- Giọng: Nữ tính, vui vẻ, thân thiện
-- Ngắn gọn, KHÔNG kể lể dài dòng
-- Dùng từ: "xinh", "ưng", "thích", "mê", "xịn"
-- KHÔNG dùng: "siêu", "cực kỳ", "vô cùng"
+- Độ dài: 70-90 từ (~30 giây)
+- Giọng: Nữ tính, năng động, như đang kể cho bạn thân
+- PHẢI dựa vào thông tin từ tên và mô tả sản phẩm
+- Dùng từ tự nhiên: "xinh xỉu", "ưng", "mê", "đẹp", "xịn", "chất"
+- KHÔNG bịa thông tin không có trong mô tả
+- KHÔNG dùng từ sáo rỗng: "siêu đỉnh", "cực phẩm", "xuất sắc"
 
-VÍ DỤ TỐT:
-"Mấy bạn ơi cái áo này xinh lắm nè. Chất thun cotton mát, mặc cả ngày không bí. Form vừa vặn, màu này dễ phối đồ lắm. Giá cũng mềm thôi. Bấm giỏ hàng vàng trong video nha."
+VÍ DỤ:
+"Cái váy babydoll này mà không review thì tiếc lắm mấy bạn ơi. Chất vải tơ mềm mát, mặc mùa hè đẹp lắm luôn. Form xòe nhẹ che bụng tốt, ngắn vừa đủ không hở. Màu trắng này dễ phối, đi chơi hay đi làm đều được hết. Bấm vào giỏ hàng vàng trong video để xem giá nha."
 
-CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
+CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH THÊM:"""
 
 
 # =============================================================================

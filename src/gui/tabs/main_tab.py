@@ -319,6 +319,21 @@ class MainTab:
         )
         self.sora_btn.pack(side="left", padx=(0, 4))
 
+        # Nút Xóa Logo (xóa watermark Sora)
+        self.clean_logo_btn = ctk.CTkButton(
+            bottom_row,
+            text="Xóa Logo",
+            command=self.clean_sora_watermark,
+            width=70,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#DC2626",
+            hover_color="#B91C1C",
+            text_color="white"
+        )
+        self.clean_logo_btn.pack(side="left", padx=(0, 4))
+
         # Nút Grok (tạo video từ ảnh flow)
         self.start_btn = ctk.CTkButton(
             bottom_row,
@@ -1317,6 +1332,7 @@ class MainTab:
         self.script_btn.configure(state="normal")
         self.start_btn.configure(state="normal")
         self.sora_btn.configure(state="normal")
+        self.clean_logo_btn.configure(state="normal")
         self.full_btn.configure(state="normal")
         self.filter_btn.configure(state="normal")
         self.edit_btn.configure(state="normal")
@@ -1490,6 +1506,7 @@ class MainTab:
         self.script_btn.configure(state="disabled")
         self.start_btn.configure(state="disabled")
         self.sora_btn.configure(state="disabled")
+        self.clean_logo_btn.configure(state="disabled")
         self.full_btn.configure(state="disabled")
         self.filter_btn.configure(state="disabled")
         self.edit_btn.configure(state="disabled")
@@ -1641,6 +1658,105 @@ class MainTab:
             traceback.print_exc()
         finally:
             self.after_safe(self._on_process_complete)
+
+    # ===== SORA WATERMARK CLEANER =====
+
+    def clean_sora_watermark(self):
+        """Xóa watermark Sora từ các video đã tạo"""
+        if self.is_running:
+            self.add_log("Đang chạy task khác...")
+            return
+
+        self.is_running = True
+        self.clean_logo_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal")
+        self.stop_flag.clear()
+        self.add_log("🧹 Bắt đầu xóa logo Sora...")
+
+        thread = threading.Thread(target=self._run_clean_watermark, daemon=True)
+        thread.start()
+
+    def _run_clean_watermark(self):
+        """Background thread xóa watermark"""
+        try:
+            from ...sora_watermark_cleaner import SoraWatermarkRemover
+
+            input_folder = Path(self.app.config.input_folder)
+
+            if not input_folder.exists():
+                self.after_safe(lambda: self.add_log(f"❌ Thư mục không tồn tại: {input_folder}"))
+                return
+
+            # Khởi tạo remover
+            def log_callback(msg):
+                self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
+
+            remover = SoraWatermarkRemover(
+                cleaner_type="lama",  # Dùng LAMA cho nhanh
+                on_log=log_callback
+            )
+
+            # Đếm số video SORA cần xử lý
+            sora_videos = []
+            for code_folder in input_folder.iterdir():
+                if not code_folder.is_dir():
+                    continue
+
+                video_folder = code_folder / "video"
+                if not video_folder.exists():
+                    continue
+
+                # Tìm video SORA (chưa có _clean)
+                for video in video_folder.glob("*sora*.mp4"):
+                    if "_clean" not in video.stem:
+                        output_path = video.parent / f"{video.stem}_clean{video.suffix}"
+                        if not output_path.exists():
+                            sora_videos.append((video, output_path))
+
+            if not sora_videos:
+                self.after_safe(lambda: self.add_log("⚠️ Không tìm thấy video SORA nào cần xử lý"))
+                self.after_safe(lambda: self.add_log("   (Video đã xóa logo có đuôi _clean.mp4)"))
+                return
+
+            self.after_safe(lambda n=len(sora_videos): self.add_log(f"📹 Tìm thấy {n} video cần xóa logo"))
+
+            # Xử lý từng video
+            success_count = 0
+            for i, (video, output) in enumerate(sora_videos, 1):
+                if self.stop_flag.is_set():
+                    break
+
+                code = video.parent.parent.name
+                self.after_safe(lambda c=code, idx=i, t=len(sora_videos):
+                    self.add_log(f"\n[{idx}/{t}] {c}: {video.name}"))
+
+                result = remover.clean_video(str(video), str(output))
+
+                if result.success:
+                    self.after_safe(lambda c=code: self.add_log(f"   ✓ Đã xóa logo"))
+                    success_count += 1
+                else:
+                    self.after_safe(lambda c=code, e=result.error:
+                        self.add_log(f"   ✗ Lỗi: {e}"))
+
+            self.after_safe(lambda s=success_count, t=len(sora_videos):
+                self.add_log(f"\n✅ Hoàn thành: {s}/{t} video"))
+
+        except ImportError as e:
+            self.after_safe(lambda: self.add_log(f"❌ Chưa cài đặt SoraWM: {e}"))
+            self.after_safe(lambda: self.add_log("💡 Chạy: pip install sorawm"))
+        except Exception as e:
+            self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after_safe(self._on_clean_complete)
+
+    def _on_clean_complete(self):
+        """Callback khi xóa logo hoàn thành"""
+        self.is_running = False
+        self.clean_logo_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
 
     def stop_process(self):
         """Stop current process"""
@@ -2023,7 +2139,7 @@ class MainTab:
         self.is_running = True
         # Disable tất cả nút
         for btn in [self.shopee_btn, self.extract_btn, self.filter_btn, self.script_btn,
-                    self.flow_btn, self.sora_btn, self.start_btn, self.edit_btn, self.full_btn]:
+                    self.flow_btn, self.sora_btn, self.clean_logo_btn, self.start_btn, self.edit_btn, self.full_btn]:
             btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
@@ -3690,6 +3806,7 @@ class MainTab:
         self.edit_btn.configure(state="disabled")
         self.flow_btn.configure(state="disabled")
         self.sora_btn.configure(state="disabled")
+        self.clean_logo_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
         self.clear_table()
@@ -3986,6 +4103,7 @@ class MainTab:
         self.edit_btn.configure(state="normal")
         self.flow_btn.configure(state="normal")
         self.sora_btn.configure(state="normal")
+        self.clean_logo_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.add_log("✓ Flow hoàn thành")
 
@@ -4006,6 +4124,7 @@ class MainTab:
         self.edit_btn.configure(state="disabled")
         self.flow_btn.configure(state="disabled")
         self.sora_btn.configure(state="disabled")
+        self.clean_logo_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.stop_flag.clear()
         self.clear_table()
@@ -4205,6 +4324,7 @@ class MainTab:
         self.edit_btn.configure(state="normal")
         self.flow_btn.configure(state="normal")
         self.sora_btn.configure(state="normal")
+        self.clean_logo_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
 
     def cleanup_browsers(self):

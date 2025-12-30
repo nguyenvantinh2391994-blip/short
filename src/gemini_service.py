@@ -172,7 +172,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
         self,
         product_name: str,
         product_description: str,
-        custom_prompt: str = None
+        custom_prompt: str = None,
+        sora_custom_prompt: str = None
     ) -> ScriptResult:
         """
         Tạo kịch bản bán hàng từ tên và mô tả sản phẩm
@@ -180,7 +181,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
         Args:
             product_name: Tên sản phẩm
             product_description: Mô tả sản phẩm
-            custom_prompt: Prompt tùy chỉnh (nếu có)
+            custom_prompt: Prompt tùy chỉnh cho script (nếu có)
+            sora_custom_prompt: Prompt tùy chỉnh cho SORA (nếu có)
 
         Returns:
             ScriptResult với kịch bản hoặc lỗi
@@ -275,7 +277,9 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             # Tạo SORA prompt
             sora_prompt = ""
             try:
-                sora_prompt = self._generate_sora_prompt_internal(product_name, product_description)
+                sora_prompt = self._generate_sora_prompt_internal(
+                    product_name, product_description, sora_custom_prompt
+                )
                 if sora_prompt:
                     console.print(f"[green]✓ Đã tạo SORA prompt[/]")
             except Exception as e:
@@ -291,7 +295,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
     def _generate_sora_prompt_internal(
         self,
         product_name: str,
-        product_description: str
+        product_description: str,
+        custom_prompt: str = None
     ) -> str:
         """
         Tạo prompt cho SORA video (internal method)
@@ -299,11 +304,13 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
         Args:
             product_name: Tên sản phẩm
             product_description: Mô tả sản phẩm
+            custom_prompt: Custom prompt template (nếu có)
 
         Returns:
             SORA prompt string hoặc empty string nếu lỗi
         """
-        prompt = self.SORA_PROMPT_TEMPLATE.format(
+        template = custom_prompt if custom_prompt else self.SORA_PROMPT_TEMPLATE
+        prompt = template.format(
             product_name=product_name,
             product_description=product_description or "Sản phẩm chất lượng cao"
         )
@@ -355,7 +362,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
     def generate_sora_prompt(
         self,
         product_name: str,
-        product_description: str
+        product_description: str,
+        custom_prompt: str = None
     ) -> str:
         """
         Tạo prompt cho SORA video (public method)
@@ -363,12 +371,13 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
         Args:
             product_name: Tên sản phẩm
             product_description: Mô tả sản phẩm
+            custom_prompt: Custom prompt template (nếu có)
 
         Returns:
             SORA prompt string
         """
         try:
-            return self._generate_sora_prompt_internal(product_name, product_description)
+            return self._generate_sora_prompt_internal(product_name, product_description, custom_prompt)
         except Exception as e:
             console.print(f"[red]❌ Lỗi tạo SORA prompt: {e}[/]")
             return ""
@@ -530,7 +539,9 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
         self,
         product_name: str,
         product_description: str,
-        variant: int = 1
+        variant: int = 1,
+        custom_prompt_1: str = None,
+        custom_prompt_2: str = None
     ) -> str:
         """
         Tạo prompt cho Flow image generation.
@@ -539,6 +550,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
             product_name: Tên sản phẩm
             product_description: Mô tả sản phẩm
             variant: Biến thể (1 hoặc 2) để tạo prompt khác nhau
+            custom_prompt_1: Custom prompt cho variant 1 (ảnh bìa)
+            custom_prompt_2: Custom prompt cho variant 2 (lifestyle)
 
         Returns:
             Flow image prompt string
@@ -550,9 +563,9 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
         # Variant 1: Ảnh bìa sản phẩm (cover photo) - thể hiện rõ sản phẩm
         # Variant 2: Ảnh lifestyle - hoạt động thường ngày
         if variant == 1:
-            template = self.FLOW_IMAGE_PROMPT_1_TEMPLATE
+            template = custom_prompt_1 if custom_prompt_1 else self.FLOW_IMAGE_PROMPT_1_TEMPLATE
         else:
-            template = self.FLOW_IMAGE_PROMPT_2_TEMPLATE
+            template = custom_prompt_2 if custom_prompt_2 else self.FLOW_IMAGE_PROMPT_2_TEMPLATE
 
         prompt = template.format(
             product_name=product_name,
@@ -611,7 +624,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
         self,
         product_name: str,
         product_description: str,
-        variant: int = 1
+        variant: int = 1,
+        custom_prompt: str = None
     ) -> str:
         """
         Tạo prompt cho video generation từ ảnh.
@@ -620,6 +634,7 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
             product_name: Tên sản phẩm
             product_description: Mô tả sản phẩm
             variant: Biến thể (1 hoặc 2)
+            custom_prompt: Custom prompt template (nếu có)
 
         Returns:
             Video prompt string
@@ -631,7 +646,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
         if variant == 2:
             variant_note = "\n\nLƯU Ý: Tạo prompt với hành động KHÁC với prompt trước."
 
-        prompt = self.FLOW_VIDEO_PROMPT_TEMPLATE.format(
+        template = custom_prompt if custom_prompt else self.FLOW_VIDEO_PROMPT_TEMPLATE
+        prompt = template.format(
             product_name=product_name,
             product_description=product_description or "Sản phẩm chất lượng cao"
         ) + variant_note
@@ -687,7 +703,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
     def generate_flow_prompts(
         self,
         product_name: str,
-        product_description: str
+        product_description: str,
+        custom_prompts: dict = None
     ) -> dict:
         """
         Tạo tất cả 4 prompts cho Flow (2 image + 2 video).
@@ -695,6 +712,7 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
         Args:
             product_name: Tên sản phẩm
             product_description: Mô tả sản phẩm
+            custom_prompts: Dict chứa custom prompts (flow_image_1, flow_image_2, flow_video)
 
         Returns:
             Dict với keys: image_prompt_1 (I), video_prompt_1 (J),
@@ -707,27 +725,36 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ), KHÔNG GIẢI THÍCH:""
             "video_prompt_2": "",  # Column L
         }
 
+        # Get custom prompts if provided
+        custom_image_1 = custom_prompts.get("flow_image_1") if custom_prompts else None
+        custom_image_2 = custom_prompts.get("flow_image_2") if custom_prompts else None
+        custom_video = custom_prompts.get("flow_video") if custom_prompts else None
+
         # Generate image prompt 1
         result["image_prompt_1"] = self.generate_flow_image_prompt(
-            product_name, product_description, variant=1
+            product_name, product_description, variant=1,
+            custom_prompt_1=custom_image_1, custom_prompt_2=custom_image_2
         )
         time.sleep(0.5)  # Small delay to avoid rate limit
 
         # Generate video prompt 1
         result["video_prompt_1"] = self.generate_video_prompt(
-            product_name, product_description, variant=1
+            product_name, product_description, variant=1,
+            custom_prompt=custom_video
         )
         time.sleep(0.5)
 
         # Generate image prompt 2 (different variant)
         result["image_prompt_2"] = self.generate_flow_image_prompt(
-            product_name, product_description, variant=2
+            product_name, product_description, variant=2,
+            custom_prompt_1=custom_image_1, custom_prompt_2=custom_image_2
         )
         time.sleep(0.5)
 
         # Generate video prompt 2
         result["video_prompt_2"] = self.generate_video_prompt(
-            product_name, product_description, variant=2
+            product_name, product_description, variant=2,
+            custom_prompt=custom_video
         )
 
         return result

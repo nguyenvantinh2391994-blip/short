@@ -1358,10 +1358,14 @@ class MainTab:
 
         self.add_log("Bat dau tach san pham (Gemini)...")
 
-        thread = threading.Thread(target=self._run_extract_process, daemon=True)
+        # Get extract prompt from selected category
+        all_prompts = self.get_selected_prompts()
+        extract_prompt = all_prompts.get("extract") if all_prompts else None
+
+        thread = threading.Thread(target=self._run_extract_process, args=(extract_prompt,), daemon=True)
         thread.start()
 
-    def _run_extract_process(self):
+    def _run_extract_process(self, extract_prompt: str = None):
         """Background thread tach san pham"""
         try:
             from ...sheets_reader import SheetsReader
@@ -1414,6 +1418,7 @@ class MainTab:
                 profile_path=profile_path,
                 output_folder=str(output_folder),
                 headless=not getattr(self.app.config, 'show_chrome', True),
+                custom_extract_prompt=extract_prompt,
             )
             self.current_gemini = gemini
 
@@ -1773,18 +1778,23 @@ class MainTab:
         self.add_log(f"📝 Đã chọn danh mục Script: {selected}")
 
     def get_selected_script_prompt(self) -> str:
-        """Get the prompt template for selected script category"""
+        """Get the script prompt template for selected category (backward compatible)"""
+        prompts = self.get_selected_prompts()
+        return prompts.get("script", "") if prompts else None
+
+    def get_selected_prompts(self) -> dict:
+        """Get all prompts for selected category"""
         selected = self.script_category_var.get() if hasattr(self, 'script_category_var') else "Mặc định"
         categories = getattr(self.app.config, 'script_categories', [])
 
         for cat in categories:
             if cat.get("name") == selected:
-                return cat.get("prompt", "")
+                return cat.get("prompts", {})
 
-        # Fallback to first category or None
+        # Fallback to first category
         if categories:
-            return categories[0].get("prompt", "")
-        return None
+            return categories[0].get("prompts", {})
+        return {}
 
     def refresh_script_categories(self):
         """Refresh the script categories dropdown"""
@@ -1881,15 +1891,15 @@ class MainTab:
         self.clear_table()
         self.add_log("📝 Bắt đầu tạo kịch bản và voice...")
 
-        # Get selected script prompt before starting thread
-        custom_prompt = self.get_selected_script_prompt()
+        # Get all prompts from selected category before starting thread
+        all_prompts = self.get_selected_prompts()
         selected_category = self.script_category_var.get() if hasattr(self, 'script_category_var') else "Mặc định"
         self.add_log(f"   Sử dụng danh mục: {selected_category}")
 
-        thread = threading.Thread(target=self._run_script_creation, args=(custom_prompt,), daemon=True)
+        thread = threading.Thread(target=self._run_script_creation, args=(all_prompts,), daemon=True)
         thread.start()
 
-    def _run_script_creation(self, custom_prompt: str = None):
+    def _run_script_creation(self, all_prompts: dict = None):
         """Background thread tạo kịch bản và voice"""
         try:
             from ...sheets_reader import SheetsReader
@@ -2009,7 +2019,8 @@ class MainTab:
                         script_result = gemini.generate_script(
                             product_name=item["name"],
                             product_description=item["description"],
-                            custom_prompt=custom_prompt
+                            custom_prompt=all_prompts.get("script") if all_prompts else None,
+                            sora_custom_prompt=all_prompts.get("sora") if all_prompts else None
                         )
 
                         if script_result.success:
@@ -2069,7 +2080,8 @@ class MainTab:
                         self.after_safe(lambda c=code: self.add_log(f"  Tạo Flow prompts (I, J, K, L)..."))
                         flow_prompts = gemini.generate_flow_prompts(
                             product_name=item["name"],
-                            product_description=item["description"]
+                            product_description=item["description"],
+                            custom_prompts=all_prompts
                         )
 
                         # Ghi vào sheet
@@ -2149,15 +2161,15 @@ class MainTab:
         self.add_log("🚀 Bắt đầu chạy FULL quy trình...")
         self.add_log("📋 Thứ tự: Tải ảnh → [Script || Lọc → Tách SP] → Flow → Sora → Grok → Edit → DONE")
 
-        # Get custom prompt for script generation
-        custom_prompt = self.get_selected_script_prompt()
+        # Get all prompts for script generation
+        all_prompts = self.get_selected_prompts()
         selected_category = self.script_category_var.get() if hasattr(self, 'script_category_var') else "Mặc định"
         self.add_log(f"   Danh mục Script: {selected_category}")
 
-        thread = threading.Thread(target=self._run_full_workflow, args=(custom_prompt,), daemon=True)
+        thread = threading.Thread(target=self._run_full_workflow, args=(all_prompts,), daemon=True)
         thread.start()
 
-    def _run_full_workflow(self, custom_prompt: str = None):
+    def _run_full_workflow(self, all_prompts: dict = None):
         """Background thread chạy full quy trình
 
         Luồng chạy:
@@ -2178,7 +2190,7 @@ class MainTab:
         def run_script_thread():
             """Chạy Script trong thread riêng"""
             try:
-                self._run_script_creation_internal(custom_prompt)
+                self._run_script_creation_internal(all_prompts)
             finally:
                 script_done.set()
 
@@ -2216,7 +2228,8 @@ class MainTab:
             if not self.stop_flag.is_set():
                 self.after_safe(lambda: self.add_log("\n  🔬 Đang tách sản phẩm..."))
                 try:
-                    self._run_extract_internal()
+                    extract_prompt = all_prompts.get("extract") if all_prompts else None
+                    self._run_extract_internal(extract_prompt)
                 except Exception as e:
                     self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi tách SP: {e}"))
 
@@ -2355,7 +2368,7 @@ class MainTab:
                             except:
                                 pass
 
-    def _run_extract_internal(self):
+    def _run_extract_internal(self, extract_prompt: str = None):
         """Chạy tách sản phẩm (internal) - dùng GeminiExtract với Chrome
         Tự động chuyển Chrome profile khác khi bị rate limit
         """
@@ -2403,7 +2416,8 @@ class MainTab:
                 extractor = GeminiExtract(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
-                    headless=not getattr(self.app.config, 'show_chrome', True)
+                    headless=not getattr(self.app.config, 'show_chrome', True),
+                    custom_extract_prompt=extract_prompt,
                 )
                 return True
 
@@ -2542,7 +2556,7 @@ class MainTab:
         except Exception as e:
             self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi lọc: {e}"))
 
-    def _run_script_creation_internal(self, custom_prompt: str = None):
+    def _run_script_creation_internal(self, all_prompts: dict = None):
         """Chạy tạo script (internal)"""
         try:
             from ...gemini_service import GeminiService
@@ -2588,7 +2602,11 @@ class MainTab:
 
                 # Tạo script nếu chưa có
                 if not script:
-                    result = gemini.generate_script(name, desc, custom_prompt=custom_prompt)
+                    result = gemini.generate_script(
+                        name, desc,
+                        custom_prompt=all_prompts.get("script") if all_prompts else None,
+                        sora_custom_prompt=all_prompts.get("sora") if all_prompts else None
+                    )
                     if result.success:
                         script = result.script
                         reader.sheet.update_acell(f"G{row_idx}", script)
@@ -3401,6 +3419,7 @@ class MainTab:
                         # Tạo kịch bản nếu chưa có
                         if not existing_script:
                             self.after_safe(lambda c=code: self.add_log(f"  [Script] 📝 {c}: tạo kịch bản..."))
+                            # Note: _run_full_workflow_old doesn't have prompts access
                             script_result = gemini.generate_script(name, description)
 
                             if script_result.success:

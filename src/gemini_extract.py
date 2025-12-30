@@ -98,6 +98,7 @@ class GeminiExtract:
         profile_path: str = None,
         output_folder: str = "OUTPUT",
         headless: bool = False,
+        custom_extract_prompt: str = None,
     ):
         self.chrome_path = chrome_path or r"C:\Program Files\Google\Chrome\Application\chrome.exe"
         self.profile_path = profile_path
@@ -105,6 +106,7 @@ class GeminiExtract:
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.headless = headless
         self._is_hidden = False
+        self.custom_extract_prompt = custom_extract_prompt
 
         # Cấu hình chrome_manager
         chrome_manager.set_profile(
@@ -165,8 +167,8 @@ class GeminiExtract:
         """Nhap prompt vao textarea"""
         self.log("Nhap prompt...")
 
-        # Dùng prompt cố định, không có product_name để tránh content filter
-        prompt = EXTRACT_PROMPT_TEMPLATE
+        # Dùng custom prompt nếu có, không thì dùng default
+        prompt = self.custom_extract_prompt if self.custom_extract_prompt else EXTRACT_PROMPT_TEMPLATE
         escaped_prompt = prompt.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
 
         js = f'''

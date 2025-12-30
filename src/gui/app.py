@@ -15,45 +15,15 @@ from datetime import datetime
 from .tabs.main_tab import MainTab
 from .tabs.settings_tab import SettingsTab
 
+# Import default prompts
+from ..default_prompts import (
+    get_default_category,
+    migrate_old_category,
+    PROMPT_KEYS
+)
+
 # Config
 CONFIG_FILE = Path(__file__).parent.parent.parent / "config" / "gui_config.json"
-
-# Default script prompt template
-DEFAULT_SCRIPT_PROMPT = """Bạn là người review sản phẩm tự nhiên, chân thực cho video AFFILIATE.
-
-SẢN PHẨM:
-- Tên: {product_name}
-- Mô tả chi tiết: {product_description}
-
-NHIỆM VỤ: Từ mô tả sản phẩm, LỌC RA các TÍNH NĂNG NỔI BẬT và viết kịch bản 30-40 giây.
-
-BỐI CẢNH VIDEO:
-- Phần đầu (SORA): Đã có hình ảnh bắt mắt của người mặc/dùng sản phẩm (5-10s)
-- Phần voice này: Tiếp nối, giải thích TẠI SAO sản phẩm này tốt
-- Video có GẮN GIỎ HÀNG (icon giỏ hàng màu vàng trong video)
-
-CẤU TRÚC KỊCH BẢN (4 phần):
-
-1. HOOK NHẸ (1-2 câu): Thu hút tiếp sau hình ảnh
-   - "Mình biết nhiều bạn đang thắc mắc về..."
-   - "Đây là món mình hay được hỏi nhất..."
-
-2. TÍNH NĂNG (2-3 điểm): Trích từ mô tả, nói ngắn gọn
-   - Chất liệu gì? Thiết kế như thế nào? Điểm đặc biệt?
-
-3. LÝ DO MUA (kích thích nhu cầu):
-   - Phù hợp với ai? Dịp nào? Giải quyết vấn đề gì?
-
-4. CALL TO ACTION (cho video AFFILIATE - chọn 1):
-   - "Bấm vào giỏ hàng màu vàng trong video để mua nha"
-   - "Ai thích thì bấm giỏ hàng để xem giá nha"
-
-YÊU CẦU:
-- Độ dài: 90-120 từ (30-40 giây)
-- Giọng điệu: Tự nhiên như nói chuyện
-- KHÔNG bịa thông tin không có trong mô tả
-
-CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
 
 
 @dataclass
@@ -350,14 +320,24 @@ class VideoCreatorApp(ctk.CTk):
                 config.music_folder = str(music_dir)
                 print(f"✅ Auto-detect music folder: {music_dir}")
 
-        # Auto-add default script category nếu chưa có
+        # Auto-add default prompt category nếu chưa có
         if not config.script_categories:
-            config.script_categories = [
-                {
-                    "name": "Mặc định",
-                    "prompt": DEFAULT_SCRIPT_PROMPT
-                }
-            ]
+            config.script_categories = [get_default_category()]
+        else:
+            # Migrate categories cũ sang format mới (6 prompts thay vì 1)
+            migrated_categories = []
+            for cat in config.script_categories:
+                if "prompts" not in cat:
+                    # Category cũ, cần migrate
+                    migrated_categories.append(migrate_old_category(cat))
+                else:
+                    # Đảm bảo có đủ 6 prompts
+                    default_prompts = get_default_category()["prompts"]
+                    for key in default_prompts:
+                        if key not in cat["prompts"] or not cat["prompts"][key]:
+                            cat["prompts"][key] = default_prompts[key]
+                    migrated_categories.append(cat)
+            config.script_categories = migrated_categories
 
         return config
 

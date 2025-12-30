@@ -9,6 +9,9 @@ import json
 import subprocess
 import threading
 
+# Import default prompts
+from ...default_prompts import PROMPT_KEYS, get_default_category
+
 
 class SettingsTab:
     """Settings Tab"""
@@ -463,8 +466,10 @@ class SettingsTab:
 
         # Name
         name = category.get("name", "Không tên")
-        prompt = category.get("prompt", "")
-        prompt_preview = prompt[:60] + "..." if len(prompt) > 60 else prompt
+
+        # Count prompts that have content
+        prompts = category.get("prompts", {})
+        num_prompts = sum(1 for key in PROMPT_KEYS if prompts.get(key))
 
         ctk.CTkLabel(
             row,
@@ -473,10 +478,15 @@ class SettingsTab:
             width=150
         ).pack(side="left", padx=10, pady=8)
 
-        # Prompt preview
+        # Show prompt count and types
+        prompt_types = [PROMPT_KEYS[key]["label"] for key in PROMPT_KEYS if prompts.get(key)]
+        types_preview = ", ".join(prompt_types[:3])
+        if len(prompt_types) > 3:
+            types_preview += f"... (+{len(prompt_types)-3})"
+
         ctk.CTkLabel(
             row,
-            text=prompt_preview.replace("\n", " "),
+            text=f"{num_prompts}/6 prompts: {types_preview}",
             font=ctk.CTkFont(size=11),
             text_color="gray",
             width=400,
@@ -912,7 +922,7 @@ Thư mục Profile:
 
 
 class ScriptCategoryDialog(ctk.CTkToplevel):
-    """Dialog for adding/editing script category"""
+    """Dialog for adding/editing script category with 6 prompt types"""
 
     def __init__(self, parent, app, category=None):
         super().__init__(parent)
@@ -920,10 +930,12 @@ class ScriptCategoryDialog(ctk.CTkToplevel):
         self.app = app
         self.category = category
         self.result = None
+        self.prompt_textboxes = {}  # Store textboxes for each prompt type
 
-        self.title("Thêm danh mục Script" if not category else "Sửa danh mục Script")
-        self.geometry("700x600")
+        self.title("Thêm danh mục Prompt" if not category else "Sửa danh mục Prompt")
+        self.geometry("900x700")
         self.resizable(True, True)
+        self.minsize(800, 600)
 
         # Make modal
         self.transient(parent)
@@ -935,123 +947,168 @@ class ScriptCategoryDialog(ctk.CTkToplevel):
     def center_window(self):
         """Center dialog"""
         self.update_idletasks()
-        x = (self.winfo_screenwidth() // 2) - (350)
-        y = (self.winfo_screenheight() // 2) - (300)
+        x = (self.winfo_screenwidth() // 2) - (450)
+        y = (self.winfo_screenheight() // 2) - (350)
         self.geometry(f"+{x}+{y}")
 
     def setup_ui(self):
-        """Setup dialog UI"""
-        # Name
-        ctk.CTkLabel(self, text="Tên danh mục:", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(20, 5))
-        self.name_entry = ctk.CTkEntry(self, width=400)
-        self.name_entry.pack(anchor="w", padx=20)
+        """Setup dialog UI with tabs for each prompt type"""
+        # Name row
+        name_frame = ctk.CTkFrame(self, fg_color="transparent")
+        name_frame.pack(fill="x", padx=20, pady=(20, 10))
+
+        ctk.CTkLabel(
+            name_frame,
+            text="Tên danh mục:",
+            font=ctk.CTkFont(size=13)
+        ).pack(side="left")
+
+        self.name_entry = ctk.CTkEntry(name_frame, width=300)
+        self.name_entry.pack(side="left", padx=10)
         if self.category:
             self.name_entry.insert(0, self.category.get("name", ""))
 
-        # Example categories
         ctk.CTkLabel(
-            self,
-            text="Ví dụ: Thời trang, Điện tử, Mỹ phẩm, Đồ gia dụng, Thực phẩm...",
+            name_frame,
+            text="(VD: Thời trang, Điện tử, Mỹ phẩm...)",
             font=ctk.CTkFont(size=11),
             text_color="gray"
-        ).pack(anchor="w", padx=20, pady=(2, 10))
+        ).pack(side="left", padx=5)
 
-        # Prompt
-        ctk.CTkLabel(self, text="Prompt template:", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(10, 5))
+        # Tab view for 6 prompt types
+        self.tabview = ctk.CTkTabview(self, height=500)
+        self.tabview.pack(fill="both", expand=True, padx=20, pady=(10, 10))
 
-        # Help text
-        ctk.CTkLabel(
-            self,
-            text="Dùng {product_name} và {product_description} làm placeholder cho tên và mô tả sản phẩm",
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
-        ).pack(anchor="w", padx=20, pady=(0, 5))
+        # Create tabs for each prompt type
+        for key, info in PROMPT_KEYS.items():
+            tab_name = info["label"]
+            self.tabview.add(tab_name)
 
-        # Text area for prompt
-        self.prompt_text = ctk.CTkTextbox(self, width=660, height=350)
-        self.prompt_text.pack(padx=20, pady=(5, 10), fill="both", expand=True)
+            tab = self.tabview.tab(tab_name)
 
-        if self.category:
-            self.prompt_text.insert("1.0", self.category.get("prompt", ""))
-        else:
-            # Insert template prompt for new category
-            default_template = """Bạn là chuyên gia review sản phẩm cho video AFFILIATE.
+            # Description
+            ctk.CTkLabel(
+                tab,
+                text=info["description"],
+                font=ctk.CTkFont(size=11),
+                text_color="gray"
+            ).pack(anchor="w", pady=(5, 5))
 
-SẢN PHẨM:
-- Tên: {product_name}
-- Mô tả: {product_description}
+            # Help text for placeholders
+            if key in ["script", "sora", "flow_image_1", "flow_image_2", "flow_video"]:
+                ctk.CTkLabel(
+                    tab,
+                    text="Placeholders: {product_name}, {product_description}",
+                    font=ctk.CTkFont(size=10),
+                    text_color="#888888"
+                ).pack(anchor="w", pady=(0, 5))
 
-NHIỆM VỤ: Viết kịch bản 30-40 giây giới thiệu sản phẩm.
+            # Text area for prompt
+            textbox = ctk.CTkTextbox(tab, height=350)
+            textbox.pack(fill="both", expand=True, pady=(5, 10))
 
-YÊU CẦU:
-- Độ dài: 90-120 từ
-- Giọng điệu tự nhiên, thân thiện
-- Có call to action: "Bấm vào giỏ hàng màu vàng trong video để mua nha"
+            # Load existing prompt or default
+            if self.category and "prompts" in self.category:
+                prompt_content = self.category["prompts"].get(key, "")
+                if not prompt_content:
+                    prompt_content = info["default"]
+            else:
+                prompt_content = info["default"]
 
-CHỈ TRẢ VỀ KỊCH BẢN:"""
-            self.prompt_text.insert("1.0", default_template)
+            textbox.insert("1.0", prompt_content)
+            self.prompt_textboxes[key] = textbox
 
-        # Buttons
+            # Reset button for each tab
+            btn_row = ctk.CTkFrame(tab, fg_color="transparent")
+            btn_row.pack(fill="x")
+
+            ctk.CTkButton(
+                btn_row,
+                text="🔄 Reset về mặc định",
+                command=lambda k=key: self.reset_single_prompt(k),
+                width=150,
+                height=28,
+                fg_color="#FF9800"
+            ).pack(side="right")
+
+        # Buttons frame
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=20, pady=20)
+        btn_frame.pack(fill="x", padx=20, pady=(10, 20))
 
         ctk.CTkButton(
             btn_frame,
-            text="💾 Lưu",
+            text="💾 Lưu tất cả",
             command=self.save,
-            width=100,
-            fg_color="green"
+            width=120,
+            height=40,
+            fg_color="green",
+            font=ctk.CTkFont(size=13, weight="bold")
         ).pack(side="left", padx=5)
 
         ctk.CTkButton(
             btn_frame,
             text="❌ Hủy",
             command=self.cancel,
-            width=100
+            width=100,
+            height=40
         ).pack(side="left", padx=5)
 
-        # Reset to default button (only when editing)
-        if self.category and self.category.get("name") == "Mặc định":
-            ctk.CTkButton(
-                btn_frame,
-                text="🔄 Reset mặc định",
-                command=self.reset_default,
-                width=120,
-                fg_color="#FF9800"
-            ).pack(side="right", padx=5)
+        ctk.CTkButton(
+            btn_frame,
+            text="🔄 Reset tất cả",
+            command=self.reset_all_prompts,
+            width=120,
+            height=40,
+            fg_color="#FF9800"
+        ).pack(side="right", padx=5)
 
     def save(self):
-        """Save category"""
+        """Save category with all 6 prompts"""
         name = self.name_entry.get().strip()
         if not name:
             messagebox.showerror("Lỗi", "Vui lòng nhập tên danh mục!")
             return
 
-        prompt = self.prompt_text.get("1.0", "end-1c").strip()
-        if not prompt:
-            messagebox.showerror("Lỗi", "Vui lòng nhập prompt template!")
-            return
+        # Collect all prompts
+        prompts = {}
+        for key, textbox in self.prompt_textboxes.items():
+            prompt_content = textbox.get("1.0", "end-1c").strip()
+            prompts[key] = prompt_content
 
-        # Check if {product_name} and {product_description} exist
-        if "{product_name}" not in prompt:
+        # Check script prompt has placeholders
+        script_prompt = prompts.get("script", "")
+        if script_prompt and "{product_name}" not in script_prompt:
             if not messagebox.askyesno(
                 "Cảnh báo",
-                "Prompt chưa có {product_name}. Tiếp tục lưu?"
+                "Prompt Kịch bản Voice chưa có {product_name}. Tiếp tục lưu?"
             ):
                 return
 
         self.result = {
             "name": name,
-            "prompt": prompt
+            "prompts": prompts
         }
         self.destroy()
 
-    def reset_default(self):
-        """Reset to default prompt"""
-        from ..app import DEFAULT_SCRIPT_PROMPT
-        self.prompt_text.delete("1.0", "end")
-        self.prompt_text.insert("1.0", DEFAULT_SCRIPT_PROMPT)
-        messagebox.showinfo("Thông báo", "Đã reset về prompt mặc định!")
+    def reset_single_prompt(self, key: str):
+        """Reset a single prompt to default"""
+        default_prompt = PROMPT_KEYS[key]["default"]
+        textbox = self.prompt_textboxes[key]
+        textbox.delete("1.0", "end")
+        textbox.insert("1.0", default_prompt)
+        messagebox.showinfo("Thông báo", f"Đã reset '{PROMPT_KEYS[key]['label']}' về mặc định!")
+
+    def reset_all_prompts(self):
+        """Reset all prompts to default"""
+        if not messagebox.askyesno("Xác nhận", "Reset TẤT CẢ prompts về mặc định?"):
+            return
+
+        for key, textbox in self.prompt_textboxes.items():
+            default_prompt = PROMPT_KEYS[key]["default"]
+            textbox.delete("1.0", "end")
+            textbox.insert("1.0", default_prompt)
+
+        messagebox.showinfo("Thông báo", "Đã reset tất cả prompts về mặc định!")
 
     def cancel(self):
         """Cancel and close"""

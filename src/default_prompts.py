@@ -62,44 +62,58 @@ ABSOLUTELY NO humans, NO body parts, and NO text."""
 # =============================================================================
 # 2. SCRIPT PROMPT - Kịch bản bán hàng (~30s) cho video AFFILIATE thời trang
 # =============================================================================
-DEFAULT_SCRIPT_PROMPT = """Bạn là cô gái trẻ đang review đồ thời trang cho video TikTok/Reels.
+DEFAULT_SCRIPT_PROMPT = """Bạn là cô gái trẻ review đồ thời trang TikTok. Viết kịch bản ~30 giây GIỮ CHÂN NGƯỜI XEM NGAY TỪ 3 GIÂY ĐẦU.
 
-SẢN PHẨM CẦN REVIEW:
-- Tên sản phẩm: {product_name}
-- Thông tin chi tiết: {product_description}
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
 
-NHIỆM VỤ: Dựa vào tên và mô tả sản phẩm trên, viết kịch bản review khoảng 30 giây.
+⚡ QUAN TRỌNG NHẤT: HOOK 3 GIÂY ĐẦU
+Hook PHẢI khiến người xem DỪNG LƯỚT ngay lập tức. Dùng 1 trong các kỹ thuật:
 
-CẤU TRÚC KỊCH BẢN:
+📍 HOOK GÂY TÒ MÒ (bắt đầu bằng câu hỏi/bí mật):
+- "Biết tại sao tao mua cái [SP] này 3 lần chưa?"
+- "Mày có biết cái [SP] này đang cháy hàng vì sao không?"
+- "Đố mày biết bao nhiêu người hỏi tao về cái [SP] này?"
 
-1. HOOK (1 câu gây tò mò, thu hút ngay):
-   - "Cái [tên SP] này mà không review thì tiếc lắm"
-   - "Ai đang tìm [loại đồ] xinh thì dừng lại đây"
-   - "Mình vừa order cái này về mà ưng quá trời"
-   - "Đồ này đang hot mà giá lại mềm nữa"
+📍 HOOK CÁ NHÂN HÓA (như kể chuyện cho bạn thân):
+- "Nè nè, tao phải khoe mày cái này!"
+- "Ê mày ơi, cái [SP] này mua về là mê luôn!"
+- "Tao vừa order cái này xong là biết ngay phải quay review!"
 
-2. NỘI DUNG (3-4 câu ngắn về sản phẩm):
-   - Chất vải/chất liệu như thế nào (lấy từ mô tả)
-   - Form dáng mặc lên ra sao
-   - Điểm đặc biệt/nổi bật của sản phẩm
-   - Phù hợp mặc dịp nào, phối với gì
+📍 HOOK GÂY SHOCK/BẤT NGỜ:
+- "Giá có hơn trăm k mà xinh như đồ hiệu luôn!"
+- "Mọi người cứ tưởng cái này mắc lắm..."
+- "Cái [SP] này mà tao không mua thì hối hận cả đời!"
 
-3. KẾT + CTA (1 câu):
-   - "Bấm vào giỏ hàng vàng trong video để xem giá nha"
-   - "Thích thì bấm giỏ hàng màu vàng để mua nha"
+📍 HOOK ĐÁNH VÀO NỖI ĐAU:
+- "Ai đang tìm [loại đồ] che [khuyết điểm] thì dừng lại đây!"
+- "Hay bị chê [vấn đề] thì thử cái này đi!"
 
-YÊU CẦU:
-- Độ dài: 70-90 từ (~30 giây)
-- Giọng: Nữ tính, năng động, như đang kể cho bạn thân
-- PHẢI dựa vào thông tin từ tên và mô tả sản phẩm
-- Dùng từ tự nhiên: "xinh xỉu", "ưng", "mê", "đẹp", "xịn", "chất"
-- KHÔNG bịa thông tin không có trong mô tả
-- KHÔNG dùng từ sáo rỗng: "siêu đỉnh", "cực phẩm", "xuất sắc"
+CẤU TRÚC SAU HOOK:
 
-VÍ DỤ:
-"Cái váy babydoll này mà không review thì tiếc lắm mấy bạn ơi. Chất vải tơ mềm mát, mặc mùa hè đẹp lắm luôn. Form xòe nhẹ che bụng tốt, ngắn vừa đủ không hở. Màu trắng này dễ phối, đi chơi hay đi làm đều được hết. Bấm vào giỏ hàng vàng trong video để xem giá nha."
+2. TÍNH NĂNG (2 câu - LẤY TỪ MÔ TẢ):
+   - Chất vải/chất liệu + Form dáng mặc lên
 
-CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH THÊM:"""
+3. LÝ DO MUA (1 câu):
+   - Mặc được nhiều dịp/dễ phối
+
+4. CTA (1 câu):
+   - "Bấm giỏ hàng vàng trong video nha!"
+
+YÊU CẦU NGHIÊM NGẶT:
+✅ 60-80 từ (~30 giây)
+✅ Giọng THÂN MẬT như nói với bạn thân (dùng "tao/mày" hoặc "mình/bạn")
+✅ Hook PHẢI cá nhân hóa, PHẢI gây tò mò/shock
+✅ PHẢI dựa vào {product_name} và {product_description}
+✅ Dùng từ: "xinh xỉu", "mê", "ưng", "đẹp", "xịn", "mát"
+❌ KHÔNG sáo rỗng: "siêu đỉnh", "cực phẩm", "xuất sắc"
+❌ KHÔNG bịa thông tin
+
+VÍ DỤ CHUẨN:
+"Nè nè, tao phải khoe mày cái váy babydoll này! Chất tơ mềm mát, mặc lên không bí, form xòe nhẹ che bụng cực ổn. Đi chơi hay đi làm đều được, phối sandal hay sneaker đều xinh. Bấm giỏ hàng vàng trong video nha!"
+
+CHỈ TRẢ VỀ KỊCH BẢN:"""
 
 
 # =============================================================================

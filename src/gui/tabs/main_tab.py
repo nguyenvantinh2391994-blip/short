@@ -1076,7 +1076,7 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("Không có mã nào có ảnh!"))
                 return
 
-            # Tạo worker
+            # Tạo worker với rate limit handling
             worker = GrokWorker(
                 input_folder=str(input_folder),
                 output_folder=str(output_folder),
@@ -1085,45 +1085,16 @@ class MainTab:
                 config=self.app.config,
                 browser_profiles=self.app.config.browser_profiles,
                 stop_flag=self.stop_flag,
-                on_log=lambda msg, lvl: self.after_safe(lambda: self.add_log(msg)),
+                on_log=lambda msg, lvl: self.after_safe(lambda m=msg: self.add_log(m)),
                 on_progress=lambda cur, tot, msg: None,
                 headless=not getattr(self.app.config, 'show_chrome', True),
             )
 
             self.current_worker = worker
 
-            # Xử lý từng mã
-            for item in valid_items:
-                if self.stop_flag.is_set():
-                    break
-
-                code = item["code"]
-                self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
-                self.after_safe(lambda c=code: self.add_log(f"🎬 Tạo video: {c}"))
-
-                try:
-                    result = worker.process_single_item(item, reader)
-
-                    if result and result.success:
-                        self.set_task_video_status(code, TaskItem.STATUS_DONE)
-                        self.set_task_render_status(code, TaskItem.STATUS_DONE)
-
-                        # Lưu output path
-                        if result.output_path:
-                            output_path = Path(result.output_path)
-                            self.tasks[code].output_path = output_path
-                            self.after_safe(lambda: self.update_task_row(code))
-                            self.after_safe(lambda c=code: self.add_log(f"✅ {c}: Hoàn thành!"))
-                    else:
-                        self.set_task_video_status(code, TaskItem.STATUS_ERROR)
-                        error_msg = getattr(result, 'error', 'Lỗi không xác định') if result else 'Không có kết quả'
-                        self.after_safe(lambda c=code, err=error_msg: self.add_log(f"❌ {c}: {err}"))
-
-                except Exception as e:
-                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
-                    self.after_safe(lambda c=code, err=str(e): self.add_log(f"❌ {c}: {err}"))
-
-            self.after_safe(lambda: self.add_log("✅ Hoàn thành tất cả!"))
+            # Dùng run() để có rate limit handling và auto switch profile
+            # run() sẽ tự động chuyển profile khi bị limit
+            worker.run()
 
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))

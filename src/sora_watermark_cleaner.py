@@ -5,8 +5,17 @@ Wrapper cho SoraWatermarkCleaner (https://github.com/linkedlist771/SoraWatermark
 Sử dụng YOLO để phát hiện và LAMA/E2FGVI để xóa watermark.
 
 Cài đặt:
-    pip install sorawm
-    hoặc clone repo và chạy: uv sync
+    pip install git+https://github.com/linkedlist771/SoraWatermarkCleaner.git
+
+    Hoặc clone và cài:
+    git clone https://github.com/linkedlist771/SoraWatermarkCleaner.git
+    cd SoraWatermarkCleaner
+    uv sync  # hoặc pip install -e .
+
+Yêu cầu:
+    - Python >= 3.12
+    - FFmpeg
+    - GPU với CUDA (khuyến nghị)
 """
 
 import subprocess
@@ -15,9 +24,18 @@ from pathlib import Path
 from typing import Optional, List, Callable
 from dataclasses import dataclass
 
-from rich.console import Console
-
-console = Console()
+try:
+    from rich.console import Console
+    console = Console()
+except ImportError:
+    # Fallback nếu không có rich
+    class FakeConsole:
+        def print(self, msg):
+            # Strip rich markup
+            import re
+            clean = re.sub(r'\[/?[a-z_]+\]', '', str(msg))
+            print(clean)
+    console = FakeConsole()
 
 
 @dataclass
@@ -32,21 +50,34 @@ class CleanResult:
 def check_sorawm_installed() -> bool:
     """Kiểm tra SoraWM đã được cài đặt chưa"""
     try:
-        from sorawm import SoraWM
+        from sorawm.core import SoraWM
+        from sorawm.schemas import CleanerType
         return True
     except ImportError:
         return False
 
 
 def install_sorawm() -> bool:
-    """Cài đặt SoraWM"""
+    """Cài đặt SoraWM từ GitHub"""
     try:
-        console.print("[yellow]Đang cài đặt sorawm...[/]")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "sorawm"])
-        console.print("[green]✓ Đã cài đặt sorawm thành công[/]")
+        console.print("[yellow]Đang cài đặt SoraWatermarkCleaner từ GitHub...[/]")
+        console.print("[yellow]Quá trình này có thể mất vài phút...[/]")
+
+        # Cài từ GitHub
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "git+https://github.com/linkedlist771/SoraWatermarkCleaner.git",
+            "--quiet"
+        ])
+
+        console.print("[green]✓ Đã cài đặt SoraWatermarkCleaner thành công[/]")
         return True
     except subprocess.CalledProcessError as e:
         console.print(f"[red]✗ Lỗi cài đặt: {e}[/]")
+        console.print("[yellow]Thử cài thủ công:[/]")
+        console.print("  git clone https://github.com/linkedlist771/SoraWatermarkCleaner.git")
+        console.print("  cd SoraWatermarkCleaner")
+        console.print("  pip install -e .")
         return False
 
 
@@ -55,53 +86,68 @@ class SoraWatermarkRemover:
     Xóa watermark Sora từ video.
 
     Sử dụng 2 model:
-    - LAMA: Nhanh, chất lượng tốt
-    - E2FGVI_HQ: Chậm hơn nhưng giữ temporal consistency
+    - LAMA: Nhanh, chất lượng tốt (khuyến nghị)
+    - E2FGVI_HQ: Chậm hơn nhưng giữ temporal consistency (cần GPU mạnh)
     """
 
     def __init__(
         self,
         cleaner_type: str = "lama",  # "lama" hoặc "e2fgvi_hq"
+        enable_torch_compile: bool = False,
         on_log: Optional[Callable[[str], None]] = None
     ):
         """
         Args:
             cleaner_type: Loại cleaner ("lama" hoặc "e2fgvi_hq")
+            enable_torch_compile: Bật torch compile cho E2FGVI_HQ (nhanh hơn nhưng mất temporal consistency)
             on_log: Callback để log
         """
         self.cleaner_type = cleaner_type.lower()
+        self.enable_torch_compile = enable_torch_compile
         self.on_log = on_log
         self._sora_wm = None
+        self._initialized = False
 
     def log(self, msg: str):
         """Log message"""
         if self.on_log:
             self.on_log(msg)
-        console.print(msg)
+        else:
+            console.print(msg)
 
     def setup(self) -> bool:
         """Khởi tạo SoraWM"""
+        if self._initialized:
+            return True
+
         if not check_sorawm_installed():
-            self.log("[yellow]SoraWM chưa được cài đặt. Đang cài...[/]")
+            self.log("[yellow]SoraWatermarkCleaner chưa được cài đặt.[/]")
             if not install_sorawm():
                 return False
 
         try:
-            from sorawm import SoraWM, CleanerType
+            from sorawm.core import SoraWM
+            from sorawm.schemas import CleanerType
 
             if self.cleaner_type == "e2fgvi_hq":
                 cleaner = CleanerType.E2FGVI_HQ
-                self.log("   Dùng E2FGVI_HQ (temporal consistency)")
+                self.log("   Dùng E2FGVI_HQ (temporal consistency, chậm)")
             else:
                 cleaner = CleanerType.LAMA
-                self.log("   Dùng LAMA (nhanh)")
+                self.log("   Dùng LAMA (nhanh, chất lượng tốt)")
 
-            self._sora_wm = SoraWM(cleaner_type=cleaner)
+            self._sora_wm = SoraWM(
+                cleaner_type=cleaner,
+                enable_torch_compile=self.enable_torch_compile
+            )
+            self._initialized = True
             self.log("[green]✓ SoraWM đã sẵn sàng[/]")
             return True
 
         except Exception as e:
             self.log(f"[red]✗ Lỗi khởi tạo SoraWM: {e}[/]")
+            import traceback
+            traceback.print_exc()
             return False
 
     def clean_video(
@@ -133,21 +179,25 @@ class SoraWatermarkRemover:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            if not self._sora_wm:
+            if not self._initialized:
                 if not self.setup():
                     return CleanResult(False, str(input_path), error="Không thể khởi tạo SoraWM")
 
-            self.log(f"   Xử lý: {input_path.name}")
+            self.log(f"   Đang xử lý: {input_path.name}")
+
+            # Chạy SoraWM
             self._sora_wm.run(input_path, output_path)
 
-            if output_path.exists():
+            if output_path.exists() and output_path.stat().st_size > 1000:
                 self.log(f"[green]   ✓ Đã xóa logo: {output_path.name}[/]")
                 return CleanResult(True, str(input_path), str(output_path))
             else:
-                return CleanResult(False, str(input_path), error="Output không được tạo")
+                return CleanResult(False, str(input_path), error="Output không được tạo hoặc file rỗng")
 
         except Exception as e:
             self.log(f"[red]   ✗ Lỗi: {e}[/]")
+            import traceback
+            traceback.print_exc()
             return CleanResult(False, str(input_path), error=str(e))
 
     def clean_folder(
@@ -262,14 +312,31 @@ def clean_sora_videos(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Xóa watermark Sora từ video")
+    parser = argparse.ArgumentParser(
+        description="Xóa watermark Sora từ video",
+        epilog="""
+Ví dụ:
+    python sora_watermark_cleaner.py video.mp4
+    python sora_watermark_cleaner.py video.mp4 -o output.mp4
+    python sora_watermark_cleaner.py ./videos/ --pattern "*.mp4"
+    python sora_watermark_cleaner.py video.mp4 -m e2fgvi_hq  # chất lượng cao hơn
+        """
+    )
     parser.add_argument("input", help="File video hoặc thư mục")
     parser.add_argument("-o", "--output", help="Output path")
     parser.add_argument("-m", "--model", default="lama", choices=["lama", "e2fgvi_hq"],
                        help="Model để dùng (default: lama)")
     parser.add_argument("--pattern", default="*.mp4", help="Pattern cho batch processing")
+    parser.add_argument("--install", action="store_true", help="Chỉ cài đặt SoraWM")
 
     args = parser.parse_args()
+
+    if args.install:
+        if check_sorawm_installed():
+            console.print("[green]✓ SoraWM đã được cài đặt[/]")
+        else:
+            install_sorawm()
+        sys.exit(0)
 
     input_path = Path(args.input)
 
@@ -281,10 +348,16 @@ if __name__ == "__main__":
             console.print(f"[green]✓ Đã xóa logo: {result.output_path}[/]")
         else:
             console.print(f"[red]✗ Lỗi: {result.error}[/]")
-    else:
+            sys.exit(1)
+    elif input_path.is_dir():
         # Batch processing
         remover = SoraWatermarkRemover(cleaner_type=args.model)
         results = remover.clean_folder(args.input, args.output, args.pattern)
 
         success = sum(1 for r in results if r.success)
         console.print(f"\n[green]Hoàn thành: {success}/{len(results)} video[/]")
+        if success < len(results):
+            sys.exit(1)
+    else:
+        console.print(f"[red]Không tìm thấy: {input_path}[/]")
+        sys.exit(1)

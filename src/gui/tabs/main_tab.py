@@ -1743,8 +1743,10 @@ class MainTab:
                 self.add_log(f"\n✅ Hoàn thành: {s}/{t} video"))
 
         except ImportError as e:
-            self.after_safe(lambda: self.add_log(f"❌ Chưa cài đặt SoraWM: {e}"))
-            self.after_safe(lambda: self.add_log("💡 Chạy: pip install sorawm"))
+            self.after_safe(lambda: self.add_log(f"❌ Chưa cài đặt SoraWatermarkCleaner: {e}"))
+            self.after_safe(lambda: self.add_log("💡 Cài đặt bằng lệnh:"))
+            self.after_safe(lambda: self.add_log("   pip install git+https://github.com/linkedlist771/SoraWatermarkCleaner.git"))
+            self.after_safe(lambda: self.add_log("📋 Yêu cầu: Python >= 3.12, FFmpeg, GPU CUDA"))
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))
             import traceback

@@ -821,15 +821,18 @@ class MainTab:
     def _save_shopee_cookies(self):
         """Lưu cookies và đóng browser"""
         try:
-            if hasattr(self, 'shopee_downloader') and self.shopee_downloader and self.shopee_downloader.driver:
-                # Lưu cookies
-                self.shopee_downloader._save_cookies_to_file(self.shopee_downloader.driver)
-                self.add_log("✓ Đã lưu cookies vào config/shopee_cookies.txt")
-
-                # Đóng browser
-                self.shopee_downloader.driver.quit()
-                self.shopee_downloader.driver = None
-                self.add_log("✓ Đã đóng browser")
+            if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
+                # DrissionPage version
+                if hasattr(self.shopee_downloader, 'manager') and self.shopee_downloader.manager:
+                    self.shopee_downloader.close()
+                    self.add_log("✓ Đã đóng browser (DrissionPage)")
+                # Selenium/old version
+                elif hasattr(self.shopee_downloader, 'driver') and self.shopee_downloader.driver:
+                    self.shopee_downloader._save_cookies_to_file(self.shopee_downloader.driver)
+                    self.add_log("✓ Đã lưu cookies vào config/shopee_cookies.txt")
+                    self.shopee_downloader.driver.quit()
+                    self.shopee_downloader.driver = None
+                    self.add_log("✓ Đã đóng browser")
 
             # Reset nút Login
             self.login_btn.configure(
@@ -4112,7 +4115,15 @@ class MainTab:
         try:
             # Đóng Shopee downloader browser
             if hasattr(self, 'shopee_downloader') and self.shopee_downloader:
-                if hasattr(self.shopee_downloader, 'driver') and self.shopee_downloader.driver:
+                # DrissionPage version
+                if hasattr(self.shopee_downloader, 'manager') and self.shopee_downloader.manager:
+                    try:
+                        self.shopee_downloader.close()
+                        print("✓ Đã đóng browser Shopee (DrissionPage)")
+                    except Exception as e:
+                        print(f"⚠️ Lỗi đóng browser Shopee: {e}")
+                # Selenium/old version
+                elif hasattr(self.shopee_downloader, 'driver') and self.shopee_downloader.driver:
                     try:
                         self.shopee_downloader.driver.quit()
                         self.shopee_downloader.driver = None

@@ -421,6 +421,24 @@ class ShopeeDrission:
         images = self.download_images(product, folder_name, skip_existing)
         return product, images
 
+    # Alias để tương thích với ShopeeDownloader
+    def get_product_and_download(
+        self,
+        url: str,
+        folder_name: str,
+        skip_existing: bool = True
+    ) -> Tuple[Optional[ShopeeProduct], List[str]]:
+        """Alias cho download_from_url để tương thích với ShopeeDownloader"""
+        return self.download_from_url(url, folder_name, skip_existing)
+
+    def close_browser(self):
+        """Alias cho close() để tương thích với ShopeeDownloader"""
+        self.close()
+
+    def toggle_browser_visibility(self):
+        """Toggle ẩn/hiện browser - tương thích với ShopeeDownloader"""
+        self.toggle_visibility()
+
 
 def download_shopee_with_drission(
     url: str,

@@ -560,6 +560,123 @@ class FlowDrission:
         return downloaded
 
     # =========================================================================
+    # UPLOAD IMAGE API
+    # =========================================================================
+
+    def upload_image(self, image_path: str, callback=None) -> str:
+        """
+        Upload ảnh lên Google Flow và nhận mediaGenerationId.
+
+        Args:
+            image_path: Đường dẫn tới file ảnh
+            callback: Callback để log
+
+        Returns:
+            mediaGenerationId string hoặc None nếu lỗi
+        """
+        import base64
+
+        if not self.captured.bearer_token:
+            if callback:
+                callback("❌ Chưa có Bearer token")
+            return None
+
+        image_path = Path(image_path)
+        if not image_path.exists():
+            if callback:
+                callback(f"❌ File không tồn tại: {image_path}")
+            return None
+
+        # Đọc và encode ảnh sang base64
+        try:
+            with open(image_path, 'rb') as f:
+                image_bytes = f.read()
+            raw_image_bytes = base64.b64encode(image_bytes).decode('utf-8')
+        except Exception as e:
+            if callback:
+                callback(f"❌ Không đọc được file: {e}")
+            return None
+
+        # Xác định mime type
+        suffix = image_path.suffix.lower()
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.webp': 'image/webp',
+            '.gif': 'image/gif'
+        }
+        mime_type = mime_types.get(suffix, 'image/jpeg')
+
+        # Tạo session ID
+        session_id = f";{int(time.time() * 1000)}"
+
+        # Build payload
+        payload = {
+            "imageInput": {
+                "aspectRatio": "IMAGE_ASPECT_RATIO_PORTRAIT",  # 9:16
+                "isUserUploaded": True,
+                "mimeType": mime_type,
+                "rawImageBytes": raw_image_bytes
+            },
+            "clientContext": {
+                "sessionId": session_id,
+                "tool": "ASSET_MANAGER"
+            }
+        }
+
+        # Build headers
+        headers = {
+            "Authorization": f"Bearer {self.captured.bearer_token}",
+            "Content-Type": "text/plain;charset=UTF-8",
+            "Accept": "*/*",
+            "Origin": "https://labs.google",
+            "Referer": "https://labs.google/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+
+        # Add x-browser-validation nếu có
+        if self.captured.x_browser_validation:
+            headers["x-browser-validation"] = self.captured.x_browser_validation
+            headers["x-browser-channel"] = "stable"
+            headers["x-browser-year"] = "2025"
+
+        url = "https://aisandbox-pa.googleapis.com/v1:uploadUserImage"
+
+        if callback:
+            callback(f"Uploading image: {image_path.name}...")
+
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=120
+            )
+
+            if response.status_code != 200:
+                if callback:
+                    callback(f"❌ Upload failed: {response.status_code} - {response.text[:200]}")
+                return None
+
+            result = response.json()
+            media_id = result.get("mediaGenerationId", {}).get("mediaGenerationId")
+
+            if media_id:
+                if callback:
+                    callback(f"✅ Upload thành công: {media_id[:30]}...")
+                return media_id
+            else:
+                if callback:
+                    callback(f"❌ Không nhận được mediaGenerationId")
+                return None
+
+        except Exception as e:
+            if callback:
+                callback(f"❌ Upload error: {e}")
+            return None
+
+    # =========================================================================
     # API CALLS WITH CAPTURED PAYLOAD
     # =========================================================================
 

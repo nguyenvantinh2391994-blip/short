@@ -755,10 +755,15 @@ class MainTab:
         thread.start()
 
     def _run_login_shopee(self):
-        """Background thread mở browser để login - dùng undetected_chromedriver"""
+        """Background thread mở browser để login - dùng DrissionPage hoặc undetected_chromedriver"""
         try:
-            import undetected_chromedriver as uc
-            from ...shopee_downloader import ShopeeDownloader
+            # Ưu tiên DrissionPage
+            try:
+                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+                use_drission = True
+            except ImportError:
+                from ...shopee_downloader import ShopeeDownloader
+                use_drission = False
 
             # Browser profile từ Settings
             chrome_path = None
@@ -774,24 +779,29 @@ class MainTab:
                 output_dir=self.app.config.input_folder,
                 chrome_path=chrome_path,
                 profile_path=profile_path,
-                headless=not getattr(self.app.config, 'show_chrome', True)
+                headless=False  # Cần hiện browser để login
             )
 
-            # Dùng undetected_chromedriver để bypass captcha
-            options = uc.ChromeOptions()
-
-            # Tạo driver với undetected_chromedriver
-            driver = uc.Chrome(
-                options=options,
-                user_data_dir=profile_path,
-            )
-
-            self.shopee_downloader.driver = driver
-            driver.set_window_position(100, 100)
-            driver.set_window_size(1200, 800)
-
-            # Vào trang Shopee
-            driver.get("https://shopee.vn")
+            if use_drission:
+                # DrissionPage - setup và navigate
+                if self.shopee_downloader.setup():
+                    self.shopee_downloader.manager.show_window()
+                    self.shopee_downloader.manager.navigate("https://shopee.vn", wait=3)
+                else:
+                    self.after_safe(lambda: self.add_log("❌ Không thể khởi tạo DrissionPage"))
+                    return
+            else:
+                # Fallback: undetected_chromedriver
+                import undetected_chromedriver as uc
+                options = uc.ChromeOptions()
+                driver = uc.Chrome(
+                    options=options,
+                    user_data_dir=profile_path,
+                )
+                self.shopee_downloader.driver = driver
+                driver.set_window_position(100, 100)
+                driver.set_window_size(1200, 800)
+                driver.get("https://shopee.vn")
             self.after_safe(lambda: self.add_log("✓ Đã mở Shopee"))
             self.after_safe(lambda: self.add_log("📌 Hãy đăng nhập và giải captcha nếu có"))
 
@@ -852,7 +862,11 @@ class MainTab:
     def _run_shopee_download(self):
         """Background thread tải ảnh"""
         try:
-            from ...shopee_downloader import ShopeeDownloader
+            # Ưu tiên DrissionPage, fallback sang PyAutoGUI version
+            try:
+                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+            except ImportError:
+                from ...shopee_downloader import ShopeeDownloader
             from ...sheets_reader import SheetsReader
 
             self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
@@ -994,7 +1008,11 @@ class MainTab:
         """Background thread tạo video"""
         try:
             from ...sheets_reader import SheetsReader
-            from ...shopee_downloader import ShopeeDownloader
+            # Ưu tiên DrissionPage
+            try:
+                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+            except ImportError:
+                from ...shopee_downloader import ShopeeDownloader
             from ..workers.grok_worker import GrokWorker
 
             self.after_safe(lambda: self.add_log("Kết nối Google Sheets..."))
@@ -1180,7 +1198,11 @@ class MainTab:
             chrome_path = first_profile.get("chrome_path")
             profile_path = first_profile.get("profile_path")
 
-        from ...shopee_downloader import ShopeeDownloader
+        # Ưu tiên DrissionPage
+        try:
+            from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+        except ImportError:
+            from ...shopee_downloader import ShopeeDownloader
         self.shopee_downloader = ShopeeDownloader(
             output_dir=self.app.config.input_folder,
             chrome_path=chrome_path,
@@ -2054,7 +2076,11 @@ class MainTab:
     def _run_shopee_download_internal(self):
         """Chạy tải ảnh Shopee (internal - không quản lý state)"""
         from ...sheets_reader import SheetsReader
-        from ...shopee_downloader import ShopeeDownloader
+        # Ưu tiên DrissionPage
+        try:
+            from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+        except ImportError:
+            from ...shopee_downloader import ShopeeDownloader
         from pathlib import Path
 
         reader = SheetsReader(
@@ -2381,7 +2407,11 @@ class MainTab:
         RETRY_DELAY = 30  # giây
 
         try:
-            from ...chrome_token_extractor import ChromeTokenExtractor
+            # Ưu tiên DrissionPage, fallback sang PyAutoGUI version
+            try:
+                from ...flow_drission import FlowDrission as ChromeTokenExtractor
+            except ImportError:
+                from ...chrome_token_extractor import ChromeTokenExtractor
             from ...sheets_reader import SheetsReader
             from pathlib import Path
 
@@ -2890,7 +2920,11 @@ class MainTab:
         """Background thread chạy full quy trình (OLD - kept for reference)"""
         try:
             from ...sheets_reader import SheetsReader
-            from ...shopee_downloader import ShopeeDownloader
+            # Ưu tiên DrissionPage
+            try:
+                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+            except ImportError:
+                from ...shopee_downloader import ShopeeDownloader
             from ...gemini_service import GeminiService
             from ..workers.grok_worker import GrokWorker
             import time
@@ -3572,7 +3606,11 @@ class MainTab:
         """Background thread chạy Flow"""
         try:
             from ...sheets_reader import SheetsReader
-            from ...chrome_token_extractor import ChromeTokenExtractor
+            # Ưu tiên DrissionPage, fallback sang PyAutoGUI version
+            try:
+                from ...flow_drission import FlowDrission as ChromeTokenExtractor
+            except ImportError:
+                from ...chrome_token_extractor import ChromeTokenExtractor
 
             # === BƯỚC 1: Lấy Bearer Token từ Chrome ===
             self.after_safe(lambda: self.add_log("🔑 Đang lấy Bearer Token từ Chrome..."))

@@ -176,7 +176,11 @@ class GrokWorker:
         merger: Any
     ) -> bool:
         """Xử lý 1 mã sản phẩm với 1 profile"""
-        from ...grok_selenium import GrokSeleniumAutomation
+        # Ưu tiên DrissionPage, fallback sang Selenium nếu chưa cài
+        try:
+            from ...grok_drission import GrokDrissionAutomation as GrokAutomation
+        except ImportError:
+            from ...grok_selenium import GrokSeleniumAutomation as GrokAutomation
         from ...video_merger import get_random_music, get_voice_for_code
 
         code = item["code"]
@@ -190,8 +194,8 @@ class GrokWorker:
         chrome_path = profile.get("chrome_path", r"C:\Program Files\Google\Chrome\Application\chrome.exe")
         profile_path = profile.get("profile_path", "")
 
-        # Create automation instance for this profile
-        automation = GrokSeleniumAutomation(
+        # Create automation instance for this profile (DrissionPage hoặc Selenium)
+        automation = GrokAutomation(
             chrome_path=chrome_path,
             profile_path=profile_path,
             headless=self.headless,
@@ -261,10 +265,16 @@ class GrokWorker:
 
                 # Navigate về Grok cho ảnh tiếp theo
                 if j < len(images) - 1 and result.success:
-                    automation.driver.execute_script(
-                        "window.location.href = 'https://grok.com/imagine';"
-                    )
-                    time.sleep(3)
+                    # Hỗ trợ cả DrissionPage và Selenium
+                    if hasattr(automation, 'manager') and automation.manager:
+                        # DrissionPage
+                        automation.manager.navigate("https://grok.com/imagine", wait=3)
+                    elif hasattr(automation, 'driver') and automation.driver:
+                        # Selenium
+                        automation.driver.execute_script(
+                            "window.location.href = 'https://grok.com/imagine';"
+                        )
+                        time.sleep(3)
                     automation.install_video_hook()
 
             if not created_videos:
@@ -306,8 +316,11 @@ class GrokWorker:
             self.log(f"Chế độ ẩn: {'BẬT' if self.headless else 'TẮT'}", "info")
             self.log(f"Số profile (chạy song song): {num_profiles}", "info")
 
-            # Import modules
-            from ...grok_selenium import GrokSeleniumAutomation
+            # Import modules - DrissionPage (ưu tiên) hoặc Selenium
+            try:
+                from ...grok_drission import GrokDrissionAutomation as GrokAutomation
+            except ImportError:
+                from ...grok_selenium import GrokSeleniumAutomation as GrokAutomation
             from ...sheets_reader import SheetsReader
             from ...video_merger import VideoMerger
 

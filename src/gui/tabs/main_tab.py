@@ -757,13 +757,18 @@ class MainTab:
     def _run_login_shopee(self):
         """Background thread mở browser để login - dùng DrissionPage hoặc undetected_chromedriver"""
         try:
-            # Ưu tiên DrissionPage
-            try:
-                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
-                use_drission = True
-            except ImportError:
+            # Chọn mode dựa trên Settings
+            browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+            use_drission = False
+
+            if browser_mode == "drission":
+                try:
+                    from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+                    use_drission = True
+                except ImportError:
+                    from ...shopee_downloader import ShopeeDownloader
+            else:
                 from ...shopee_downloader import ShopeeDownloader
-                use_drission = False
 
             # Browser profile từ Settings
             chrome_path = None
@@ -865,10 +870,14 @@ class MainTab:
     def _run_shopee_download(self):
         """Background thread tải ảnh"""
         try:
-            # Ưu tiên DrissionPage, fallback sang PyAutoGUI version
-            try:
-                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
-            except ImportError:
+            # Chọn mode dựa trên Settings
+            browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+            if browser_mode == "drission":
+                try:
+                    from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+                except ImportError:
+                    from ...shopee_downloader import ShopeeDownloader
+            else:
                 from ...shopee_downloader import ShopeeDownloader
             from ...sheets_reader import SheetsReader
 
@@ -1011,10 +1020,14 @@ class MainTab:
         """Background thread tạo video"""
         try:
             from ...sheets_reader import SheetsReader
-            # Ưu tiên DrissionPage
-            try:
-                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
-            except ImportError:
+            # Chọn mode dựa trên Settings
+            browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+            if browser_mode == "drission":
+                try:
+                    from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+                except ImportError:
+                    from ...shopee_downloader import ShopeeDownloader
+            else:
                 from ...shopee_downloader import ShopeeDownloader
             from ..workers.grok_worker import GrokWorker
 
@@ -1201,10 +1214,14 @@ class MainTab:
             chrome_path = first_profile.get("chrome_path")
             profile_path = first_profile.get("profile_path")
 
-        # Ưu tiên DrissionPage
-        try:
-            from ...shopee_drission import ShopeeDrission as ShopeeDownloader
-        except ImportError:
+        # Chọn mode dựa trên Settings
+        browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+        if browser_mode == "drission":
+            try:
+                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+            except ImportError:
+                from ...shopee_downloader import ShopeeDownloader
+        else:
             from ...shopee_downloader import ShopeeDownloader
         self.shopee_downloader = ShopeeDownloader(
             output_dir=self.app.config.input_folder,
@@ -2079,10 +2096,14 @@ class MainTab:
     def _run_shopee_download_internal(self):
         """Chạy tải ảnh Shopee (internal - không quản lý state)"""
         from ...sheets_reader import SheetsReader
-        # Ưu tiên DrissionPage
-        try:
-            from ...shopee_drission import ShopeeDrission as ShopeeDownloader
-        except ImportError:
+        # Chọn mode dựa trên Settings
+        browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+        if browser_mode == "drission":
+            try:
+                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+            except ImportError:
+                from ...shopee_downloader import ShopeeDownloader
+        else:
             from ...shopee_downloader import ShopeeDownloader
         from pathlib import Path
 
@@ -2410,10 +2431,14 @@ class MainTab:
         RETRY_DELAY = 30  # giây
 
         try:
-            # Ưu tiên DrissionPage, fallback sang PyAutoGUI version
-            try:
-                from ...flow_drission import FlowDrission as ChromeTokenExtractor
-            except ImportError:
+            # Chọn mode dựa trên Settings
+            browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+            if browser_mode == "drission":
+                try:
+                    from ...flow_drission import FlowDrission as ChromeTokenExtractor
+                except ImportError:
+                    from ...chrome_token_extractor import ChromeTokenExtractor
+            else:
                 from ...chrome_token_extractor import ChromeTokenExtractor
             from ...sheets_reader import SheetsReader
             from pathlib import Path
@@ -2923,10 +2948,14 @@ class MainTab:
         """Background thread chạy full quy trình (OLD - kept for reference)"""
         try:
             from ...sheets_reader import SheetsReader
-            # Ưu tiên DrissionPage
-            try:
-                from ...shopee_drission import ShopeeDrission as ShopeeDownloader
-            except ImportError:
+            # Chọn mode dựa trên Settings
+            browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+            if browser_mode == "drission":
+                try:
+                    from ...shopee_drission import ShopeeDrission as ShopeeDownloader
+                except ImportError:
+                    from ...shopee_downloader import ShopeeDownloader
+            else:
                 from ...shopee_downloader import ShopeeDownloader
             from ...gemini_service import GeminiService
             from ..workers.grok_worker import GrokWorker
@@ -3609,10 +3638,14 @@ class MainTab:
         """Background thread chạy Flow"""
         try:
             from ...sheets_reader import SheetsReader
-            # Ưu tiên DrissionPage, fallback sang PyAutoGUI version
-            try:
-                from ...flow_drission import FlowDrission as ChromeTokenExtractor
-            except ImportError:
+            # Chọn mode dựa trên Settings
+            browser_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+            if browser_mode == "drission":
+                try:
+                    from ...flow_drission import FlowDrission as ChromeTokenExtractor
+                except ImportError:
+                    from ...chrome_token_extractor import ChromeTokenExtractor
+            else:
                 from ...chrome_token_extractor import ChromeTokenExtractor
 
             # === BƯỚC 1: Lấy Bearer Token từ Chrome ===

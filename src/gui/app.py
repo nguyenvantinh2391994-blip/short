@@ -59,6 +59,9 @@ class AppConfig:
     wait_after_done: int = 15
     max_retries: int = 3
 
+    # Browser mode: "selenium" (cũ) hoặc "drission" (mới)
+    browser_mode: str = "selenium"  # Mặc định dùng mode cũ cho an toàn
+
     # Giao diện
     theme: str = "dark"
 

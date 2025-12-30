@@ -176,11 +176,20 @@ class GrokWorker:
         merger: Any
     ) -> bool:
         """Xử lý 1 mã sản phẩm với 1 profile"""
-        # Ưu tiên DrissionPage, fallback sang Selenium nếu chưa cài
-        try:
-            from ...grok_drission import GrokDrissionAutomation as GrokAutomation
-        except ImportError:
+        # Chọn mode dựa trên config: "selenium" (cũ) hoặc "drission" (mới)
+        browser_mode = getattr(self.config, 'browser_mode', 'selenium') if self.config else 'selenium'
+
+        if browser_mode == "drission":
+            try:
+                from ...grok_drission import GrokDrissionAutomation as GrokAutomation
+                self.log("   Dùng mode: DrissionPage", "info")
+            except ImportError:
+                from ...grok_selenium import GrokSeleniumAutomation as GrokAutomation
+                self.log("   DrissionPage chưa cài, fallback sang Selenium", "warning")
+        else:
             from ...grok_selenium import GrokSeleniumAutomation as GrokAutomation
+            self.log("   Dùng mode: Selenium (cũ)", "info")
+
         from ...video_merger import get_random_music, get_voice_for_code
 
         code = item["code"]
@@ -316,11 +325,9 @@ class GrokWorker:
             self.log(f"Chế độ ẩn: {'BẬT' if self.headless else 'TẮT'}", "info")
             self.log(f"Số profile (chạy song song): {num_profiles}", "info")
 
-            # Import modules - DrissionPage (ưu tiên) hoặc Selenium
-            try:
-                from ...grok_drission import GrokDrissionAutomation as GrokAutomation
-            except ImportError:
-                from ...grok_selenium import GrokSeleniumAutomation as GrokAutomation
+            # Log browser mode
+            browser_mode = getattr(self.config, 'browser_mode', 'selenium') if self.config else 'selenium'
+            self.log(f"Browser mode: {browser_mode}", "info")
             from ...sheets_reader import SheetsReader
             from ...video_merger import VideoMerger
 

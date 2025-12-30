@@ -462,6 +462,45 @@ class SettingsTab:
             font=ctk.CTkFont(size=11)
         ).pack(side="left", padx=10)
 
+        # Browser mode selector
+        mode_row = ctk.CTkFrame(frame, fg_color="transparent")
+        mode_row.pack(anchor="w", padx=15, pady=(10, 15))
+
+        ctk.CTkLabel(
+            mode_row,
+            text="Browser Mode:",
+            font=ctk.CTkFont(size=13)
+        ).pack(side="left")
+
+        # Mode options
+        current_mode = getattr(self.app.config, 'browser_mode', 'selenium')
+        self.browser_mode_var = ctk.StringVar(value=current_mode)
+
+        selenium_radio = ctk.CTkRadioButton(
+            mode_row,
+            text="Selenium (cũ - ổn định)",
+            variable=self.browser_mode_var,
+            value="selenium",
+            font=ctk.CTkFont(size=12)
+        )
+        selenium_radio.pack(side="left", padx=(15, 5))
+
+        drission_radio = ctk.CTkRadioButton(
+            mode_row,
+            text="DrissionPage (mới)",
+            variable=self.browser_mode_var,
+            value="drission",
+            font=ctk.CTkFont(size=12)
+        )
+        drission_radio.pack(side="left", padx=5)
+
+        ctk.CTkLabel(
+            mode_row,
+            text="(Cần pip install DrissionPage)",
+            text_color="gray",
+            font=ctk.CTkFont(size=10)
+        ).pack(side="left", padx=5)
+
     def setup_save_button(self):
         """Save button"""
         btn_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
@@ -516,6 +555,9 @@ class SettingsTab:
 
         # Chrome visibility
         self.app.config.show_chrome = self.show_chrome_var.get()
+
+        # Browser mode
+        self.app.config.browser_mode = self.browser_mode_var.get()
 
         # Save
         self.app.save_config()

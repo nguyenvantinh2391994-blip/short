@@ -1076,7 +1076,7 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("Không có mã nào có ảnh!"))
                 return
 
-            # Tạo worker với rate limit handling
+            # Tạo worker
             worker = GrokWorker(
                 input_folder=str(input_folder),
                 output_folder=str(output_folder),
@@ -1092,9 +1092,73 @@ class MainTab:
 
             self.current_worker = worker
 
-            # Dùng run() để có rate limit handling và auto switch profile
-            # run() sẽ tự động chuyển profile khi bị limit
-            worker.run()
+            # === RATE LIMIT HANDLING ===
+            # Track profile rate limits
+            profiles = self.app.config.browser_profiles or []
+            for p in profiles:
+                p["rate_limited"] = False
+
+            current_profile_idx = 0
+
+            def get_available_profile():
+                nonlocal current_profile_idx
+                for i in range(len(profiles)):
+                    idx = (current_profile_idx + i) % len(profiles)
+                    if not profiles[idx].get("rate_limited", False):
+                        current_profile_idx = idx
+                        return profiles[idx]
+                return None
+
+            # Queue items
+            pending_queue = list(valid_items)
+
+            while pending_queue and not self.stop_flag.is_set():
+                profile = get_available_profile()
+                if not profile:
+                    self.after_safe(lambda: self.add_log("❌ Tất cả profile đều bị rate limit!"))
+                    break
+
+                item = pending_queue.pop(0)
+                code = item["code"]
+                self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
+                self.after_safe(lambda c=code, p=profile.get("name", "?"):
+                    self.add_log(f"🎬 Tạo video: {c} (Profile: {p})"))
+
+                try:
+                    result = worker.process_single_item(item, reader, profile)
+
+                    if result:
+                        if hasattr(result, 'error') and result.error == "RATE_LIMIT":
+                            # Mark profile as rate limited
+                            profile["rate_limited"] = True
+                            self.after_safe(lambda p=profile.get("name"):
+                                self.add_log(f"🚫 Profile '{p}' bị RATE LIMIT!"))
+
+                            # Re-queue item
+                            if hasattr(result, 'remaining_images') and result.remaining_images:
+                                new_item = item.copy()
+                                new_item["images"] = result.remaining_images
+                                pending_queue.insert(0, new_item)
+                            else:
+                                pending_queue.insert(0, item)
+
+                            # Move to next profile
+                            current_profile_idx = (current_profile_idx + 1) % len(profiles)
+                            continue
+
+                        if result.success:
+                            self.set_task_video_status(code, TaskItem.STATUS_DONE)
+                            self.after_safe(lambda c=code: self.add_log(f"✅ {c}: Hoàn thành!"))
+                        else:
+                            self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                            error_msg = getattr(result, 'error', 'Lỗi') if result else 'Lỗi'
+                            self.after_safe(lambda c=code, e=error_msg: self.add_log(f"❌ {c}: {e}"))
+
+                except Exception as e:
+                    self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+                    self.after_safe(lambda c=code, e=str(e): self.add_log(f"❌ {c}: {e}"))
+
+            self.after_safe(lambda: self.add_log("✅ Grok hoàn thành!"))
 
         except Exception as e:
             self.after_safe(lambda: self.add_log(f"❌ Lỗi: {e}"))

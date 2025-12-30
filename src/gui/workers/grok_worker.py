@@ -112,7 +112,7 @@ class GrokWorker:
             images.extend(folder.glob(f"*{ext.upper()}"))
         return sorted(images)
 
-    def process_single_item(self, item: Dict, reader: Any = None) -> Any:
+    def process_single_item(self, item: Dict, reader: Any = None, profile: Dict = None) -> Any:
         """
         Simplified method cho main_tab.py
         Tự động chọn profile và tạo merger
@@ -120,6 +120,7 @@ class GrokWorker:
         Args:
             item: Dict chứa code, row, images
             reader: SheetsReader (optional)
+            profile: Browser profile để dùng (optional, nếu không có sẽ dùng profile đầu tiên)
 
         Returns:
             Object với success và output_path
@@ -131,12 +132,13 @@ class GrokWorker:
             success: bool = False
             output_path: str = ""
             error: str = ""
+            remaining_images: list = None
 
-        # Lấy profile đầu tiên
-        if not self.browser_profiles:
-            return Result(success=False, error="Không có browser profile")
-
-        profile = self.browser_profiles[0]
+        # Lấy profile
+        if profile is None:
+            if not self.browser_profiles:
+                return Result(success=False, error="Không có browser profile")
+            profile = self.browser_profiles[0]
 
         # Tạo merger
         from ...video_merger import VideoMerger
@@ -156,7 +158,8 @@ class GrokWorker:
                 return Result(
                     success=result.success,
                     output_path=result.output_path or str(self.output_folder / f"{code}.mp4") if result.success else "",
-                    error=result.error
+                    error=result.error,
+                    remaining_images=result.remaining_images if hasattr(result, 'remaining_images') else None
                 )
             else:
                 # Fallback cho boolean return (không nên xảy ra)

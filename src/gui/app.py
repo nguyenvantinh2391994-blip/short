@@ -18,6 +18,43 @@ from .tabs.settings_tab import SettingsTab
 # Config
 CONFIG_FILE = Path(__file__).parent.parent.parent / "config" / "gui_config.json"
 
+# Default script prompt template
+DEFAULT_SCRIPT_PROMPT = """Bạn là người review sản phẩm tự nhiên, chân thực cho video AFFILIATE.
+
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả chi tiết: {product_description}
+
+NHIỆM VỤ: Từ mô tả sản phẩm, LỌC RA các TÍNH NĂNG NỔI BẬT và viết kịch bản 30-40 giây.
+
+BỐI CẢNH VIDEO:
+- Phần đầu (SORA): Đã có hình ảnh bắt mắt của người mặc/dùng sản phẩm (5-10s)
+- Phần voice này: Tiếp nối, giải thích TẠI SAO sản phẩm này tốt
+- Video có GẮN GIỎ HÀNG (icon giỏ hàng màu vàng trong video)
+
+CẤU TRÚC KỊCH BẢN (4 phần):
+
+1. HOOK NHẸ (1-2 câu): Thu hút tiếp sau hình ảnh
+   - "Mình biết nhiều bạn đang thắc mắc về..."
+   - "Đây là món mình hay được hỏi nhất..."
+
+2. TÍNH NĂNG (2-3 điểm): Trích từ mô tả, nói ngắn gọn
+   - Chất liệu gì? Thiết kế như thế nào? Điểm đặc biệt?
+
+3. LÝ DO MUA (kích thích nhu cầu):
+   - Phù hợp với ai? Dịp nào? Giải quyết vấn đề gì?
+
+4. CALL TO ACTION (cho video AFFILIATE - chọn 1):
+   - "Bấm vào giỏ hàng màu vàng trong video để mua nha"
+   - "Ai thích thì bấm giỏ hàng để xem giá nha"
+
+YÊU CẦU:
+- Độ dài: 90-120 từ (30-40 giây)
+- Giọng điệu: Tự nhiên như nói chuyện
+- KHÔNG bịa thông tin không có trong mô tả
+
+CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
+
 
 @dataclass
 class BrowserProfile:
@@ -61,6 +98,10 @@ class AppConfig:
 
     # Browser mode: "selenium" (cũ) hoặc "drission" (mới)
     browser_mode: str = "selenium"  # Mặc định dùng mode cũ cho an toàn
+
+    # Script prompt categories - mỗi ngành có prompt khác nhau
+    script_categories: List[Dict] = field(default_factory=list)
+    selected_category: str = "Mặc định"  # Danh mục đang chọn
 
     # Giao diện
     theme: str = "dark"
@@ -308,6 +349,15 @@ class VideoCreatorApp(ctk.CTk):
             if music_dir.exists() and music_dir.is_dir():
                 config.music_folder = str(music_dir)
                 print(f"✅ Auto-detect music folder: {music_dir}")
+
+        # Auto-add default script category nếu chưa có
+        if not config.script_categories:
+            config.script_categories = [
+                {
+                    "name": "Mặc định",
+                    "prompt": DEFAULT_SCRIPT_PROMPT
+                }
+            ]
 
         return config
 

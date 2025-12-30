@@ -36,6 +36,9 @@ class SettingsTab:
         # Gemini API section
         self.setup_gemini_config()
 
+        # Script Prompts section
+        self.setup_script_prompts()
+
         # Advanced section
         self.setup_advanced_config()
 
@@ -398,6 +401,146 @@ class SettingsTab:
         else:
             self.gemini_key_entry.configure(show="*")
 
+    def setup_script_prompts(self):
+        """Script prompts management by category"""
+        frame = ctk.CTkFrame(self.scroll_frame)
+        frame.pack(fill="x", padx=10, pady=10)
+
+        # Header
+        header = ctk.CTkFrame(frame, fg_color="transparent")
+        header.pack(fill="x", padx=15, pady=(15, 10))
+
+        ctk.CTkLabel(
+            header,
+            text="📝 Script Prompts",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header,
+            text="➕ Thêm danh mục",
+            command=self.add_script_category,
+            width=130
+        ).pack(side="right")
+
+        # Description
+        ctk.CTkLabel(
+            frame,
+            text="Mỗi ngành cần prompt khác nhau. Chọn danh mục phù hợp khi chạy để có kết quả tốt nhất.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        ).pack(anchor="w", padx=15, pady=(0, 10))
+
+        # Categories list
+        self.categories_frame = ctk.CTkFrame(frame)
+        self.categories_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        self.refresh_categories_list()
+
+    def refresh_categories_list(self):
+        """Refresh the categories list"""
+        # Clear existing
+        for widget in self.categories_frame.winfo_children():
+            widget.destroy()
+
+        categories = self.app.config.script_categories
+
+        if not categories:
+            ctk.CTkLabel(
+                self.categories_frame,
+                text="Chưa có danh mục nào.",
+                text_color="gray"
+            ).pack(pady=20)
+            return
+
+        for i, category in enumerate(categories):
+            self.create_category_row(i, category)
+
+    def create_category_row(self, index: int, category: dict):
+        """Create a row for a script category"""
+        row = ctk.CTkFrame(self.categories_frame)
+        row.pack(fill="x", pady=2)
+
+        # Name
+        name = category.get("name", "Không tên")
+        prompt = category.get("prompt", "")
+        prompt_preview = prompt[:60] + "..." if len(prompt) > 60 else prompt
+
+        ctk.CTkLabel(
+            row,
+            text=name,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            width=150
+        ).pack(side="left", padx=10, pady=8)
+
+        # Prompt preview
+        ctk.CTkLabel(
+            row,
+            text=prompt_preview.replace("\n", " "),
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+            width=400,
+            anchor="w"
+        ).pack(side="left", padx=5)
+
+        # Buttons
+        ctk.CTkButton(
+            row,
+            text="✏️ Sửa",
+            width=60,
+            command=lambda: self.edit_script_category(index)
+        ).pack(side="right", padx=2)
+
+        # Only show delete button if not "Mặc định"
+        if name != "Mặc định":
+            ctk.CTkButton(
+                row,
+                text="🗑️",
+                width=30,
+                fg_color="red",
+                command=lambda: self.delete_script_category(index)
+            ).pack(side="right", padx=2)
+
+    def add_script_category(self):
+        """Add new script category"""
+        dialog = ScriptCategoryDialog(self.parent, self.app, None)
+        self.parent.wait_window(dialog)
+
+        if dialog.result:
+            self.app.config.script_categories.append(dialog.result)
+            self.app.save_config()
+            self.refresh_categories_list()
+            self._refresh_main_tab_categories()
+            self.app.log(f"Đã thêm danh mục: {dialog.result.get('name')}")
+
+    def edit_script_category(self, index: int):
+        """Edit existing script category"""
+        category = self.app.config.script_categories[index]
+        dialog = ScriptCategoryDialog(self.parent, self.app, category)
+        self.parent.wait_window(dialog)
+
+        if dialog.result:
+            self.app.config.script_categories[index] = dialog.result
+            self.app.save_config()
+            self.refresh_categories_list()
+            self._refresh_main_tab_categories()
+            self.app.log(f"Đã cập nhật danh mục: {dialog.result.get('name')}")
+
+    def delete_script_category(self, index: int):
+        """Delete script category"""
+        name = self.app.config.script_categories[index].get("name")
+        if messagebox.askyesno("Xác nhận", f"Bạn có chắc muốn xóa danh mục '{name}'?"):
+            del self.app.config.script_categories[index]
+            self.app.save_config()
+            self.refresh_categories_list()
+            self._refresh_main_tab_categories()
+            self.app.log(f"Đã xóa danh mục: {name}")
+
+    def _refresh_main_tab_categories(self):
+        """Refresh script categories dropdown on main_tab"""
+        if hasattr(self.app, 'main_tab') and hasattr(self.app.main_tab, 'refresh_script_categories'):
+            self.app.main_tab.refresh_script_categories()
+
     def setup_advanced_config(self):
         """Advanced settings"""
         frame = ctk.CTkFrame(self.scroll_frame)
@@ -562,6 +705,11 @@ class SettingsTab:
         # Save
         self.app.save_config()
         self.app.log("Đã lưu cài đặt")
+
+        # Refresh script categories dropdown on main_tab
+        if hasattr(self.app, 'main_tab') and hasattr(self.app.main_tab, 'refresh_script_categories'):
+            self.app.main_tab.refresh_script_categories()
+
         messagebox.showinfo("Thành công", "Đã lưu cài đặt!")
 
 
@@ -757,6 +905,153 @@ Thư mục Profile:
             "2. Đóng browser khi xong\n"
             "3. Nhấn 'Lưu' để lưu profile"
         )
+
+    def cancel(self):
+        """Cancel and close"""
+        self.destroy()
+
+
+class ScriptCategoryDialog(ctk.CTkToplevel):
+    """Dialog for adding/editing script category"""
+
+    def __init__(self, parent, app, category=None):
+        super().__init__(parent)
+
+        self.app = app
+        self.category = category
+        self.result = None
+
+        self.title("Thêm danh mục Script" if not category else "Sửa danh mục Script")
+        self.geometry("700x600")
+        self.resizable(True, True)
+
+        # Make modal
+        self.transient(parent)
+        self.grab_set()
+
+        self.setup_ui()
+        self.center_window()
+
+    def center_window(self):
+        """Center dialog"""
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() // 2) - (350)
+        y = (self.winfo_screenheight() // 2) - (300)
+        self.geometry(f"+{x}+{y}")
+
+    def setup_ui(self):
+        """Setup dialog UI"""
+        # Name
+        ctk.CTkLabel(self, text="Tên danh mục:", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(20, 5))
+        self.name_entry = ctk.CTkEntry(self, width=400)
+        self.name_entry.pack(anchor="w", padx=20)
+        if self.category:
+            self.name_entry.insert(0, self.category.get("name", ""))
+
+        # Example categories
+        ctk.CTkLabel(
+            self,
+            text="Ví dụ: Thời trang, Điện tử, Mỹ phẩm, Đồ gia dụng, Thực phẩm...",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        ).pack(anchor="w", padx=20, pady=(2, 10))
+
+        # Prompt
+        ctk.CTkLabel(self, text="Prompt template:", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(10, 5))
+
+        # Help text
+        ctk.CTkLabel(
+            self,
+            text="Dùng {product_name} và {product_description} làm placeholder cho tên và mô tả sản phẩm",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        ).pack(anchor="w", padx=20, pady=(0, 5))
+
+        # Text area for prompt
+        self.prompt_text = ctk.CTkTextbox(self, width=660, height=350)
+        self.prompt_text.pack(padx=20, pady=(5, 10), fill="both", expand=True)
+
+        if self.category:
+            self.prompt_text.insert("1.0", self.category.get("prompt", ""))
+        else:
+            # Insert template prompt for new category
+            default_template = """Bạn là chuyên gia review sản phẩm cho video AFFILIATE.
+
+SẢN PHẨM:
+- Tên: {product_name}
+- Mô tả: {product_description}
+
+NHIỆM VỤ: Viết kịch bản 30-40 giây giới thiệu sản phẩm.
+
+YÊU CẦU:
+- Độ dài: 90-120 từ
+- Giọng điệu tự nhiên, thân thiện
+- Có call to action: "Bấm vào giỏ hàng màu vàng trong video để mua nha"
+
+CHỈ TRẢ VỀ KỊCH BẢN:"""
+            self.prompt_text.insert("1.0", default_template)
+
+        # Buttons
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20, pady=20)
+
+        ctk.CTkButton(
+            btn_frame,
+            text="💾 Lưu",
+            command=self.save,
+            width=100,
+            fg_color="green"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            btn_frame,
+            text="❌ Hủy",
+            command=self.cancel,
+            width=100
+        ).pack(side="left", padx=5)
+
+        # Reset to default button (only when editing)
+        if self.category and self.category.get("name") == "Mặc định":
+            ctk.CTkButton(
+                btn_frame,
+                text="🔄 Reset mặc định",
+                command=self.reset_default,
+                width=120,
+                fg_color="#FF9800"
+            ).pack(side="right", padx=5)
+
+    def save(self):
+        """Save category"""
+        name = self.name_entry.get().strip()
+        if not name:
+            messagebox.showerror("Lỗi", "Vui lòng nhập tên danh mục!")
+            return
+
+        prompt = self.prompt_text.get("1.0", "end-1c").strip()
+        if not prompt:
+            messagebox.showerror("Lỗi", "Vui lòng nhập prompt template!")
+            return
+
+        # Check if {product_name} and {product_description} exist
+        if "{product_name}" not in prompt:
+            if not messagebox.askyesno(
+                "Cảnh báo",
+                "Prompt chưa có {product_name}. Tiếp tục lưu?"
+            ):
+                return
+
+        self.result = {
+            "name": name,
+            "prompt": prompt
+        }
+        self.destroy()
+
+    def reset_default(self):
+        """Reset to default prompt"""
+        from ..app import DEFAULT_SCRIPT_PROMPT
+        self.prompt_text.delete("1.0", "end")
+        self.prompt_text.insert("1.0", DEFAULT_SCRIPT_PROMPT)
+        messagebox.showinfo("Thông báo", "Đã reset về prompt mặc định!")
 
     def cancel(self):
         """Cancel and close"""

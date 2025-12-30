@@ -254,6 +254,26 @@ class MainTab:
         )
         self.extract_btn.pack(side="left", padx=(0, 4))
 
+        # Dropdown chọn danh mục Script
+        self.script_category_var = ctk.StringVar(value=getattr(self.app.config, 'selected_category', 'Mặc định'))
+        category_names = [c.get("name", "?") for c in getattr(self.app.config, 'script_categories', [])]
+        if not category_names:
+            category_names = ["Mặc định"]
+        self.script_category_dropdown = ctk.CTkOptionMenu(
+            bottom_row,
+            variable=self.script_category_var,
+            values=category_names,
+            width=100,
+            height=32,
+            corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color="#4B5563",
+            button_color="#374151",
+            button_hover_color="#1F2937",
+            command=self.on_script_category_changed
+        )
+        self.script_category_dropdown.pack(side="left", padx=(0, 2))
+
         # Nút Làm kịch bản
         self.script_btn = ctk.CTkButton(
             bottom_row,
@@ -1628,6 +1648,39 @@ class MainTab:
             self.stop_flag.set()
             self.add_log("⏹️ Đang dừng...")
 
+    def on_script_category_changed(self, selected: str):
+        """Callback when script category is changed"""
+        self.app.config.selected_category = selected
+        self.app.save_config()
+        self.add_log(f"📝 Đã chọn danh mục Script: {selected}")
+
+    def get_selected_script_prompt(self) -> str:
+        """Get the prompt template for selected script category"""
+        selected = self.script_category_var.get() if hasattr(self, 'script_category_var') else "Mặc định"
+        categories = getattr(self.app.config, 'script_categories', [])
+
+        for cat in categories:
+            if cat.get("name") == selected:
+                return cat.get("prompt", "")
+
+        # Fallback to first category or None
+        if categories:
+            return categories[0].get("prompt", "")
+        return None
+
+    def refresh_script_categories(self):
+        """Refresh the script categories dropdown"""
+        if hasattr(self, 'script_category_dropdown'):
+            categories = getattr(self.app.config, 'script_categories', [])
+            category_names = [c.get("name", "?") for c in categories]
+            if not category_names:
+                category_names = ["Mặc định"]
+            self.script_category_dropdown.configure(values=category_names)
+            # Update selection if current is not valid
+            current = self.script_category_var.get()
+            if current not in category_names:
+                self.script_category_var.set(category_names[0])
+
     def show_browser(self):
         """Toggle show/hide browser windows"""
         toggled = False
@@ -1710,10 +1763,15 @@ class MainTab:
         self.clear_table()
         self.add_log("📝 Bắt đầu tạo kịch bản và voice...")
 
-        thread = threading.Thread(target=self._run_script_creation, daemon=True)
+        # Get selected script prompt before starting thread
+        custom_prompt = self.get_selected_script_prompt()
+        selected_category = self.script_category_var.get() if hasattr(self, 'script_category_var') else "Mặc định"
+        self.add_log(f"   Sử dụng danh mục: {selected_category}")
+
+        thread = threading.Thread(target=self._run_script_creation, args=(custom_prompt,), daemon=True)
         thread.start()
 
-    def _run_script_creation(self):
+    def _run_script_creation(self, custom_prompt: str = None):
         """Background thread tạo kịch bản và voice"""
         try:
             from ...sheets_reader import SheetsReader
@@ -1832,7 +1890,8 @@ class MainTab:
                         self.after_safe(lambda c=code: self.add_log(f"  Tạo kịch bản..."))
                         script_result = gemini.generate_script(
                             product_name=item["name"],
-                            product_description=item["description"]
+                            product_description=item["description"],
+                            custom_prompt=custom_prompt
                         )
 
                         if script_result.success:
@@ -1972,10 +2031,15 @@ class MainTab:
         self.add_log("🚀 Bắt đầu chạy FULL quy trình...")
         self.add_log("📋 Thứ tự: Tải ảnh → [Script || Lọc → Tách SP] → Flow → Sora → Grok → Edit → DONE")
 
-        thread = threading.Thread(target=self._run_full_workflow, daemon=True)
+        # Get custom prompt for script generation
+        custom_prompt = self.get_selected_script_prompt()
+        selected_category = self.script_category_var.get() if hasattr(self, 'script_category_var') else "Mặc định"
+        self.add_log(f"   Danh mục Script: {selected_category}")
+
+        thread = threading.Thread(target=self._run_full_workflow, args=(custom_prompt,), daemon=True)
         thread.start()
 
-    def _run_full_workflow(self):
+    def _run_full_workflow(self, custom_prompt: str = None):
         """Background thread chạy full quy trình
 
         Luồng chạy:
@@ -1996,7 +2060,7 @@ class MainTab:
         def run_script_thread():
             """Chạy Script trong thread riêng"""
             try:
-                self._run_script_creation_internal()
+                self._run_script_creation_internal(custom_prompt)
             finally:
                 script_done.set()
 
@@ -2360,7 +2424,7 @@ class MainTab:
         except Exception as e:
             self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi lọc: {e}"))
 
-    def _run_script_creation_internal(self):
+    def _run_script_creation_internal(self, custom_prompt: str = None):
         """Chạy tạo script (internal)"""
         try:
             from ...gemini_service import GeminiService
@@ -2406,7 +2470,7 @@ class MainTab:
 
                 # Tạo script nếu chưa có
                 if not script:
-                    result = gemini.generate_script(name, desc)
+                    result = gemini.generate_script(name, desc, custom_prompt=custom_prompt)
                     if result.success:
                         script = result.script
                         reader.sheet.update_acell(f"G{row_idx}", script)

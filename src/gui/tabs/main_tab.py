@@ -4155,14 +4155,14 @@ class MainTab:
         thread.start()
 
     def _run_edit_videos(self):
-        """Background thread edit video - Voice First Mode
+        """Background thread edit video - Full Merge Mode
 
-        Logic mới (merge_voice_first):
-        - Voice bắt đầu từ đầu, thời lượng video = voice + ảnh cuối
-        - Video clips (SORA + Grok) chia đều theo voice, cắt giữa
-        - Tắt âm thanh gốc video (chỉ Voice + Music)
-        - Sau voice → hiển thị ảnh Flow (mỗi ảnh 0.5s)
-        - Music fade out 3s cuối
+        Logic mới (merge_full):
+        - THỨ TỰ: SORA → GROK → ẢNH
+        - MUSIC: Từ đầu video (bao gồm SORA)
+        - VOICE: Bắt đầu từ GROK (sau SORA)
+        - GROK audio: TẮT (mute)
+        - Ảnh Flow: 0.5s mỗi ảnh, cuối video
         """
         try:
             from ...sheets_reader import SheetsReader
@@ -4222,18 +4222,22 @@ class MainTab:
                 if code_video_folder.exists():
                     all_videos = list(code_video_folder.glob("*.mp4"))
                     if all_videos:
-                        # Ưu tiên Grok, fallback SORA
+                        # Tách SORA và GROK videos
                         grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
                         sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
 
+                        # Cần ít nhất GROK video (SORA optional)
                         if grok_videos:
-                            item["video_paths"] = grok_videos
+                            item["sora_videos"] = sora_videos
+                            item["grok_videos"] = grok_videos
                             item["voice_path"] = voice_path
                             valid_items.append(item)
-                            self.after_safe(lambda c=code, n=len(grok_videos):
-                                self.add_log(f"  📹 {c}: {n} Grok videos"))
+                            self.after_safe(lambda c=code, s=len(sora_videos), g=len(grok_videos):
+                                self.add_log(f"  📹 {c}: {s} SORA + {g} GROK videos"))
                         elif sora_videos:
-                            item["video_paths"] = sora_videos
+                            # Fallback: chỉ có SORA
+                            item["sora_videos"] = []
+                            item["grok_videos"] = sora_videos  # Dùng SORA làm GROK
                             item["voice_path"] = voice_path
                             valid_items.append(item)
                             self.after_safe(lambda c=code, n=len(sora_videos):
@@ -4246,6 +4250,8 @@ class MainTab:
                 return
 
             self.after_safe(lambda n=len(valid_items): self.add_log(f"📋 Tìm thấy {n} sản phẩm có video + voice"))
+            self.after_safe(lambda: self.add_log("📐 Flow: SORA → GROK → ẢNH"))
+            self.after_safe(lambda: self.add_log("🎵 Music: từ đầu video | 🎤 Voice: từ GROK"))
 
             # Tạo tasks
             for item in valid_items:
@@ -4265,18 +4271,19 @@ class MainTab:
                     break
 
                 code = item["code"]
-                video_paths = item["video_paths"]
+                sora_videos = item["sora_videos"]
+                grok_videos = item["grok_videos"]
                 voice_path = item["voice_path"]
 
                 self.set_task_input_status(code, TaskItem.STATUS_DONE)
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
-                self.after_safe(lambda c=code: self.add_log(f"🎬 Edit video (Voice First): {c}"))
+                self.after_safe(lambda c=code: self.add_log(f"🎬 Edit video (SORA→GROK→ẢNH): {c}"))
 
                 try:
                     # Tìm music RANDOM từ music folder
                     music_path = get_random_music(music_folder) if music_folder else None
                     if music_path:
-                        self.after_safe(lambda p=Path(music_path).name: self.add_log(f"  🎵 Nhạc: {p}"))
+                        self.after_safe(lambda p=Path(music_path).name: self.add_log(f"  🎵 Nhạc (từ đầu): {p}"))
 
                     # Tìm ảnh Flow từ input/{code}/flow/
                     flow_images = []
@@ -4287,21 +4294,24 @@ class MainTab:
                         flow_images.sort()
                         if flow_images:
                             self.after_safe(lambda c=code, n=len(flow_images):
-                                self.add_log(f"  📷 {n} ảnh Flow (mỗi ảnh 0.5s)"))
+                                self.add_log(f"  📷 {n} ảnh Flow (cuối video, 0.5s/ảnh)"))
 
                     # Output path
                     final_video = output_folder / f"{code}.mp4"
 
-                    # Sử dụng merge_voice_first
-                    success = merger.merge_voice_first(
-                        video_paths=video_paths,
-                        image_paths=flow_images,
+                    # Sử dụng merge_full: SORA → GROK → ẢNH
+                    # Music từ đầu, Voice từ GROK, GROK audio mute
+                    success = merger.merge_full(
+                        sora_videos=sora_videos,
+                        grok_videos=grok_videos,
+                        flow_images=flow_images,
                         output_path=str(final_video),
-                        voice_path=voice_path,
                         music_path=music_path,
+                        voice_path=voice_path,
                         music_volume=0.3,  # 30% để voice rõ hơn
                         voice_volume=1.0,
-                        image_duration=0.5  # Mỗi ảnh 0.5s
+                        image_duration=0.5,  # Mỗi ảnh 0.5s
+                        mute_original=True  # Tắt audio gốc của GROK
                     )
 
                     if success:

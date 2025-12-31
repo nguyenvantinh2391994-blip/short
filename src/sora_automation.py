@@ -441,13 +441,20 @@ class SoraAutomation:
         return True
 
     def check_video_status(self) -> str:
-        """Check trạng thái video: 'done', 'loading', 'waiting'.
+        """Check trạng thái video: 'done', 'loading', 'waiting', 'RATE_LIMIT'.
 
-        QUAN TRỌNG: Check loading TRƯỚC, rồi mới check video.
-        Vì có thể có video cũ từ lần generate trước.
+        QUAN TRỌNG: Check rate limit TRƯỚC, rồi loading, rồi video.
         """
         js = '''(function(){
-            // 1. Check loading TRƯỚC (vòng tròn progress)
+            // 0. Check RATE LIMIT TRƯỚC
+            var pageText = document.body.innerText || '';
+            if(pageText.includes("You're out of video gens") ||
+               pageText.includes("Limit reached for today")){
+                copy('RATE_LIMIT');
+                return;
+            }
+
+            // 1. Check loading (vòng tròn progress)
             var circle = document.querySelector('circle[stroke-dashoffset]');
             if(circle){
                 copy('loading');
@@ -482,7 +489,7 @@ class SoraAutomation:
         })();'''
 
         result = self.run_js_get_result(js)
-        if result in ['done', 'loading', 'waiting']:
+        if result in ['done', 'loading', 'waiting', 'RATE_LIMIT']:
             return result
         return 'waiting'
 
@@ -520,8 +527,13 @@ class SoraAutomation:
             return result
         return None
 
-    def wait_for_video_done(self, timeout: int = 300) -> bool:
+    def wait_for_video_done(self, timeout: int = 300) -> str:
         """Đợi video tạo xong (tối đa 5 phút).
+
+        Returns:
+            'done': Video tạo xong
+            'RATE_LIMIT': Bị rate limit, cần đổi profile
+            'timeout': Hết thời gian chờ
 
         - Đợi 30s trước khi bắt đầu check
         - Sau đó check mỗi 30s
@@ -546,7 +558,10 @@ class SoraAutomation:
         status = self.check_video_status()
         if status == 'done':
             self.log_ok("Video xong! (30s)")
-            return True
+            return 'done'
+        if status == 'RATE_LIMIT':
+            self.log_err("🚫 RATE LIMIT - Hết lượt tạo video!")
+            return 'RATE_LIMIT'
         self.log(f"   30s - Status: {status}")
 
         # Ẩn lại nếu headless
@@ -570,7 +585,11 @@ class SoraAutomation:
 
             if status == 'done':
                 self.log_ok(f"Video xong! ({elapsed}s)")
-                return True
+                return 'done'
+
+            if status == 'RATE_LIMIT':
+                self.log_err("🚫 RATE LIMIT - Hết lượt tạo video!")
+                return 'RATE_LIMIT'
 
             self.log(f"   Status: {status}")
 
@@ -579,7 +598,7 @@ class SoraAutomation:
                 self._hide_chrome_window()
 
         self.log_err(f"Timeout sau {timeout}s")
-        return False
+        return 'timeout'
 
     def download_video(self, video_url: str, output_path: str) -> bool:
         """Download video từ URL."""
@@ -664,7 +683,10 @@ class SoraAutomation:
             time.sleep(3)
 
             # Chờ video
-            if not self.wait_for_video_done(self.timeout):
+            wait_result = self.wait_for_video_done(self.timeout)
+            if wait_result == 'RATE_LIMIT':
+                return SoraResult(False, error="RATE_LIMIT")
+            if wait_result != 'done':
                 return SoraResult(False, error="Timeout chờ video")
 
             # Lấy URL video
@@ -743,7 +765,10 @@ class SoraAutomation:
             time.sleep(3)
 
             # Chờ video
-            if not self.wait_for_video_done(self.timeout):
+            wait_result = self.wait_for_video_done(self.timeout)
+            if wait_result == 'RATE_LIMIT':
+                return SoraResult(False, error="RATE_LIMIT")
+            if wait_result != 'done':
                 return SoraResult(False, error="Timeout chờ video")
 
             # Lấy URL và download

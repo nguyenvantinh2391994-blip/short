@@ -1524,7 +1524,7 @@ class MainTab:
         thread.start()
 
     def _run_sora_creation(self):
-        """Background thread tạo video SORA"""
+        """Background thread tạo video SORA - hỗ trợ đổi profile khi rate limit"""
         try:
             from ...sheets_reader import SheetsReader
             from ...sora_automation import SoraAutomation, find_sora_image
@@ -1559,36 +1559,52 @@ class MainTab:
                 self.tasks[code] = task
                 self.after_safe(lambda t=task: self.add_task_row(t))
 
-            # Lấy browser profile (dùng chung với Grok)
-            chrome_path = None
-            profile_path = None
-            if self.app.config.browser_profiles:
-                first_profile = self.app.config.browser_profiles[0]
-                chrome_path = first_profile.get("chrome_path")
-                profile_path = first_profile.get("profile_path")
+            # Lấy TẤT CẢ browser profiles (để đổi khi rate limit)
+            profiles = self.app.config.browser_profiles or []
+            if not profiles:
+                self.after_safe(lambda: self.add_log("❌ Chưa cấu hình browser profile!"))
+                return
+
+            # Đánh dấu profile nào bị rate limit
+            for p in profiles:
+                p["rate_limited"] = False
+
+            self.after_safe(lambda n=len(profiles): self.add_log(f"🌐 Có {n} browser profile(s)"))
 
             # Folder input/output
             input_folder = Path(self.app.config.input_folder)
             output_folder = Path(self.app.config.output_folder)
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Khởi tạo SORA automation (dùng cài đặt show_chrome từ Settings)
+            # Hàm lấy profile khả dụng
+            def get_available_profile():
+                available = [p for p in profiles if not p.get("rate_limited", False)]
+                return available[0] if available else None
+
+            current_profile = get_available_profile()
+            if not current_profile:
+                self.after_safe(lambda: self.add_log("❌ Không có profile nào khả dụng!"))
+                return
+
+            # Khởi tạo SORA automation với profile đầu tiên
             sora = SoraAutomation(
-                chrome_path=chrome_path,
-                profile_path=profile_path,
+                chrome_path=current_profile.get("chrome_path"),
+                profile_path=current_profile.get("profile_path"),
                 output_folder=str(output_folder),
-                input_folder=str(input_folder),  # Thêm input_folder
+                input_folder=str(input_folder),
                 headless=not getattr(self.app.config, 'show_chrome', True),
             )
-            self.current_sora = sora  # Lưu để toggle visibility
+            self.current_sora = sora
+            self.after_safe(lambda n=current_profile.get("name", "Default"):
+                self.add_log(f"🔹 Dùng profile: {n}"))
 
             first_video = True  # Track xem đã mở Chrome chưa
 
-            # Xử lý từng sản phẩm
-            for item in pending:
-                if self.stop_flag.is_set():
-                    break
+            # Queue các item cần xử lý
+            pending_queue = list(pending)
 
+            while pending_queue and not self.stop_flag.is_set():
+                item = pending_queue.pop(0)
                 code = item["code"]
 
                 # === KIỂM TRA ĐÃ CÓ VIDEO SORA CHƯA ===
@@ -1619,7 +1635,7 @@ class MainTab:
                 self.after_safe(lambda c=code: self.add_log(f"\n🎬 [{c}] Tạo video SORA..."))
                 self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
 
-                # Tạo video SORA (giống Grok)
+                # Tạo video SORA
                 if first_video:
                     result = sora.create_video(
                         image_path=image_path or "",
@@ -1633,6 +1649,41 @@ class MainTab:
                         prompt=sora_prompt,
                         product_code=code
                     )
+
+                # === XỬ LÝ RATE LIMIT ===
+                if result and result.error == "RATE_LIMIT":
+                    self.after_safe(lambda: self.add_log(f"🚫 RATE LIMIT - Hết lượt tạo video!"))
+
+                    # Đánh dấu profile hiện tại bị rate limit
+                    current_profile["rate_limited"] = True
+                    self.after_safe(lambda n=current_profile.get("name", "Default"):
+                        self.add_log(f"   ❌ Profile '{n}' bị rate limit"))
+
+                    # Thêm item lại vào đầu queue
+                    pending_queue.insert(0, item)
+
+                    # Tìm profile mới
+                    new_profile = get_available_profile()
+                    if not new_profile:
+                        self.after_safe(lambda: self.add_log("❌ Tất cả profile đều bị rate limit!"))
+                        self.after_safe(lambda: self.add_log("💡 Thêm profile mới trong Settings"))
+                        break
+
+                    # Đổi sang profile mới
+                    self.after_safe(lambda n=new_profile.get("name", "Default"):
+                        self.add_log(f"   ↪ Chuyển sang profile: {n}"))
+
+                    current_profile = new_profile
+                    sora = SoraAutomation(
+                        chrome_path=current_profile.get("chrome_path"),
+                        profile_path=current_profile.get("profile_path"),
+                        output_folder=str(output_folder),
+                        input_folder=str(input_folder),
+                        headless=not getattr(self.app.config, 'show_chrome', True),
+                    )
+                    self.current_sora = sora
+                    first_video = True  # Reset để mở Chrome mới
+                    continue
 
                 if result and result.success:
                     video_path = result.video_path
@@ -1651,6 +1702,12 @@ class MainTab:
                     self.after_safe(lambda c=code, e=error:
                         self.add_log(f"  ✗ {c}: {e}"))
                     self.set_task_video_status(code, TaskItem.STATUS_ERROR)
+
+            # Báo cáo profiles bị rate limit
+            rate_limited = [p.get("name", "?") for p in profiles if p.get("rate_limited")]
+            if rate_limited:
+                self.after_safe(lambda names=rate_limited:
+                    self.add_log(f"⚠️ Profiles bị rate limit: {', '.join(names)}"))
 
             self.after_safe(lambda: self.add_log("\n✅ Hoàn thành SORA!"))
 
@@ -4204,9 +4261,19 @@ class MainTab:
             for item in pending:
                 code = item["code"]
 
-                # Kiểm tra voice trước
+                # Kiểm tra voice - TÌM TRONG input/{code}/ TRƯỚC, rồi voice_folder
                 voice_path = None
-                if voice_folder:
+
+                # 1. Tìm trong input/{code}/ (ưu tiên)
+                code_folder = input_folder / code
+                for ext in ['.mp3', '.wav']:
+                    vp = code_folder / f"{code}{ext}"
+                    if vp.exists():
+                        voice_path = str(vp)
+                        break
+
+                # 2. Fallback: tìm trong voice_folder riêng
+                if not voice_path and voice_folder:
                     for ext in ['.mp3', '.wav']:
                         vp = voice_folder / f"{code}{ext}"
                         if vp.exists():

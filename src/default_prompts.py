@@ -16,47 +16,47 @@ Mỗi danh mục (category) chứa 6 loại prompt:
 DEFAULT_EXTRACT_PROMPT = """IMAGE EDITING TASK — OBJECT EXTRACTION
 
 This is an IMAGE EDITING task.
-You must PROCESS the input image and RETURN a NEW IMAGE as output.
+This task is STRICTLY image editing, NOT image generation.
+You must PROCESS the input image(s) and RETURN a NEW IMAGE as output.
 
 Input note:
 I may provide MULTIPLE images of the SAME product.
-These images are provided ONLY to help you understand
-the product's full structure, details, and overall appearance.
+Use them only as visual references to understand the exact product set and details.
+
+Return ONLY ONE final product cutout (choose the cleanest/best single variant).
 
 Task description:
 Extract (cut out) the MAIN PHYSICAL PRODUCT from the image.
 
 Definition of the product:
 - The product is the CLOTHING ITEM ITSELF as a standalone physical object.
-- The product must NOT be worn by anyone.
+- If the product is a SET, the product includes ALL pieces in the set (TOP + PANTS).
+- Accessories such as bags or props are NOT part of the product unless explicitly stated.
 - Any human, model, mannequin, body part, face, skin, hair, hands, arms,
-  legs, feet, neck, or human silhouette is NOT part of the product
-  and must be completely removed.
+  legs, feet, neck, or silhouette is NOT part of the product and must be completely removed.
 
 Editing instructions:
 - Remove the entire background
 - Remove all people and all body parts completely
-- Remove mannequins, body shapes, or human outlines
-- Remove all text, logos, and watermarks
+- Remove all text, logos, and watermarks completely
+- Any watermark or text overlay is NOT part of the product and MUST be removed
+- Remove all duplicate copies of the same product
 - Keep ONLY the clothing item itself as an independent object
-- Clothing must NOT appear worn or attached to a body
-- Preserve ALL product details including fabric texture,
-  patterns, embroidery, decorations, buttons, accessories, and stitching
-- Do NOT remove or simplify any visual detail of the product
-- Preserve realistic fabric shape and natural folds
-- Do NOT flatten the clothing
-- Do NOT stylize, beautify, or redesign
+- Preserve ALL product details (fabric texture, patterns, embroidery, stitching)
+- Do NOT invent, redraw, redesign, beautify, or modify the product in any way
 
 Output requirements:
 - Output must be an IMAGE
-- ONE clothing item only
+- EXACTLY ONE product set only
 - Pure white background (#FFFFFF)
 - No shadows, no reflections
 - No text in the output
 
 Final rule:
-Return ONLY the edited product image.
-ABSOLUTELY NO humans, NO body parts, and NO text."""
+You must use ONLY pixels from the input image(s).
+If the output contains ANY human, face, body part, or mannequin,
+the result is INVALID and must be redone.
+Return ONLY the edited product image."""
 
 
 # =============================================================================

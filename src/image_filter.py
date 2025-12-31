@@ -1,14 +1,16 @@
 """
 Image Filter - Lọc ảnh sản phẩm
-- Chỉ giữ ảnh có người (thật)
-- Loại bỏ ảnh ghép/collage (ảnh nhiều ảnh nhỏ ghép lại)
+- Loại bỏ ảnh logo
+- Giữ ảnh sản phẩm giống nhau
+- Ưu tiên ảnh có người mặc
+- Ưu tiên ảnh sản phẩm rõ ràng
 """
 
 import cv2
 import numpy as np
 from pathlib import Path
 from typing import List, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 try:
     import mediapipe as mp
@@ -27,9 +29,11 @@ class ImageFilterResult:
     path: str
     has_person: bool
     is_collage: bool
-    is_logo: bool = False  # Ảnh logo/icon
+    is_logo: bool = False
     should_keep: bool = True
     reason: str = ""
+    quality_score: float = 0.0  # Điểm chất lượng (0-1)
+    histogram: np.ndarray = field(default=None, repr=False)  # Color histogram
 
 
 class ImageFilter:
@@ -351,8 +355,82 @@ class ImageFilter:
             console.print(f"[dim]Logo detection error: {e}[/]")
             return False, 0.0
 
-    def filter_image(self, image_path: str) -> ImageFilterResult:
-        """Lọc một ảnh"""
+    def compute_histogram(self, image: np.ndarray) -> np.ndarray:
+        """
+        Tính color histogram của ảnh để so sánh similarity
+        Dùng HSV histogram (ít ảnh hưởng bởi ánh sáng)
+        """
+        try:
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            # Histogram 3D: H (30 bins), S (32 bins), V (32 bins)
+            hist = cv2.calcHist(
+                [hsv], [0, 1, 2], None,
+                [30, 32, 32], [0, 180, 0, 256, 0, 256]
+            )
+            cv2.normalize(hist, hist)
+            return hist.flatten()
+        except Exception:
+            return np.zeros(30 * 32 * 32)
+
+    def compare_histograms(self, hist1: np.ndarray, hist2: np.ndarray) -> float:
+        """
+        So sánh 2 histogram, trả về similarity (0-1)
+        1 = giống hệt, 0 = khác hoàn toàn
+        """
+        if hist1 is None or hist2 is None:
+            return 0.0
+        try:
+            # Correlation method (cao hơn = giống hơn)
+            return cv2.compareHist(
+                hist1.reshape(-1).astype(np.float32),
+                hist2.reshape(-1).astype(np.float32),
+                cv2.HISTCMP_CORREL
+            )
+        except Exception:
+            return 0.0
+
+    def compute_quality_score(self, image: np.ndarray, has_person: bool) -> float:
+        """
+        Tính điểm chất lượng ảnh sản phẩm (0-1)
+
+        Tiêu chí:
+        1. Có người mặc sản phẩm: +0.4
+        2. Độ sắc nét (Laplacian): +0.2
+        3. Kích thước ảnh lớn: +0.2
+        4. Độ tương phản tốt: +0.2
+        """
+        if image is None:
+            return 0.0
+
+        score = 0.0
+        h, w = image.shape[:2]
+
+        # 1. Có người mặc sản phẩm (quan trọng nhất)
+        if has_person:
+            score += 0.4
+
+        # 2. Độ sắc nét (Laplacian variance)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        # Normalize: 0-2000 -> 0-0.2
+        sharpness_score = min(laplacian_var / 2000, 1.0) * 0.2
+        score += sharpness_score
+
+        # 3. Kích thước ảnh (>= 800px = max score)
+        min_dim = min(w, h)
+        size_score = min(min_dim / 800, 1.0) * 0.2
+        score += size_score
+
+        # 4. Độ tương phản (std deviation)
+        contrast = np.std(gray)
+        # Normalize: 0-80 -> 0-0.2
+        contrast_score = min(contrast / 80, 1.0) * 0.2
+        score += contrast_score
+
+        return score
+
+    def filter_image(self, image_path: str, compute_features: bool = True) -> ImageFilterResult:
+        """Lọc một ảnh và tính các đặc trưng"""
         path = Path(image_path)
 
         if not path.exists():
@@ -389,15 +467,21 @@ class ImageFilter:
         if self.reject_logo:
             is_logo, logo_conf = self.detect_logo(image)
 
-        # Quyết định giữ hay bỏ
+        # Tính quality score và histogram
+        quality_score = 0.0
+        histogram = None
+        if compute_features:
+            quality_score = self.compute_quality_score(image, has_person)
+            histogram = self.compute_histogram(image)
+
+        # Quyết định giữ hay bỏ (bước đầu)
         should_keep = True
         reason = ""
 
         # Logic lọc:
         # 1. Nếu là logo/icon -> BỎ
         # 2. Nếu là collage -> BỎ
-        # 3. Nếu không có người VÀ require_person -> BỎ
-        # 4. Còn lại -> GIỮ
+        # 3. Còn lại -> tạm GIỮ (sẽ filter theo similarity ở bước sau)
 
         if is_logo:
             should_keep = False
@@ -405,15 +489,10 @@ class ImageFilter:
         elif is_collage:
             should_keep = False
             reason = f"Ảnh ghép (conf: {collage_conf:.2f})"
-        elif self.require_person and not has_person:
-            should_keep = False
-            reason = "Không có người trong ảnh"
         elif has_person:
-            reason = f"Có người (conf: {person_conf:.2f})"
+            reason = f"Có người, score={quality_score:.2f}"
         else:
-            # Không require person, không phải collage/logo -> giữ
-            should_keep = True
-            reason = "OK"
+            reason = f"Không người, score={quality_score:.2f}"
 
         return ImageFilterResult(
             path=str(path),
@@ -421,7 +500,9 @@ class ImageFilter:
             is_collage=is_collage,
             is_logo=is_logo,
             should_keep=should_keep,
-            reason=reason
+            reason=reason,
+            quality_score=quality_score,
+            histogram=histogram
         )
 
     def filter_folder(
@@ -429,12 +510,16 @@ class ImageFilter:
         folder_path: str,
         output_folder: str = None,
         move_rejected: bool = False,
-        on_progress: callable = None
+        on_progress: callable = None,
+        similarity_threshold: float = 0.3  # Ngưỡng similarity để coi là cùng sản phẩm
     ) -> Tuple[List[ImageFilterResult], List[ImageFilterResult]]:
         """Lọc tất cả ảnh trong thư mục
 
-        Giữ tối đa max_images ảnh đầu tiên (theo thứ tự tên file).
-        Ảnh vượt quá giới hạn sẽ bị loại.
+        Logic mới:
+        1. Loại bỏ ảnh logo
+        2. Tìm ảnh tốt nhất (có người, score cao nhất) làm reference
+        3. Chọn các ảnh GIỐNG reference (histogram similarity)
+        4. Sắp xếp theo quality score, lấy top max_images ảnh
         """
         folder = Path(folder_path)
         if not folder.exists():
@@ -453,36 +538,89 @@ class ImageFilter:
         if total == 0:
             return [], []
 
-        kept = []
-        rejected = []
+        # === BƯỚC 1: Phân tích tất cả ảnh ===
+        console.print(f"[cyan]Phân tích {total} ảnh...[/]")
+        all_results = []
 
         for i, img_path in enumerate(images):
             if on_progress:
-                on_progress(i + 1, total, img_path.name)
+                on_progress(i + 1, total, f"Đang phân tích {img_path.name}")
 
-            result = self.filter_image(str(img_path))
+            result = self.filter_image(str(img_path), compute_features=True)
+            all_results.append(result)
 
-            if result.should_keep:
-                # Kiểm tra giới hạn số ảnh
-                if self.max_images > 0 and len(kept) >= self.max_images:
-                    # Vượt quá giới hạn -> loại
-                    result.should_keep = False
-                    result.reason = f"Vượt quá giới hạn {self.max_images} ảnh"
-                    rejected.append(result)
-                else:
-                    kept.append(result)
+        # === BƯỚC 2: Tách ảnh logo ra ===
+        valid_results = [r for r in all_results if r.should_keep]
+        logo_results = [r for r in all_results if r.is_logo]
+
+        console.print(f"[dim]Đã loại {len(logo_results)} ảnh logo[/]")
+
+        if not valid_results:
+            return [], all_results
+
+        # === BƯỚC 3: Tìm ảnh reference (có người + score cao nhất) ===
+        # Ưu tiên ảnh có người
+        with_person = [r for r in valid_results if r.has_person]
+        if with_person:
+            reference = max(with_person, key=lambda r: r.quality_score)
+            console.print(f"[green]Reference (có người): {Path(reference.path).name} score={reference.quality_score:.2f}[/]")
+        else:
+            # Không có ảnh nào có người -> lấy ảnh score cao nhất
+            reference = max(valid_results, key=lambda r: r.quality_score)
+            console.print(f"[yellow]Reference (không người): {Path(reference.path).name} score={reference.quality_score:.2f}[/]")
+
+        # === BƯỚC 4: Chọn ảnh GIỐNG reference ===
+        similar_results = []
+
+        for r in valid_results:
+            similarity = self.compare_histograms(reference.histogram, r.histogram)
+
+            if similarity >= similarity_threshold:
+                # Điều chỉnh score: similarity * base_score
+                # Ảnh giống reference được ưu tiên hơn
+                adjusted_score = r.quality_score * (0.5 + similarity * 0.5)
+                r.quality_score = adjusted_score
+                r.reason = f"Sim={similarity:.2f}, Score={adjusted_score:.2f}"
+                similar_results.append(r)
             else:
-                rejected.append(result)
+                r.should_keep = False
+                r.reason = f"Khác sản phẩm (sim={similarity:.2f})"
 
-            # Di chuyển ảnh bị loại
-            if not result.should_keep and move_rejected:
-                rejected_folder = folder / "_rejected"
-                rejected_folder.mkdir(exist_ok=True)
+        console.print(f"[dim]Tìm thấy {len(similar_results)} ảnh giống reference[/]")
+
+        # === BƯỚC 5: Sắp xếp theo quality score và lấy top N ===
+        similar_results.sort(key=lambda r: r.quality_score, reverse=True)
+
+        kept = []
+        rejected = list(logo_results)  # Bắt đầu với logo đã loại
+
+        for r in similar_results:
+            if self.max_images > 0 and len(kept) >= self.max_images:
+                r.should_keep = False
+                r.reason = f"Vượt quá {self.max_images} ảnh"
+                rejected.append(r)
+            else:
+                r.should_keep = True
+                kept.append(r)
+
+        # Thêm các ảnh không similar vào rejected
+        not_similar = [r for r in valid_results if r not in kept and r not in rejected]
+        rejected.extend(not_similar)
+
+        console.print(f"[green]Giữ {len(kept)} ảnh tốt nhất[/]")
+
+        # Di chuyển ảnh bị loại
+        if move_rejected:
+            rejected_folder = folder / "_rejected"
+            rejected_folder.mkdir(exist_ok=True)
+            for r in rejected:
                 try:
                     import shutil
-                    shutil.move(str(img_path), str(rejected_folder / img_path.name))
+                    src = Path(r.path)
+                    if src.exists():
+                        shutil.move(str(src), str(rejected_folder / src.name))
                 except Exception as e:
-                    console.print(f"[yellow]Không di chuyển được {img_path.name}: {e}[/]")
+                    console.print(f"[yellow]Không di chuyển được {Path(r.path).name}: {e}[/]")
 
         # Copy ảnh tốt vào output folder nếu có
         if output_folder and kept:
@@ -508,23 +646,32 @@ class ImageFilter:
 
 def filter_product_images(
     folder_path: str,
-    require_person: bool = True,
-    reject_collage: bool = False,  # Không loại ảnh ghép
-    reject_logo: bool = True,  # Loại ảnh logo/icon
-    max_images: int = 5,  # Giới hạn 5 ảnh
+    require_person: bool = False,  # Không bắt buộc có người
+    reject_collage: bool = False,
+    reject_logo: bool = True,
+    max_images: int = 5,
     move_rejected: bool = True,
+    similarity_threshold: float = 0.3,  # Ngưỡng similarity
     on_log: callable = None
 ) -> Tuple[int, int]:
     """
-    Utility function để lọc ảnh sản phẩm trong thư mục
+    Lọc ảnh sản phẩm - chọn 5 ảnh tốt nhất cùng 1 sản phẩm
+
+    Logic:
+    1. Loại bỏ ảnh logo
+    2. Tìm ảnh tốt nhất (có người, score cao) làm reference
+    3. Chọn ảnh GIỐNG reference (histogram similarity)
+    4. Ưu tiên: có người > ảnh rõ > ảnh lớn
+    5. Lấy top 5 ảnh tốt nhất
 
     Args:
         folder_path: Thư mục chứa ảnh
-        require_person: Yêu cầu có người
-        reject_collage: Loại ảnh ghép (default: False)
-        reject_logo: Loại ảnh logo/icon (default: True)
-        max_images: Giới hạn số ảnh giữ lại (default: 5, 0 = không giới hạn)
+        require_person: Yêu cầu có người (default: False - không bắt buộc)
+        reject_collage: Loại ảnh ghép
+        reject_logo: Loại ảnh logo/icon
+        max_images: Số ảnh tối đa (default: 5)
         move_rejected: Di chuyển ảnh bị loại vào _rejected
+        similarity_threshold: Ngưỡng similarity (0-1)
         on_log: Callback log
 
     Returns:
@@ -540,18 +687,30 @@ def filter_product_images(
     )
 
     try:
-        log(f"[cyan]🔍 Đang lọc ảnh trong {folder_path}...[/]")
+        log(f"[cyan]🔍 Lọc ảnh sản phẩm: {folder_path}[/]")
+        log(f"[dim]   Loại logo, chọn {max_images} ảnh giống nhau tốt nhất[/]")
 
         kept, rejected = filter_obj.filter_folder(
             folder_path,
             move_rejected=move_rejected,
+            similarity_threshold=similarity_threshold,
             on_progress=lambda c, t, n: log(f"  [{c}/{t}] {n}")
         )
 
-        log(f"[green]✓ Giữ {len(kept)} ảnh, loại {len(rejected)} ảnh[/]")
+        log(f"[green]✓ Giữ {len(kept)} ảnh tốt nhất[/]")
 
-        for r in rejected:
-            log(f"  [dim]❌ {Path(r.path).name}: {r.reason}[/]")
+        # Log ảnh được giữ
+        for i, r in enumerate(kept, 1):
+            person_mark = "👤" if r.has_person else "📷"
+            log(f"  {person_mark} {i}. {Path(r.path).name}: {r.reason}")
+
+        # Log ảnh bị loại (chỉ logo và khác sản phẩm)
+        logo_count = sum(1 for r in rejected if r.is_logo)
+        diff_count = sum(1 for r in rejected if "Khác sản phẩm" in r.reason)
+        if logo_count:
+            log(f"  [dim]❌ Loại {logo_count} ảnh logo[/]")
+        if diff_count:
+            log(f"  [dim]❌ Loại {diff_count} ảnh khác sản phẩm[/]")
 
         return len(kept), len(rejected)
 

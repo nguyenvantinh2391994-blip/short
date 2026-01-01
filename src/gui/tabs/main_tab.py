@@ -3196,20 +3196,21 @@ class MainTab:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có video final"))
                     continue
 
-                # Lấy voice trước - TÌM TRONG input/{code}/ TRƯỚC
+                # Lấy voice - TÌM TRONG voice_folder TRƯỚC (nơi voice được tạo)
                 voice_path = None
 
-                # 1. Tìm trong input/{code}/ (ưu tiên)
-                code_folder = input_folder / code
-                for ext in ['.mp3', '.wav']:
-                    vp = code_folder / f"{code}{ext}"
-                    if vp.exists():
-                        voice_path = str(vp)
-                        break
-
-                # 2. Fallback: tìm trong voice_folder riêng
-                if not voice_path and voice_folder:
+                # 1. Tìm trong voice_folder (ưu tiên - nơi voice được lưu)
+                if voice_folder:
                     voice_path = get_voice_for_code(voice_folder, code)
+
+                # 2. Fallback: tìm trong input/{code}/
+                if not voice_path:
+                    code_folder = input_folder / code
+                    for ext in ['.mp3', '.wav']:
+                        vp = code_folder / f"{code}{ext}"
+                        if vp.exists():
+                            voice_path = str(vp)
+                            break
 
                 if not voice_path:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: không có voice, bỏ qua"))
@@ -4345,21 +4346,22 @@ class MainTab:
             for item in pending:
                 code = item["code"]
 
-                # Kiểm tra voice - TÌM TRONG input/{code}/ TRƯỚC, rồi voice_folder
+                # Kiểm tra voice - TÌM TRONG voice_folder TRƯỚC (nơi voice được tạo)
                 voice_path = None
 
-                # 1. Tìm trong input/{code}/ (ưu tiên)
-                code_folder = input_folder / code
-                for ext in ['.mp3', '.wav']:
-                    vp = code_folder / f"{code}{ext}"
-                    if vp.exists():
-                        voice_path = str(vp)
-                        break
-
-                # 2. Fallback: tìm trong voice_folder riêng
-                if not voice_path and voice_folder:
+                # 1. Tìm trong voice_folder (ưu tiên - nơi voice được lưu)
+                if voice_folder:
                     for ext in ['.mp3', '.wav']:
                         vp = voice_folder / f"{code}{ext}"
+                        if vp.exists():
+                            voice_path = str(vp)
+                            break
+
+                # 2. Fallback: tìm trong input/{code}/
+                if not voice_path:
+                    code_folder = input_folder / code
+                    for ext in ['.mp3', '.wav']:
+                        vp = code_folder / f"{code}{ext}"
                         if vp.exists():
                             voice_path = str(vp)
                             break

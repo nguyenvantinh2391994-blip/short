@@ -2577,57 +2577,62 @@ class MainTab:
                 if not images:
                     continue
 
-                self.after_safe(lambda c=code: self.add_log(f"  🔬 {c}: đang tách..."))
+                # Chuyển images sang list string
+                image_paths = [str(img) for img in images]
+                num_images = len(image_paths)
+                self.after_safe(lambda c=code, n=num_images: self.add_log(f"  🔬 {c}: đang tách {n} ảnh..."))
                 extracted_folder.mkdir(parents=True, exist_ok=True)
 
-                for img in images[:3]:  # Tối đa 3 ảnh
+                # Retry với profile switching
+                max_profile_tries = len(profiles)
+                success = False
+
+                for try_count in range(max_profile_tries):
                     if self.stop_flag.is_set():
                         break
 
-                    max_profile_tries = len(profiles)
-                    success = False
+                    try:
+                        # Gửi TẤT CẢ ảnh
+                        result = extractor.extract_product(
+                            image_paths=image_paths,
+                            output_folder=str(extracted_folder),
+                            product_code=code,
+                            product_name=product_name
+                        )
+                        if result and result.success:
+                            self.after_safe(lambda c=code, n=len(result.images):
+                                self.add_log(f"    ✓ {c}: Tách xong {n} ảnh"))
+                            success = True
+                            break
 
-                    for try_count in range(max_profile_tries):
-                        try:
-                            result = extractor.extract_product(
-                                image_paths=[str(img)],
-                                output_folder=str(extracted_folder),
-                                product_code=code,
-                                product_name=product_name
-                            )
-                            if result and result.success:
-                                self.after_safe(lambda c=code: self.add_log(f"    ✓ Tách xong 1 ảnh"))
-                                success = True
-                                break
+                        # Kiểm tra nếu bị rate limit hoặc timeout → chuyển profile
+                        if result and result.error in ("RATE_LIMIT", "Timeout"):
+                            self.after_safe(lambda e=result.error: self.add_log(f"    ⚠️ {e}! Đổi profile..."))
+                            # Thử Chrome profile khác
+                            current_profile_idx += 1
+                            if current_profile_idx < len(profiles):
+                                if init_extractor(current_profile_idx):
+                                    time.sleep(2)
+                                    continue
+                            self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
+                            break
 
-                            # Kiểm tra nếu bị rate limit hoặc timeout → chuyển profile
-                            if result and result.error in ("RATE_LIMIT", "Timeout"):
-                                self.after_safe(lambda e=result.error: self.add_log(f"    ⚠️ {e}! Đổi profile..."))
-                                # Thử Chrome profile khác
-                                current_profile_idx += 1
-                                if current_profile_idx < len(profiles):
-                                    if init_extractor(current_profile_idx):
-                                        time.sleep(2)
-                                        continue
-                                self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
-                                break
-
-                            time.sleep(1)
-                        except Exception as e:
-                            error_str = str(e).lower()
-                            # Kiểm tra nếu bị rate limit
-                            if "limit" in error_str or "quota" in error_str or "429" in error_str:
-                                self.after_safe(lambda e=str(e): self.add_log(f"    ⚠️ Rate limit: {e}"))
-                                # Thử Chrome profile khác
-                                current_profile_idx += 1
-                                if current_profile_idx < len(profiles):
-                                    if init_extractor(current_profile_idx):
-                                        continue
-                                self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
-                                break
-                            else:
-                                self.after_safe(lambda c=code, e=str(e): self.add_log(f"    ⚠️ Lỗi: {e}"))
-                                break
+                        time.sleep(1)
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        # Kiểm tra nếu bị rate limit
+                        if "limit" in error_str or "quota" in error_str or "429" in error_str:
+                            self.after_safe(lambda e=str(e): self.add_log(f"    ⚠️ Rate limit: {e}"))
+                            # Thử Chrome profile khác
+                            current_profile_idx += 1
+                            if current_profile_idx < len(profiles):
+                                if init_extractor(current_profile_idx):
+                                    continue
+                            self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
+                            break
+                        else:
+                            self.after_safe(lambda c=code, e=str(e): self.add_log(f"    ⚠️ Lỗi: {e}"))
+                            break
 
         except ImportError as e:
             self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Module GeminiExtract không có: {e}"))

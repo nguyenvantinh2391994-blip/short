@@ -38,3 +38,18 @@ asyncio-throttle==1.0.2
 
 # Packaging
 pyinstaller>=6.0.0
+
+# Sora Watermark Cleaner dependencies
+loguru>=0.7.0
+ruptures>=1.1.0
+scikit-learn>=1.0.0
+mmcv>=2.1.0
+einops>=0.6.0
+omegaconf>=2.3.0
+pytorch_lightning>=2.0.0
+timm>=0.9.0
+simple-lama-inpainting>=0.1.0
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+huggingface_hub>=0.20.0

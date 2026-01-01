@@ -2451,6 +2451,12 @@ class MainTab:
             input_folder = Path(self.app.config.input_folder)
             profiles = self.app.config.browser_profiles or []
 
+            # Log số profiles để debug
+            self.after_safe(lambda n=len(profiles): self.add_log(f"  📊 Có {n} Chrome profile trong cài đặt"))
+            for i, p in enumerate(profiles):
+                self.after_safe(lambda idx=i, name=p.get("name", "Unknown"):
+                    self.add_log(f"     Profile {idx+1}: {name}"))
+
             if not profiles:
                 self.after_safe(lambda: self.add_log("  ⚠️ Chưa cấu hình Chrome profile"))
                 return
@@ -2461,19 +2467,23 @@ class MainTab:
             def init_extractor(profile_idx):
                 """Khởi tạo extractor với profile chỉ định"""
                 nonlocal extractor
+                self.after_safe(lambda idx=profile_idx: self.add_log(f"  🔧 init_extractor(profile_idx={idx})"))
+
                 if profile_idx >= len(profiles):
+                    self.after_safe(lambda: self.add_log(f"  ❌ profile_idx >= len(profiles)"))
                     return False
 
                 # Đóng Chrome cũ trước khi switch profile
                 from ...chrome_manager import chrome_manager
+                self.after_safe(lambda: self.add_log(f"  🔄 Đóng Chrome cũ..."))
                 chrome_manager.close_chrome()
                 time.sleep(2)
 
                 profile = profiles[profile_idx]
                 chrome_path = profile.get("chrome_path")
                 profile_path = profile.get("profile_path")
-                self.after_safe(lambda n=profile.get("name", f"Profile {profile_idx+1}"):
-                    self.add_log(f"  🔄 Dùng Chrome: {n}"))
+                self.after_safe(lambda n=profile.get("name", f"Profile {profile_idx+1}"), p=profile_path:
+                    self.add_log(f"  🔄 Dùng Chrome: {n} ({p})"))
                 extractor = GeminiExtract(
                     chrome_path=chrome_path,
                     profile_path=profile_path,
@@ -2538,9 +2548,13 @@ class MainTab:
                                 success = True
                                 break
 
+                            # Log result để debug
+                            if result:
+                                self.after_safe(lambda e=result.error: self.add_log(f"    📋 result.error = '{e}'"))
+
                             # Kiểm tra nếu bị rate limit từ result.error
                             if result and result.error == "RATE_LIMIT":
-                                self.after_safe(lambda: self.add_log(f"    ⚠️ Rate limit! Đổi profile..."))
+                                self.after_safe(lambda: self.add_log(f"    ⚠️ RATE_LIMIT detected! Đổi profile..."))
                                 # Thử Chrome profile khác
                                 current_profile_idx += 1
                                 if current_profile_idx < len(profiles):

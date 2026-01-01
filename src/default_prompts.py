@@ -62,45 +62,28 @@ Return ONLY the edited product image."""
 # =============================================================================
 # 2. SCRIPT PROMPT - Kịch bản bán hàng (~30s) cho video AFFILIATE thời trang
 # =============================================================================
-DEFAULT_SCRIPT_PROMPT = """Bạn là cô gái trẻ review đồ thời trang TikTok. Viết kịch bản ~30 giây dạng REVIEW SẢN PHẨM để BÁN HÀNG.
+DEFAULT_SCRIPT_PROMPT = """Viết kịch bản REVIEW SẢN PHẨM cho video TikTok ~30 giây.
+
+ĐỐI TƯỢNG: Phụ nữ có con nhỏ từ 2-8 tuổi
+- Quan tâm: tiết kiệm, tiện lợi, bền đẹp, an toàn cho bé
+- Tâm lý: muốn con xinh xắn, đáng yêu, thoải mái khi mặc
+- Thích: giá hợp lý, chất lượng tốt, dễ giặt, không phai màu
 
 SẢN PHẨM:
 - Tên: {product_name}
 - Mô tả: {product_description}
 
-⚡ CẤU TRÚC KỊCH BẢN:
-
-1. MỞ ĐẦU BẰNG CÂU THƠ/VÈ ẤN TƯỢNG (bắt vần, dễ nhớ):
-   Ví dụ:
-   - "Váy xinh dáng đẹp giá hời, mua ngay kẻo hết rồi tiếc thầm!"
-   - "Áo đẹp form chuẩn giá mềm, mặc lên là thấy duyên dáng liền!"
-   - "Đồ xinh mà rẻ khó tin, mua về mặc thử là mê liền tay!"
-   - "Set đồ chuẩn đẹp như mơ, mua ngay đi chị em đừng chờ chi nữa!"
-   → Câu thơ PHẢI liên quan đến {product_name}
-
-2. REVIEW NGẮN (2-3 câu):
-   - Chất liệu như thế nào (mát/mềm/thoáng)
-   - Form dáng mặc lên ra sao (tôn dáng/che khuyết điểm)
-   - Điểm nổi bật từ {product_description}
-
-3. LÝ DO NÊN MUA (1 câu):
-   - Phù hợp đi đâu, mặc dịp gì
-
-4. KÊU GỌI MUA (1 câu):
-   - "Bấm giỏ hàng vàng đặt liền nha!"
-   - "Link shop ở bio, đặt ngay kẻo hết!"
+HƯỚNG DẪN:
+1. MỞ ĐẦU: Câu thơ/vè BẮT VẦN ấn tượng, thu hút các mẹ
+2. REVIEW: Nói về chất liệu, form dáng, điểm nổi bật phù hợp với bé
+3. KẾT: Kêu gọi mua hàng
 
 YÊU CẦU:
-✅ 50-70 từ (~30 giây đọc)
-✅ Giọng tự nhiên như review cho bạn bè
-✅ Câu thơ mở đầu PHẢI bắt vần, dễ nhớ
-✅ PHẢI dựa vào {product_name} và {product_description}
-✅ Từ ngữ: "xinh xỉu", "mê", "ưng", "đẹp", "xịn", "mát", "chuẩn"
-❌ KHÔNG dài dòng, sáo rỗng
-❌ KHÔNG bịa thông tin không có trong mô tả
-
-VÍ DỤ CHUẨN:
-"Váy babydoll xinh như mộng, diện lên là lòng xao xuyến ngay! Chất tơ mềm mát, form xòe nhẹ che bụng cực đỉnh. Màu pastel dễ phối, đi chơi hay đi làm đều xinh. Bấm giỏ hàng vàng đặt liền nha!"
+- 50-70 từ
+- Giọng thân thiện như mẹ bỉm chia sẻ với nhau
+- Hiểu tâm lý phụ huynh: an tâm, tiện lợi, con xinh
+- Dựa vào thông tin sản phẩm, KHÔNG bịa
+- Sáng tạo, tự nhiên
 
 CHỈ TRẢ VỀ KỊCH BẢN:"""
 

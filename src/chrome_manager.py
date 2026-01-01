@@ -148,13 +148,18 @@ class ChromeManager:
         """Đóng Chrome hoàn toàn"""
         if self.chrome_process:
             try:
-                self.chrome_process.terminate()
+                # Dùng kill() thay vì terminate() để đảm bảo đóng hoàn toàn
+                self.chrome_process.kill()
+                self.chrome_process.wait(timeout=5)
                 console.print(f"[dim]Đã đóng Chrome[/]")
             except Exception as e:
                 console.print(f"[yellow]Lỗi đóng Chrome: {e}[/]")
             finally:
                 self.chrome_process = None
                 self._is_first_tab = True
+
+        # Reset profile để lần sau dùng profile mới
+        console.print(f"[dim]Reset chrome_manager profile[/]")
 
     def _focus_chrome(self) -> bool:
         """Focus vào cửa sổ Chrome"""

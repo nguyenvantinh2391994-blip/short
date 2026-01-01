@@ -1425,8 +1425,8 @@ class MainTab:
                 profile = profiles[profile_idx]
                 chrome_path = profile.get("chrome_path")
                 profile_path = profile.get("profile_path")
-                self.after_safe(lambda n=profile.get("name", f"Profile {profile_idx+1}"):
-                    self.add_log(f"🔄 Dùng Chrome: {n}"))
+                self.after_safe(lambda n=profile.get("name", f"Profile {profile_idx+1}"), p=profile_path:
+                    self.add_log(f"🔄 Dùng Chrome: {n}\n   Profile path: {p}"))
 
                 gemini = GeminiExtract(
                     chrome_path=chrome_path,

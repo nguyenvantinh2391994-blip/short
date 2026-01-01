@@ -24,6 +24,8 @@ I may provide MULTIPLE images of the SAME product.
 Use them only as visual references to understand the exact product set and details.
 
 Return ONLY ONE final product cutout (choose the cleanest/best single variant).
+ẢNH ĐẦU RA LÀ 1 PHÂN LOẠI SẢN PHẨM DUY NHẤT
+ẢNH ĐẦU RA KHÔNG CÓ TEXT
 
 Task description:
 Extract (cut out) the MAIN PHYSICAL PRODUCT from the image.
@@ -48,6 +50,7 @@ Editing instructions:
 Output requirements:
 - Output must be an IMAGE
 - EXACTLY ONE product set only
+- 1 PHÂN LOẠI SẢN PHẨM DUY NHẤT
 - Pure white background (#FFFFFF)
 - No shadows, no reflections
 - No text in the output

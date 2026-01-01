@@ -2548,13 +2548,9 @@ class MainTab:
                                 success = True
                                 break
 
-                            # Log result để debug
-                            if result:
-                                self.after_safe(lambda e=result.error: self.add_log(f"    📋 result.error = '{e}'"))
-
-                            # Kiểm tra nếu bị rate limit từ result.error
-                            if result and result.error == "RATE_LIMIT":
-                                self.after_safe(lambda: self.add_log(f"    ⚠️ RATE_LIMIT detected! Đổi profile..."))
+                            # Kiểm tra nếu bị rate limit hoặc timeout → chuyển profile
+                            if result and result.error in ("RATE_LIMIT", "Timeout"):
+                                self.after_safe(lambda e=result.error: self.add_log(f"    ⚠️ {e}! Đổi profile..."))
                                 # Thử Chrome profile khác
                                 current_profile_idx += 1
                                 if current_profile_idx < len(profiles):

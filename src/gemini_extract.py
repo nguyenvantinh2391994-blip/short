@@ -286,15 +286,19 @@ class GeminiExtract:
                 // Check rate limit message - English and Vietnamese
                 var pageText = document.body.innerText || '';
                 var lowerText = pageText.toLowerCase();
+
+                // Normalize quotes (smart quotes to regular)
+                lowerText = lowerText.replace(/[\u2018\u2019]/g, "'");
+
                 if (lowerText.includes("can't create more images") ||
                     lowerText.includes("can't generate more images") ||
-                    lowerText.includes("i can't create more images") ||
-                    lowerText.includes("i can't generate more images") ||
+                    lowerText.includes("generate more images") ||
                     lowerText.includes("come back tomorrow") ||
+                    lowerText.includes("hạn mức tạo hình ảnh") ||
+                    lowerText.includes("đạt đến hạn mức") ||
                     lowerText.includes("limit reached") ||
                     lowerText.includes("reached your limit") ||
                     lowerText.includes("không thể tạo thêm") ||
-                    lowerText.includes("đã đạt giới hạn") ||
                     lowerText.includes("hết lượt") ||
                     lowerText.includes("quota") ||
                     lowerText.includes("rate limit")) {

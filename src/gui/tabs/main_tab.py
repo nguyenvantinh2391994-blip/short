@@ -2198,7 +2198,7 @@ class MainTab:
     # ===== FULL WORKFLOW =====
 
     def run_full_workflow(self):
-        """Chạy full quy trình: Tải ảnh → Tách SP → Lọc → Script → Flow → Sora → Grok → Edit"""
+        """Chạy full quy trình: TẢI ẢNH → LỌC → TÁCH → SCRIPT → FLOW → SORA → XÓA LOGO → GROK → EDIT"""
         if self.is_running:
             self.add_log("Đang chạy task khác...")
             return
@@ -2216,7 +2216,7 @@ class MainTab:
         self.stop_flag.clear()
         self.clear_table()
         self.add_log("🚀 Bắt đầu chạy FULL quy trình...")
-        self.add_log("📋 Thứ tự: Tải ảnh → [Script || Lọc → Tách SP] → Flow → Sora → Grok → Edit → DONE")
+        self.add_log("📋 Thứ tự: TẢI ẢNH → LỌC → TÁCH → SCRIPT → FLOW → SORA → XÓA LOGO → GROK → EDIT")
 
         # Get all prompts for script generation
         all_prompts = self.get_selected_prompts()
@@ -2229,110 +2229,105 @@ class MainTab:
     def _run_full_workflow(self, all_prompts: dict = None):
         """Background thread chạy full quy trình
 
-        Luồng chạy:
-        1. Tải ảnh (phải xong trước)
-        2. Song song: Script || (Lọc → Tách SP)
-        3. Flow (chờ Script xong)
-        4. SORA
-        5. Grok
-        6. EDIT (dùng merge_voice_first)
-        7. Đánh dấu DONE
+        Luồng chạy TUẦN TỰ:
+        1. TẢI ẢNH
+        2. LỌC
+        3. TÁCH SP
+        4. SCRIPT
+        5. FLOW
+        6. SORA
+        7. XÓA LOGO SORA
+        8. GROK
+        9. EDIT
         """
         import time
-        from concurrent.futures import ThreadPoolExecutor, Future
-
-        script_future: Future = None
-        script_done = threading.Event()
-
-        def run_script_thread():
-            """Chạy Script trong thread riêng"""
-            try:
-                self._run_script_creation_internal(all_prompts)
-            finally:
-                script_done.set()
 
         try:
-            # === BƯỚC 1: TẢI ẢNH (phải xong trước) ===
+            # === BƯỚC 1: TẢI ẢNH ===
             if self.stop_flag.is_set():
                 return
-            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n📥 BƯỚC 1: TẢI ẢNH\n{'='*40}"))
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n📥 BƯỚC 1/9: TẢI ẢNH\n{'='*40}"))
             try:
                 self._run_shopee_download_internal()
             except Exception as e:
                 self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi tải ảnh: {e}"))
             time.sleep(1)
 
-            # === BƯỚC 2: SCRIPT chạy song song với LỌC + TÁCH SP ===
+            # === BƯỚC 2: LỌC ẢNH ===
             if self.stop_flag.is_set():
                 return
-
-            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n📝 BƯỚC 2: SCRIPT (chạy nền) + LỌC + TÁCH SP\n{'='*40}"))
-
-            # Bắt đầu Script trong thread riêng
-            script_thread = threading.Thread(target=run_script_thread, daemon=True)
-            script_thread.start()
-            self.after_safe(lambda: self.add_log("  🔄 Script đang chạy nền..."))
-
-            # Chạy Lọc
-            if not self.stop_flag.is_set():
-                self.after_safe(lambda: self.add_log("\n  🔍 Đang lọc ảnh..."))
-                try:
-                    self._run_filter_internal()
-                except Exception as e:
-                    self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi lọc: {e}"))
-
-            # Chạy Tách SP
-            if not self.stop_flag.is_set():
-                self.after_safe(lambda: self.add_log("\n  🔬 Đang tách sản phẩm..."))
-                try:
-                    extract_prompt = all_prompts.get("extract") if all_prompts else None
-                    self._run_extract_internal(extract_prompt)
-                except Exception as e:
-                    self.after_safe(lambda e=str(e): self.add_log(f"  ⚠️ Lỗi tách SP: {e}"))
-
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🔍 BƯỚC 2/9: LỌC ẢNH\n{'='*40}"))
+            try:
+                self._run_filter_internal()
+            except Exception as e:
+                self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi lọc: {e}"))
             time.sleep(1)
 
-            # === BƯỚC 3: FLOW (chờ Script xong) ===
+            # === BƯỚC 3: TÁCH SẢN PHẨM ===
             if self.stop_flag.is_set():
                 return
-            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🌀 BƯỚC 3: TẠO ẢNH FLOW\n{'='*40}"))
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🔬 BƯỚC 3/9: TÁCH SẢN PHẨM\n{'='*40}"))
+            try:
+                extract_prompt = all_prompts.get("extract") if all_prompts else None
+                self._run_extract_internal(extract_prompt)
+            except Exception as e:
+                self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi tách SP: {e}"))
+            time.sleep(1)
 
-            # Chờ Script xong trước khi chạy Flow
-            if not script_done.is_set():
-                self.after_safe(lambda: self.add_log("  ⏳ Chờ Script hoàn thành..."))
-                script_done.wait()
-                self.after_safe(lambda: self.add_log("  ✓ Script đã xong"))
+            # === BƯỚC 4: TẠO SCRIPT ===
+            if self.stop_flag.is_set():
+                return
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n📝 BƯỚC 4/9: TẠO SCRIPT\n{'='*40}"))
+            try:
+                self._run_script_creation_internal(all_prompts)
+            except Exception as e:
+                self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi Script: {e}"))
+            time.sleep(1)
 
+            # === BƯỚC 5: TẠO ẢNH FLOW ===
+            if self.stop_flag.is_set():
+                return
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🌀 BƯỚC 5/9: TẠO ẢNH FLOW\n{'='*40}"))
             try:
                 self._run_flow_internal()
             except Exception as e:
                 self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi Flow: {e}"))
             time.sleep(1)
 
-            # === BƯỚC 4: SORA ===
+            # === BƯỚC 6: TẠO VIDEO SORA ===
             if self.stop_flag.is_set():
                 return
-            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🎬 BƯỚC 4: TẠO VIDEO SORA\n{'='*40}"))
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🎬 BƯỚC 6/9: TẠO VIDEO SORA\n{'='*40}"))
             try:
                 self._run_sora_internal()
             except Exception as e:
                 self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi SORA: {e}"))
             time.sleep(1)
 
-            # === BƯỚC 5: GROK ===
+            # === BƯỚC 7: XÓA LOGO SORA ===
             if self.stop_flag.is_set():
                 return
-            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🎥 BƯỚC 5: TẠO VIDEO GROK\n{'='*40}"))
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🧹 BƯỚC 7/9: XÓA LOGO SORA\n{'='*40}"))
+            try:
+                self._run_clean_watermark_internal()
+            except Exception as e:
+                self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi xóa logo: {e}"))
+            time.sleep(1)
+
+            # === BƯỚC 8: TẠO VIDEO GROK ===
+            if self.stop_flag.is_set():
+                return
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n🎥 BƯỚC 8/9: TẠO VIDEO GROK\n{'='*40}"))
             try:
                 self._run_grok_internal()
             except Exception as e:
                 self.after_safe(lambda e=str(e): self.add_log(f"⚠️ Lỗi Grok: {e}"))
             time.sleep(1)
 
-            # === BƯỚC 6: EDIT (dùng merge_voice_first) ===
+            # === BƯỚC 9: EDIT VIDEO ===
             if self.stop_flag.is_set():
                 return
-            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n✂️ BƯỚC 6: EDIT VIDEO (Voice First)\n{'='*40}"))
+            self.after_safe(lambda: self.add_log(f"\n{'='*40}\n✂️ BƯỚC 9/9: EDIT VIDEO\n{'='*40}"))
             try:
                 self._run_edit_internal()
             except Exception as e:
@@ -3080,6 +3075,72 @@ class MainTab:
 
         except Exception as e:
             self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi: {e}"))
+
+    def _run_clean_watermark_internal(self):
+        """Chạy xóa logo SORA (internal - không quản lý state)"""
+        try:
+            from ...sora_watermark_cleaner import SoraWatermarkRemover
+
+            input_folder = Path(self.app.config.input_folder)
+
+            if not input_folder.exists():
+                self.after_safe(lambda: self.add_log(f"  ⚠️ Thư mục không tồn tại: {input_folder}"))
+                return
+
+            # Khởi tạo remover
+            def log_callback(msg):
+                self.after_safe(lambda m=msg: self.add_log(f"   {m}"))
+
+            remover = SoraWatermarkRemover(
+                cleaner_type="lama",
+                on_log=log_callback
+            )
+
+            # Đếm số video SORA cần xử lý
+            sora_videos = []
+            for code_folder in input_folder.iterdir():
+                if not code_folder.is_dir():
+                    continue
+
+                video_folder = code_folder / "video"
+                if not video_folder.exists():
+                    continue
+
+                # Tìm video SORA (chưa có _clean)
+                for video in video_folder.glob("*sora*.mp4"):
+                    if "_clean" not in video.stem:
+                        output_path = video.parent / f"{video.stem}_clean{video.suffix}"
+                        if not output_path.exists():
+                            sora_videos.append((video, output_path))
+
+            if not sora_videos:
+                self.after_safe(lambda: self.add_log("  ⚠️ Không có video SORA nào cần xóa logo"))
+                return
+
+            self.after_safe(lambda n=len(sora_videos): self.add_log(f"  📹 Tìm thấy {n} video cần xóa logo"))
+
+            # Xử lý từng video
+            success_count = 0
+            for i, (video, output) in enumerate(sora_videos, 1):
+                if self.stop_flag.is_set():
+                    break
+
+                code = video.parent.parent.name
+                self.after_safe(lambda c=code, idx=i, t=len(sora_videos):
+                    self.add_log(f"  [{idx}/{t}] {c}: {video.name}"))
+
+                result = remover.clean_video(str(video), str(output))
+
+                if result.success:
+                    success_count += 1
+
+            self.after_safe(lambda s=success_count, t=len(sora_videos):
+                self.add_log(f"  ✅ Đã xóa logo: {s}/{t} video"))
+
+        except ImportError:
+            self.after_safe(lambda: self.add_log("  ⚠️ SoraWatermarkCleaner chưa được cài đặt, bỏ qua"))
+        except Exception as e:
+            self.after_safe(lambda e=str(e): self.add_log(f"  ❌ Lỗi xóa logo: {e}"))
 
     def _run_edit_internal(self):
         """Chạy Edit ghép video (internal) - Voice First Mode

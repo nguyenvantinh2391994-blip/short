@@ -1462,10 +1462,17 @@ class MainTab:
                     item_idx += 1
                     continue
 
-                self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
+                # Log số ảnh và danh sách
+                num_images = len(images)
+                self.after_safe(lambda c=code, n=num_images: self.add_log(f"\n[{c}] Tach {n} anh..."))
 
                 # Tach san pham - lấy tên sản phẩm từ cột C (index 2 trong data)
                 product_name = item["data"][2] if len(item.get("data", [])) > 2 else ""
+
+                # Debug: log số ảnh trước khi gửi
+                self.after_safe(lambda n=num_images, fe=first_extract:
+                    self.add_log(f"  📷 Gửi {n} ảnh (first_extract={fe})"))
+
                 if first_extract:
                     result = gemini.extract_product(
                         image_paths=images,

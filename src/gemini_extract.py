@@ -287,12 +287,14 @@ class GeminiExtract:
                 var pageText = document.body.innerText || '';
                 var lowerText = pageText.toLowerCase();
                 if (lowerText.includes("can't create more images") ||
+                    lowerText.includes("can't generate more images") ||
                     lowerText.includes("i can't create more images") ||
+                    lowerText.includes("i can't generate more images") ||
+                    lowerText.includes("come back tomorrow") ||
                     lowerText.includes("limit reached") ||
                     lowerText.includes("reached your limit") ||
                     lowerText.includes("không thể tạo thêm") ||
                     lowerText.includes("đã đạt giới hạn") ||
-                    lowerText.includes("giới hạn") ||
                     lowerText.includes("hết lượt") ||
                     lowerText.includes("quota") ||
                     lowerText.includes("rate limit")) {

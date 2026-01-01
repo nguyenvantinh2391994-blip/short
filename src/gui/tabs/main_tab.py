@@ -1431,11 +1431,13 @@ class MainTab:
             self.current_gemini = gemini
 
             first_extract = True
+            item_idx = 0
 
-            for item in pending:
+            while item_idx < len(pending):
                 if self.stop_flag.is_set():
                     break
 
+                item = pending[item_idx]
                 code = item["code"]
                 code_folder = input_folder / code
 
@@ -1450,12 +1452,14 @@ class MainTab:
                                          list(extract_folder.glob("*.webp")))
                     if existing_extracted:
                         self.after_safe(lambda c=code, n=len(existing_extracted): self.add_log(f"  {c}: Đã tách ({n} ảnh) - bỏ qua"))
+                        item_idx += 1
                         continue
 
                 # Lay danh sach anh
                 images = get_images_in_folder(str(code_folder))
                 if not images:
                     self.after_safe(lambda c=code: self.add_log(f"  {c}: Khong co anh"))
+                    item_idx += 1
                     continue
 
                 self.after_safe(lambda c=code, n=len(images): self.add_log(f"\n[{c}] Tach {n} anh..."))
@@ -1481,37 +1485,43 @@ class MainTab:
                 if result and result.success:
                     self.after_safe(lambda c=code, n=len(result.images):
                         self.add_log(f"  {c}: Da tach {n} anh"))
+                    item_idx += 1  # Chuyển sang sản phẩm tiếp theo
                 else:
                     error = result.error if result else "Loi"
                     self.after_safe(lambda c=code, e=error:
                         self.add_log(f"  {c}: {e}"))
 
-                    # Nếu RATE_LIMIT hoặc Timeout → switch profile và tiếp tục
+                    # Nếu RATE_LIMIT hoặc Timeout → switch profile và RETRY sản phẩm này
                     if result and result.error in ("RATE_LIMIT", "Timeout"):
                         current_profile_idx += 1
                         if current_profile_idx < len(profiles):
-                            self.after_safe(lambda: self.add_log(f"  ⚠️ Đổi profile..."))
+                            self.after_safe(lambda: self.add_log(f"  ⚠️ Đổi profile và retry..."))
                             chrome_manager.close_chrome()
                             import time
                             time.sleep(2)
 
-                            profile = profiles[current_profile_idx]
-                            chrome_path = profile.get("chrome_path")
-                            profile_path = profile.get("profile_path")
-                            self.after_safe(lambda n=profile.get("name"), p=profile_path:
-                                self.add_log(f"🔄 Dùng Chrome: {n} ({p})"))
+                            new_profile = profiles[current_profile_idx]
+                            new_chrome_path = new_profile.get("chrome_path")
+                            new_profile_path = new_profile.get("profile_path")
+                            new_profile_name = new_profile.get("name", f"Profile {current_profile_idx+1}")
+                            self.after_safe(lambda name=new_profile_name, path=new_profile_path:
+                                self.add_log(f"🔄 Dùng Chrome: {name} ({path})"))
 
                             gemini = GeminiExtract(
-                                chrome_path=chrome_path,
-                                profile_path=profile_path,
+                                chrome_path=new_chrome_path,
+                                profile_path=new_profile_path,
                                 output_folder=str(output_folder),
                                 headless=not getattr(self.app.config, 'show_chrome', True),
                                 custom_extract_prompt=extract_prompt,
                             )
                             self.current_gemini = gemini
                             first_extract = True  # Profile mới cần mở Chrome mới
+                            # KHÔNG tăng item_idx → retry sản phẩm này
                         else:
                             self.after_safe(lambda: self.add_log(f"  ❌ Hết profile để thử"))
+                            item_idx += 1  # Bỏ qua sản phẩm này
+                    else:
+                        item_idx += 1  # Lỗi khác, bỏ qua sản phẩm
 
             self.after_safe(lambda: self.add_log("\nHoan thanh tach san pham!"))
 

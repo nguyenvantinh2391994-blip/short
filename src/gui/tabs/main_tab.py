@@ -1985,9 +1985,9 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("Sheet trống!"))
                 return
 
-            # Tạo thư mục voice
-            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
-            voice_folder.mkdir(parents=True, exist_ok=True)
+            # Thư mục input (voice sẽ lưu trong input/{code}/)
+            input_folder = Path(self.app.config.input_folder)
+            input_folder.mkdir(parents=True, exist_ok=True)
 
             # Column indexes
             code_col = 0  # A
@@ -2019,9 +2019,10 @@ class MainTab:
                 if not code or not name:
                     continue
 
-                # Kiểm tra đã có voice chưa (check cả .wav và .mp3)
-                voice_path_wav = voice_folder / f"{code}.wav"
-                voice_path_mp3 = voice_folder / f"{code}.mp3"
+                # Kiểm tra đã có voice chưa (check trong input/{code}/)
+                code_folder = input_folder / code
+                voice_path_wav = code_folder / f"{code}.wav"
+                voice_path_mp3 = code_folder / f"{code}.mp3"
                 has_voice = voice_path_wav.exists() or voice_path_mp3.exists()
 
                 # Kiểm tra đã có đủ flow prompts chưa
@@ -2114,10 +2115,12 @@ class MainTab:
 
                     self.set_task_video_status(code, TaskItem.STATUS_RUNNING)
 
-                    # Bước 2: Tạo voice (nếu chưa có)
+                    # Bước 2: Tạo voice (nếu chưa có) - lưu trong input/{code}/
                     if not item["has_voice"] and script:
                         self.after_safe(lambda c=code: self.add_log(f"  Tạo voice..."))
-                        voice_path = voice_folder / f"{code}.wav"
+                        code_folder = input_folder / code
+                        code_folder.mkdir(parents=True, exist_ok=True)
+                        voice_path = code_folder / f"{code}.wav"
                         voice_result = gemini.generate_voice(
                             text=script,
                             output_path=str(voice_path),
@@ -2629,8 +2632,8 @@ class MainTab:
                 return
 
             gemini = GeminiService(self.app.config.gemini_api_key)
-            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
-            voice_folder.mkdir(parents=True, exist_ok=True)
+            input_folder = Path(self.app.config.input_folder)
+            input_folder.mkdir(parents=True, exist_ok=True)
 
             all_values = reader.sheet.get_all_values()
             for row_idx, row in enumerate(all_values[1:], start=2):
@@ -2645,8 +2648,9 @@ class MainTab:
                 if not code or not name:
                     continue
 
-                # Check voice
-                has_voice = (voice_folder / f"{code}.mp3").exists() or (voice_folder / f"{code}.wav").exists()
+                # Check voice trong input/{code}/
+                code_folder = input_folder / code
+                has_voice = (code_folder / f"{code}.mp3").exists() or (code_folder / f"{code}.wav").exists()
                 if has_voice and script:
                     continue
 
@@ -2665,9 +2669,10 @@ class MainTab:
                         if result.sora_prompt:
                             reader.sheet.update_acell(f"F{row_idx}", result.sora_prompt)
 
-                # Tạo voice nếu chưa có
+                # Tạo voice nếu chưa có - lưu trong input/{code}/
                 if script and not has_voice:
-                    voice_result = gemini.generate_voice(script, str(voice_folder / f"{code}.mp3"))
+                    code_folder.mkdir(parents=True, exist_ok=True)
+                    voice_result = gemini.generate_voice(script, str(code_folder / f"{code}.mp3"))
                     if voice_result.success:
                         self.after_safe(lambda c=code: self.add_log(f"    ✓ Voice xong"))
 
@@ -3196,21 +3201,14 @@ class MainTab:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có video final"))
                     continue
 
-                # Lấy voice - TÌM TRONG voice_folder TRƯỚC (nơi voice được tạo)
+                # Lấy voice - TÌM TRONG input/{code}/ (nơi voice được lưu)
                 voice_path = None
-
-                # 1. Tìm trong voice_folder (ưu tiên - nơi voice được lưu)
-                if voice_folder:
-                    voice_path = get_voice_for_code(voice_folder, code)
-
-                # 2. Fallback: tìm trong input/{code}/
-                if not voice_path:
-                    code_folder = input_folder / code
-                    for ext in ['.mp3', '.wav']:
-                        vp = code_folder / f"{code}{ext}"
-                        if vp.exists():
-                            voice_path = str(vp)
-                            break
+                code_folder = input_folder / code
+                for ext in ['.mp3', '.wav']:
+                    vp = code_folder / f"{code}{ext}"
+                    if vp.exists():
+                        voice_path = str(vp)
+                        break
 
                 if not voice_path:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: không có voice, bỏ qua"))
@@ -3513,9 +3511,7 @@ class MainTab:
                 self.after_safe(lambda: self.add_log("  Không có mã nào có ảnh để tạo video"))
                 return
 
-            # Khởi tạo trạng thái
-            voice_folder = Path(self.app.config.voice_folder) if self.app.config.voice_folder else Path("voice")
-            voice_folder.mkdir(parents=True, exist_ok=True)
+            # Voice sẽ lưu trong input/{code}/ (không cần voice_folder riêng)
 
             # Định nghĩa hàm chạy song song cho kịch bản
             def run_script_generation():
@@ -3546,9 +3542,10 @@ class MainTab:
                     if not name:
                         continue
 
-                    # Check existing voice
-                    voice_path_mp3 = voice_folder / f"{code}.mp3"
-                    voice_path_wav = voice_folder / f"{code}.wav"
+                    # Check existing voice trong input/{code}/
+                    code_folder = input_folder / code
+                    voice_path_mp3 = code_folder / f"{code}.mp3"
+                    voice_path_wav = code_folder / f"{code}.wav"
                     has_voice = voice_path_mp3.exists() or voice_path_wav.exists()
 
                     if has_voice:
@@ -3571,12 +3568,13 @@ class MainTab:
                                 self.after_safe(lambda c=code, e=script_result.error: self.add_log(f"  [Script] ❌ {c}: {e}"))
                                 continue
 
-                        # Tạo voice
+                        # Tạo voice - lưu trong input/{code}/
                         if script:
                             self.after_safe(lambda c=code: self.add_log(f"  [Script] 🎤 {c}: tạo voice..."))
+                            code_folder.mkdir(parents=True, exist_ok=True)
                             voice_result = gemini.generate_voice(
                                 text=script,
-                                output_path=str(voice_folder / f"{code}.mp3"),
+                                output_path=str(code_folder / f"{code}.mp3"),
                                 output_format="mp3"
                             )
 
@@ -4346,25 +4344,14 @@ class MainTab:
             for item in pending:
                 code = item["code"]
 
-                # Kiểm tra voice - TÌM TRONG voice_folder TRƯỚC (nơi voice được tạo)
+                # Kiểm tra voice - TÌM TRONG input/{code}/ (nơi voice được lưu)
                 voice_path = None
-
-                # 1. Tìm trong voice_folder (ưu tiên - nơi voice được lưu)
-                if voice_folder:
-                    for ext in ['.mp3', '.wav']:
-                        vp = voice_folder / f"{code}{ext}"
-                        if vp.exists():
-                            voice_path = str(vp)
-                            break
-
-                # 2. Fallback: tìm trong input/{code}/
-                if not voice_path:
-                    code_folder = input_folder / code
-                    for ext in ['.mp3', '.wav']:
-                        vp = code_folder / f"{code}{ext}"
-                        if vp.exists():
-                            voice_path = str(vp)
-                            break
+                code_folder = input_folder / code
+                for ext in ['.mp3', '.wav']:
+                    vp = code_folder / f"{code}{ext}"
+                    if vp.exists():
+                        voice_path = str(vp)
+                        break
 
                 if not voice_path:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: không có voice, bỏ qua"))

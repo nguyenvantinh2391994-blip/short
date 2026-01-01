@@ -2531,6 +2531,19 @@ class MainTab:
                                 self.after_safe(lambda c=code: self.add_log(f"    ✓ Tách xong 1 ảnh"))
                                 success = True
                                 break
+
+                            # Kiểm tra nếu bị rate limit từ result.error
+                            if result and result.error == "RATE_LIMIT":
+                                self.after_safe(lambda: self.add_log(f"    ⚠️ Rate limit! Đổi profile..."))
+                                # Thử Chrome profile khác
+                                current_profile_idx += 1
+                                if current_profile_idx < len(profiles):
+                                    if init_extractor(current_profile_idx):
+                                        time.sleep(2)
+                                        continue
+                                self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
+                                break
+
                             time.sleep(1)
                         except Exception as e:
                             error_str = str(e).lower()

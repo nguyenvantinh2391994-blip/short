@@ -264,8 +264,14 @@ class GeminiExtract:
             self.log_err("Khong gui duoc prompt")
             return False
 
-    def wait_for_completion(self, timeout: int = 180) -> bool:
-        """Doi tao anh xong"""
+    def wait_for_completion(self, timeout: int = 180) -> str:
+        """Doi tao anh xong
+
+        Returns:
+            'DONE' - Thanh cong
+            'RATE_LIMIT' - Bi gioi han
+            'TIMEOUT' - Het thoi gian
+        """
         self.log(f"Doi tao anh... (toi da {timeout}s)")
 
         start = time.time()
@@ -277,6 +283,16 @@ class GeminiExtract:
 
             js = '''
             (function() {
+                // Check rate limit message
+                var pageText = document.body.innerText || '';
+                if (pageText.includes("can't create more images") ||
+                    pageText.includes("I can't create more images for you today") ||
+                    pageText.includes("limit reached") ||
+                    pageText.includes("reached your limit")) {
+                    copy('RATE_LIMIT');
+                    return;
+                }
+
                 var stop = document.querySelector('mat-icon[fonticon="stop"]');
                 var imgs = document.querySelectorAll('generated-image img.image');
                 if (imgs.length > 0 && !stop) { copy('DONE'); }
@@ -287,12 +303,16 @@ class GeminiExtract:
 
             self.log(f"   {elapsed}s - Check...")
 
-            if result and 'DONE' in result:
-                self.log_ok(f"Hoan thanh! ({elapsed}s)")
-                return True
+            if result:
+                if 'RATE_LIMIT' in result:
+                    self.log_err("Rate limit - Gemini không tạo thêm ảnh được!")
+                    return 'RATE_LIMIT'
+                if 'DONE' in result:
+                    self.log_ok(f"Hoan thanh! ({elapsed}s)")
+                    return 'DONE'
 
         self.log_err(f"Timeout sau {timeout}s")
-        return False
+        return 'TIMEOUT'
 
     def get_generated_images(self) -> List[str]:
         """Lay URL cac anh da tao"""
@@ -499,7 +519,10 @@ class GeminiExtract:
                 return ExtractResult(False, error="Khong gui duoc prompt")
 
             # Doi hoan thanh
-            if not self.wait_for_completion(timeout=180):
+            wait_result = self.wait_for_completion(timeout=180)
+            if wait_result == 'RATE_LIMIT':
+                return ExtractResult(False, error="RATE_LIMIT")
+            elif wait_result == 'TIMEOUT':
                 return ExtractResult(False, error="Timeout")
 
             # Doi them 5s de anh on dinh
@@ -580,7 +603,10 @@ class GeminiExtract:
                 return ExtractResult(False, error="Khong gui duoc prompt")
 
             # Doi hoan thanh
-            if not self.wait_for_completion(timeout=180):
+            wait_result = self.wait_for_completion(timeout=180)
+            if wait_result == 'RATE_LIMIT':
+                return ExtractResult(False, error="RATE_LIMIT")
+            elif wait_result == 'TIMEOUT':
                 return ExtractResult(False, error="Timeout")
 
             # Doi them 5s de anh on dinh

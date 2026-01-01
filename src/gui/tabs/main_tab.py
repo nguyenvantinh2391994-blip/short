@@ -2522,8 +2522,9 @@ class MainTab:
                     for try_count in range(max_profile_tries):
                         try:
                             result = extractor.extract_product(
-                                image_path=str(img),
-                                output_dir=str(extracted_folder),
+                                image_paths=[str(img)],
+                                output_folder=str(extracted_folder),
+                                product_code=code,
                                 product_name=product_name
                             )
                             if result and result.success:

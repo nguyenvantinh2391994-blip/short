@@ -3196,8 +3196,21 @@ class MainTab:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: đã có video final"))
                     continue
 
-                # Lấy voice trước - bắt buộc phải có
-                voice_path = get_voice_for_code(voice_folder, code) if voice_folder else None
+                # Lấy voice trước - TÌM TRONG input/{code}/ TRƯỚC
+                voice_path = None
+
+                # 1. Tìm trong input/{code}/ (ưu tiên)
+                code_folder = input_folder / code
+                for ext in ['.mp3', '.wav']:
+                    vp = code_folder / f"{code}{ext}"
+                    if vp.exists():
+                        voice_path = str(vp)
+                        break
+
+                # 2. Fallback: tìm trong voice_folder riêng
+                if not voice_path and voice_folder:
+                    voice_path = get_voice_for_code(voice_folder, code)
+
                 if not voice_path:
                     self.after_safe(lambda c=code: self.add_log(f"  ⏭️ {c}: không có voice, bỏ qua"))
                     continue

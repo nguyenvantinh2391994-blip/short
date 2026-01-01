@@ -1409,41 +1409,27 @@ class MainTab:
                 return
 
             current_profile_idx = 0
-            gemini = None
 
-            def init_gemini(profile_idx):
-                """Khởi tạo GeminiExtract với profile chỉ định"""
-                nonlocal gemini
-                if profile_idx >= len(profiles):
-                    return False
-
-                # Đóng Chrome cũ
-                chrome_manager.close_chrome()
-                import time
-                time.sleep(2)
-
-                profile = profiles[profile_idx]
-                chrome_path = profile.get("chrome_path")
-                profile_path = profile.get("profile_path")
-                self.after_safe(lambda n=profile.get("name", f"Profile {profile_idx+1}"), p=profile_path:
-                    self.add_log(f"🔄 Dùng Chrome: {n}\n   Profile path: {p}"))
-
-                gemini = GeminiExtract(
-                    chrome_path=chrome_path,
-                    profile_path=profile_path,
-                    output_folder=str(Path(self.app.config.output_folder)),
-                    headless=not getattr(self.app.config, 'show_chrome', True),
-                    custom_extract_prompt=extract_prompt,
-                )
-                return True
+            # Lấy profile đầu tiên
+            profile = profiles[current_profile_idx]
+            chrome_path = profile.get("chrome_path")
+            profile_path = profile.get("profile_path")
+            self.after_safe(lambda n=profile.get("name", "Profile 1"), p=profile_path:
+                self.add_log(f"🔄 Dùng Chrome: {n} ({p})"))
 
             input_folder = Path(self.app.config.input_folder)
+            output_folder = Path(self.app.config.output_folder)
 
-            # Khởi tạo với profile đầu tiên
-            if not init_gemini(current_profile_idx):
-                return
-
+            # Khoi tao Gemini Extract
+            gemini = GeminiExtract(
+                chrome_path=chrome_path,
+                profile_path=profile_path,
+                output_folder=str(output_folder),
+                headless=not getattr(self.app.config, 'show_chrome', True),
+                custom_extract_prompt=extract_prompt,
+            )
             self.current_gemini = gemini
+
             first_extract = True
 
             for item in pending:
@@ -1476,54 +1462,56 @@ class MainTab:
 
                 # Tach san pham - lấy tên sản phẩm từ cột C (index 2 trong data)
                 product_name = item["data"][2] if len(item.get("data", [])) > 2 else ""
+                if first_extract:
+                    result = gemini.extract_product(
+                        image_paths=images,
+                        output_folder=str(extract_folder),
+                        product_code=code,
+                        product_name=product_name
+                    )
+                    first_extract = False
+                else:
+                    result = gemini.extract_product_continue(
+                        image_paths=images,
+                        output_folder=str(extract_folder),
+                        product_code=code,
+                        product_name=product_name
+                    )
 
-                # Retry với profile switching
-                max_retries = len(profiles)
-                success = False
+                if result and result.success:
+                    self.after_safe(lambda c=code, n=len(result.images):
+                        self.add_log(f"  {c}: Da tach {n} anh"))
+                else:
+                    error = result.error if result else "Loi"
+                    self.after_safe(lambda c=code, e=error:
+                        self.add_log(f"  {c}: {e}"))
 
-                for retry in range(max_retries):
-                    if self.stop_flag.is_set():
-                        break
-
-                    if first_extract:
-                        result = gemini.extract_product(
-                            image_paths=images,
-                            output_folder=str(extract_folder),
-                            product_code=code,
-                            product_name=product_name
-                        )
-                        first_extract = False
-                    else:
-                        result = gemini.extract_product_continue(
-                            image_paths=images,
-                            output_folder=str(extract_folder),
-                            product_code=code,
-                            product_name=product_name
-                        )
-
-                    if result and result.success:
-                        self.after_safe(lambda c=code, n=len(result.images):
-                            self.add_log(f"  {c}: Da tach {n} anh"))
-                        success = True
-                        break
-
-                    # Nếu RATE_LIMIT hoặc Timeout → switch profile
+                    # Nếu RATE_LIMIT hoặc Timeout → switch profile và tiếp tục
                     if result and result.error in ("RATE_LIMIT", "Timeout"):
-                        self.after_safe(lambda e=result.error: self.add_log(f"  ⚠️ {e}! Đổi profile..."))
                         current_profile_idx += 1
                         if current_profile_idx < len(profiles):
-                            if init_gemini(current_profile_idx):
-                                self.current_gemini = gemini
-                                first_extract = True  # Profile mới cần extract_product (không continue)
-                                continue
-                        self.after_safe(lambda: self.add_log(f"  ❌ Hết profile để thử"))
-                        break
-                    else:
-                        # Lỗi khác
-                        error = result.error if result else "Loi"
-                        self.after_safe(lambda c=code, e=error:
-                            self.add_log(f"  {c}: {e}"))
-                        break
+                            self.after_safe(lambda: self.add_log(f"  ⚠️ Đổi profile..."))
+                            chrome_manager.close_chrome()
+                            import time
+                            time.sleep(2)
+
+                            profile = profiles[current_profile_idx]
+                            chrome_path = profile.get("chrome_path")
+                            profile_path = profile.get("profile_path")
+                            self.after_safe(lambda n=profile.get("name"), p=profile_path:
+                                self.add_log(f"🔄 Dùng Chrome: {n} ({p})"))
+
+                            gemini = GeminiExtract(
+                                chrome_path=chrome_path,
+                                profile_path=profile_path,
+                                output_folder=str(output_folder),
+                                headless=not getattr(self.app.config, 'show_chrome', True),
+                                custom_extract_prompt=extract_prompt,
+                            )
+                            self.current_gemini = gemini
+                            first_extract = True  # Profile mới cần mở Chrome mới
+                        else:
+                            self.after_safe(lambda: self.add_log(f"  ❌ Hết profile để thử"))
 
             self.after_safe(lambda: self.add_log("\nHoan thanh tach san pham!"))
 

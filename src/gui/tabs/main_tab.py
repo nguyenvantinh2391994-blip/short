@@ -2463,6 +2463,12 @@ class MainTab:
                 nonlocal extractor
                 if profile_idx >= len(profiles):
                     return False
+
+                # Đóng Chrome cũ trước khi switch profile
+                from ...chrome_manager import chrome_manager
+                chrome_manager.close_chrome()
+                time.sleep(2)
+
                 profile = profiles[profile_idx]
                 chrome_path = profile.get("chrome_path")
                 profile_path = profile.get("profile_path")

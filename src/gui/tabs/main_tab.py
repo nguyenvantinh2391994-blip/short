@@ -3152,7 +3152,17 @@ class MainTab:
 
                 # Ưu tiên Grok videos, fallback sang SORA nếu không có Grok
                 grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
-                sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
+
+                # SORA videos: ưu tiên bản _clean nếu có
+                sora_videos = []
+                for v in all_videos:
+                    if "00_sora_" in v.name and "_clean" not in v.name:
+                        clean_version = v.parent / f"{v.stem}_clean{v.suffix}"
+                        if clean_version.exists():
+                            sora_videos.append(str(clean_version))
+                        else:
+                            sora_videos.append(str(v))
+                sora_videos = sorted(sora_videos)
 
                 if grok_videos:
                     video_paths = grok_videos
@@ -4291,7 +4301,18 @@ class MainTab:
                     if all_videos:
                         # Tách SORA và GROK videos
                         grok_videos = sorted([str(v) for v in all_videos if "00_sora_" not in v.name])
-                        sora_videos = sorted([str(v) for v in all_videos if "00_sora_" in v.name])
+
+                        # SORA videos: ưu tiên bản _clean nếu có
+                        sora_videos = []
+                        for v in all_videos:
+                            if "00_sora_" in v.name and "_clean" not in v.name:
+                                # Kiểm tra có bản _clean không
+                                clean_version = v.parent / f"{v.stem}_clean{v.suffix}"
+                                if clean_version.exists():
+                                    sora_videos.append(str(clean_version))
+                                else:
+                                    sora_videos.append(str(v))
+                        sora_videos = sorted(sora_videos)
 
                         # Cần ít nhất GROK video (SORA optional)
                         if grok_videos:

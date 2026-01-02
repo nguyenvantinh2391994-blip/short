@@ -2738,7 +2738,16 @@ class MainTab:
                 # Check voice trong input/{code}/
                 code_folder = input_folder / code
                 has_voice = (code_folder / f"{code}.mp3").exists() or (code_folder / f"{code}.wav").exists()
-                if has_voice and script:
+
+                # Check Flow prompts (cột I, J, K, L)
+                image_prompt_1 = row[8].strip() if len(row) > 8 else ""
+                video_prompt_1 = row[9].strip() if len(row) > 9 else ""
+                image_prompt_2 = row[10].strip() if len(row) > 10 else ""
+                video_prompt_2 = row[11].strip() if len(row) > 11 else ""
+                has_all_flow_prompts = image_prompt_1 and video_prompt_1 and image_prompt_2 and video_prompt_2
+
+                # Skip nếu đã có ĐẦY ĐỦ: voice, script, VÀ flow prompts
+                if has_voice and script and has_all_flow_prompts:
                     continue
 
                 self.after_safe(lambda c=code: self.add_log(f"  📝 {c}..."))
@@ -2757,12 +2766,7 @@ class MainTab:
                             reader.sheet.update_acell(f"F{row_idx}", result.sora_prompt)
 
                 # Tạo Flow prompts cho cột I, J, K, L nếu chưa có
-                image_prompt_1 = row[8].strip() if len(row) > 8 else ""
-                video_prompt_1 = row[9].strip() if len(row) > 9 else ""
-                image_prompt_2 = row[10].strip() if len(row) > 10 else ""
-                video_prompt_2 = row[11].strip() if len(row) > 11 else ""
-
-                if not image_prompt_1 or not video_prompt_1 or not image_prompt_2 or not video_prompt_2:
+                if not has_all_flow_prompts:
                     self.after_safe(lambda c=code: self.add_log(f"    🌀 {c}: Tạo Flow prompts..."))
                     flow_prompts = gemini.generate_flow_prompts(
                         name, desc,

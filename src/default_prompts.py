@@ -88,7 +88,15 @@ YÊU CẦU:
 - Dựa vào thông tin sản phẩm, KHÔNG bịa
 - Sáng tạo, tự nhiên
 
-CHỈ TRẢ VỀ KỊCH BẢN:"""
+TUYỆT ĐỐI KHÔNG ĐƯỢC có trong kịch bản:
+- Ghi chú thời gian như "(0-5 giây)", "(Mở đầu - 3s)"
+- Hướng dẫn hành động như "(quay cận...)", "(bé cười...)"
+- Tiêu đề như "Kịch bản TikTok:", "Video bắt đầu"
+- Định dạng như **in đậm**, *nghiêng*
+- Chữ "MC:", "Người nói:", ghi chú sân khấu
+- Hashtag (trừ khi trong câu kêu gọi cuối)
+
+CHỈ TRẢ VỀ VĂN BẢN ĐỌC VOICE, KHÔNG CÓ GHI CHÚ NÀO:"""
 
 
 # =============================================================================

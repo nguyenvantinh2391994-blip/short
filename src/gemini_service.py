@@ -122,7 +122,14 @@ PHONG CÁCH:
 VÍ DỤ TỐT (cho áo thun cotton):
 "Đây là mẫu áo mình hay được hỏi nhất nè. Chất cotton 100% nên mặc mát lắm, đi làm cả ngày không bí. Form áo vừa vặn, không quá rộng cũng không bó. Màu này dễ phối đồ, mình hay mặc với quần jean hoặc chân váy đều được. Giá cũng mềm, dưới 200k thôi. Ai thích thì bấm vào giỏ hàng màu vàng trong video nha."
 
-CHỈ TRẢ VỀ KỊCH BẢN, KHÔNG GIẢI THÍCH:"""
+TUYỆT ĐỐI KHÔNG ĐƯỢC có:
+- Ghi chú thời gian: "(0-5 giây)", "(Mở đầu - 3s)"
+- Hướng dẫn hành động: "(quay cận...)", "(bé cười...)"
+- Tiêu đề: "Kịch bản TikTok:", "Video bắt đầu"
+- Định dạng: **in đậm**, *nghiêng*
+- Ghi chú: "MC:", "Người nói:", ghi chú sân khấu
+
+CHỈ TRẢ VỀ VĂN BẢN ĐỌC VOICE TRỰC TIẾP:"""
 
     # Prompt template cho SORA video (đơn giản, nhân vật mặc/dùng sản phẩm)
     SORA_PROMPT_TEMPLATE = """Tạo prompt NGẮN GỌN cho SORA AI để tạo video người Việt Nam đang mặc/sử dụng sản phẩm.
@@ -167,6 +174,79 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
         self.api_key = api_key
         self.model = model
         self.tts_model = "gemini-2.5-flash-preview-tts"
+
+    def _clean_script_text(self, script: str) -> str:
+        """
+        Loại bỏ các ghi chú, định dạng thừa trong kịch bản
+
+        Args:
+            script: Kịch bản gốc
+
+        Returns:
+            Kịch bản đã được làm sạch, chỉ còn văn bản đọc voice
+        """
+        import re
+
+        if not script:
+            return ""
+
+        lines = script.split('\n')
+        cleaned_lines = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Bỏ các dòng tiêu đề/header
+            skip_patterns = [
+                r'^Kịch bản',
+                r'^Video bắt đầu',
+                r'^\*\*Kịch bản',
+                r'^\[Video',
+                r'^#+ ',  # Markdown headers
+            ]
+            should_skip = False
+            for pattern in skip_patterns:
+                if re.match(pattern, line, re.IGNORECASE):
+                    should_skip = True
+                    break
+            if should_skip:
+                continue
+
+            # Loại bỏ ghi chú thời gian: (0-5s), [0-5 giây], (Mở đầu - 3s), etc.
+            line = re.sub(r'\[?\(?\d+[-–]\d+\s*(s|giây|seconds?)?\)?]?', '', line)
+            line = re.sub(r'\[?\(?(Mở đầu|Review|Kết|Hook|CTA|MC|Người nói)[\s\-–:]*\d*\s*(s|giây)?\)?]?\s*:?', '', line, flags=re.IGNORECASE)
+
+            # Loại bỏ hướng dẫn hành động: (quay cận...), (bé cười...), [hình ảnh...]
+            line = re.sub(r'\([^)]*quay[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*cười[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*hình ảnh[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*video[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*chèn[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*nhạc[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\[[^\]]*hình ảnh[^\]]*\]', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\[[^\]]*video[^\]]*\]', '', line, flags=re.IGNORECASE)
+
+            # Loại bỏ định dạng markdown: **bold**, *italic*
+            line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
+            line = re.sub(r'\*([^*]+)\*', r'\1', line)
+
+            # Loại bỏ MC:, Người nói:, etc.
+            line = re.sub(r'^(MC|Người nói|Speaker|Host)\s*[:\-–]\s*', '', line, flags=re.IGNORECASE)
+
+            # Loại bỏ khoảng trắng thừa
+            line = re.sub(r'\s+', ' ', line).strip()
+
+            if line and len(line) > 2:  # Bỏ dòng quá ngắn
+                cleaned_lines.append(line)
+
+        result = '\n'.join(cleaned_lines)
+
+        # Gộp các dòng thành đoạn văn liền mạch
+        result = re.sub(r'\n+', '\n\n', result)
+
+        return result.strip()
 
     def generate_script(
         self,
@@ -268,6 +348,9 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
                 script = script[1:-1]
             if script.startswith("'") and script.endswith("'"):
                 script = script[1:-1]
+
+            # Clean up script - loại bỏ ghi chú, định dạng thừa
+            script = self._clean_script_text(script)
 
             if not script:
                 return ScriptResult(False, error="Kịch bản trống")

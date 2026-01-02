@@ -198,7 +198,7 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             if not line:
                 continue
 
-            # Bỏ các dòng tiêu đề/header/intro
+            # Bỏ các dòng tiêu đề/header/intro/ghi chú
             skip_patterns = [
                 r'^Kịch bản',
                 r'^Video bắt đầu',
@@ -209,14 +209,25 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
                 r'^Tuyệt vời',
                 r'^Dưới đây là',
                 r'^Đây là kịch bản',
-                r'^\(Hình ảnh:',
-                r'^\(Video:',
-                r'^\(Nhạc nền',
+                r'^\(Hình ảnh',
+                r'^\(Video',
+                r'^\(Nhạc',
                 r'^\(Kết thúc',
                 r'^\(Chèn',
-                r'^\*\*\(.*\)\*\*$',  # Dòng chỉ có **(ghi chú)**
-                r'^\(.*giây\)',  # (0-5 giây) riêng một dòng
-                r'^\*\*\[.*\]\*\*',  # **[0-3s]**
+                r'^\(Text',
+                r'^\(giọng',
+                r'^\*\*\(.*\)\*\*',
+                r'^\(.*giây\)',
+                r'^\*\*\[.*\]\*\*',
+                r'^\* Hình ảnh',
+                r'^\* Âm thanh',
+                r'^\* Lời thoại',
+                r'^\* Chữ trên',
+                r'^Lưu ý',
+                r'^\* Sử dụng',
+                r'^Text trên màn hình',
+                r'^\(Text trên màn hình\)',
+                r'^#\w+',  # Dòng bắt đầu bằng hashtag
             ]
             should_skip = False
             for pattern in skip_patterns:
@@ -226,7 +237,10 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             if should_skip:
                 continue
 
-            # Loại bỏ ghi chú thời gian: (0-5s), [0-5 giây], **(0-5 giây):**
+            # Loại bỏ bullet points đầu dòng: *, -, •, ***
+            line = re.sub(r'^[\*\-•]+\s*', '', line)
+
+            # Loại bỏ ghi chú thời gian
             line = re.sub(r'\*?\*?\[?\(?\d+[-–]\d+\s*(s|giây|seconds?)?\)?]?\*?\*?\s*:?', '', line)
             line = re.sub(r'\[?\(?(Mở đầu|Review|Kết|Hook|CTA|MC|Người nói|Chi tiết|Giới thiệu)[\s\-–:]*\d*\s*(s|giây)?\)?]?\s*:?', '', line, flags=re.IGNORECASE)
 
@@ -244,22 +258,32 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             line = re.sub(r'\([^)]*bé trai[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*xoay[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*tạo dáng[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*giọng[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\[[^\]]*hình ảnh[^\]]*\]', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\[[^\]]*video[^\]]*\]', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\[[^\]]*Kho Sỉ[^\]]*\]', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\[[^\]]*Tặng[^\]]*\]', '', line, flags=re.IGNORECASE)
 
-            # Loại bỏ định dạng markdown: **bold**, *italic*
+            # Loại bỏ định dạng markdown: **bold**, *italic*, ""text""
             line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
             line = re.sub(r'\*([^*]+)\*', r'\1', line)
-            line = re.sub(r'""([^"]+)""', r'\1', line)  # ""text""
+            line = re.sub(r'""([^"]+)""', r'\1', line)
 
-            # Loại bỏ MC:, Người nói:, etc.
-            line = re.sub(r'^(MC|Người nói|Speaker|Host)\s*[:\-–]\s*', '', line, flags=re.IGNORECASE)
+            # Loại bỏ MC:, Người nói:, Lời thoại:, etc.
+            line = re.sub(r'^(MC|Người nói|Speaker|Host|Lời thoại)\s*[:\-–]\s*', '', line, flags=re.IGNORECASE)
+
+            # Loại bỏ emoji
+            line = re.sub(r'[\U0001F300-\U0001F9FF]', '', line)
+            line = re.sub(r'[\u2600-\u26FF\u2700-\u27BF]', '', line)
+
+            # Loại bỏ hashtag
+            line = re.sub(r'#\w+\s*', '', line)
 
             # Loại bỏ khoảng trắng thừa
             line = re.sub(r'\s+', ' ', line).strip()
 
             # Bỏ dòng chỉ có dấu ngoặc hoặc quá ngắn
-            if line and len(line) > 3 and not re.match(r'^[\(\)\[\]\*\s]+$', line):
+            if line and len(line) > 3 and not re.match(r'^[\(\)\[\]\*\s\.\:]+$', line):
                 cleaned_lines.append(line)
 
         result = '\n'.join(cleaned_lines)

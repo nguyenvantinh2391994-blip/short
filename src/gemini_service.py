@@ -198,13 +198,25 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             if not line:
                 continue
 
-            # Bỏ các dòng tiêu đề/header
+            # Bỏ các dòng tiêu đề/header/intro
             skip_patterns = [
                 r'^Kịch bản',
                 r'^Video bắt đầu',
                 r'^\*\*Kịch bản',
+                r'^\*\*Video',
                 r'^\[Video',
                 r'^#+ ',  # Markdown headers
+                r'^Tuyệt vời',
+                r'^Dưới đây là',
+                r'^Đây là kịch bản',
+                r'^\(Hình ảnh:',
+                r'^\(Video:',
+                r'^\(Nhạc nền',
+                r'^\(Kết thúc',
+                r'^\(Chèn',
+                r'^\*\*\(.*\)\*\*$',  # Dòng chỉ có **(ghi chú)**
+                r'^\(.*giây\)',  # (0-5 giây) riêng một dòng
+                r'^\*\*\[.*\]\*\*',  # **[0-3s]**
             ]
             should_skip = False
             for pattern in skip_patterns:
@@ -214,23 +226,31 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             if should_skip:
                 continue
 
-            # Loại bỏ ghi chú thời gian: (0-5s), [0-5 giây], (Mở đầu - 3s), etc.
-            line = re.sub(r'\[?\(?\d+[-–]\d+\s*(s|giây|seconds?)?\)?]?', '', line)
-            line = re.sub(r'\[?\(?(Mở đầu|Review|Kết|Hook|CTA|MC|Người nói)[\s\-–:]*\d*\s*(s|giây)?\)?]?\s*:?', '', line, flags=re.IGNORECASE)
+            # Loại bỏ ghi chú thời gian: (0-5s), [0-5 giây], **(0-5 giây):**
+            line = re.sub(r'\*?\*?\[?\(?\d+[-–]\d+\s*(s|giây|seconds?)?\)?]?\*?\*?\s*:?', '', line)
+            line = re.sub(r'\[?\(?(Mở đầu|Review|Kết|Hook|CTA|MC|Người nói|Chi tiết|Giới thiệu)[\s\-–:]*\d*\s*(s|giây)?\)?]?\s*:?', '', line, flags=re.IGNORECASE)
 
-            # Loại bỏ hướng dẫn hành động: (quay cận...), (bé cười...), [hình ảnh...]
+            # Loại bỏ các ngoặc với nội dung ghi chú
             line = re.sub(r'\([^)]*quay[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*cười[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*hình ảnh[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*video[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*chèn[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\([^)]*nhạc[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*giơ[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*mặc[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*chỉ tay[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*bé gái[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*bé trai[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*xoay[^)]*\)', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'\([^)]*tạo dáng[^)]*\)', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\[[^\]]*hình ảnh[^\]]*\]', '', line, flags=re.IGNORECASE)
             line = re.sub(r'\[[^\]]*video[^\]]*\]', '', line, flags=re.IGNORECASE)
 
             # Loại bỏ định dạng markdown: **bold**, *italic*
             line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
             line = re.sub(r'\*([^*]+)\*', r'\1', line)
+            line = re.sub(r'""([^"]+)""', r'\1', line)  # ""text""
 
             # Loại bỏ MC:, Người nói:, etc.
             line = re.sub(r'^(MC|Người nói|Speaker|Host)\s*[:\-–]\s*', '', line, flags=re.IGNORECASE)
@@ -238,7 +258,8 @@ CHỈ TRẢ VỀ 1 CÂU PROMPT TIẾNG ANH (15-25 từ):"""
             # Loại bỏ khoảng trắng thừa
             line = re.sub(r'\s+', ' ', line).strip()
 
-            if line and len(line) > 2:  # Bỏ dòng quá ngắn
+            # Bỏ dòng chỉ có dấu ngoặc hoặc quá ngắn
+            if line and len(line) > 3 and not re.match(r'^[\(\)\[\]\*\s]+$', line):
                 cleaned_lines.append(line)
 
         result = '\n'.join(cleaned_lines)

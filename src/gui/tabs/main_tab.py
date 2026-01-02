@@ -3018,6 +3018,14 @@ class MainTab:
                 nonlocal sora
                 if profile_idx >= len(profiles):
                     return False
+                # Đóng Chrome cũ trước khi mở profile mới
+                if sora:
+                    try:
+                        sora.close_chrome()
+                        import time
+                        time.sleep(2)
+                    except:
+                        pass
                 profile = profiles[profile_idx]
                 chrome_path = profile.get("chrome_path")
                 profile_path = profile.get("profile_path")
@@ -3093,10 +3101,13 @@ class MainTab:
                         elif result and hasattr(result, 'error'):
                             error_str = str(result.error).lower()
                             if "limit" in error_str or "quota" in error_str or "429" in error_str:
+                                self.after_safe(lambda: self.add_log(f"    🚫 SORA rate limit! Đổi profile..."))
                                 current_profile_idx += 1
                                 if init_sora(current_profile_idx):
                                     first_video = True  # Reset cho profile mới
                                     continue
+                                else:
+                                    self.after_safe(lambda: self.add_log(f"    ❌ Hết profile để thử"))
                             break
                         else:
                             break

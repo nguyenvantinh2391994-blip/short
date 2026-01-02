@@ -137,6 +137,19 @@ class SoraAutomation:
         self.chrome_process = None
         self._is_hidden = False
 
+    def close_chrome(self):
+        """Đóng Chrome hoàn toàn"""
+        if self.chrome_process:
+            try:
+                self.chrome_process.kill()
+                self.chrome_process.wait(timeout=5)
+                console.print(f"[dim]Đã đóng Chrome SORA[/]")
+            except Exception as e:
+                console.print(f"[yellow]Lỗi đóng Chrome SORA: {e}[/]")
+            finally:
+                self.chrome_process = None
+        self._is_hidden = False
+
     def log(self, msg: str):
         console.print(f"[cyan]{msg}[/]")
 

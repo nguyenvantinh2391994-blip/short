@@ -71,65 +71,33 @@ class GeminiService:
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     # Prompt template cho kịch bản bán hàng TỰ NHIÊN (30-40s) - AFFILIATE
-    SCRIPT_PROMPT_TEMPLATE = """Bạn là người review sản phẩm tự nhiên, chân thực cho video AFFILIATE.
+    SCRIPT_PROMPT_TEMPLATE = """Viết lời đọc voice cho video TikTok review sản phẩm (~30 giây).
 
-SẢN PHẨM:
-- Tên: {product_name}
-- Mô tả chi tiết: {product_description}
+SẢN PHẨM: {product_name}
+MÔ TẢ: {product_description}
 
-NHIỆM VỤ: Từ mô tả sản phẩm, LỌC RA các TÍNH NĂNG NỔI BẬT và viết kịch bản 30-40 giây.
-
-BỐI CẢNH VIDEO:
-- Phần đầu (SORA): Đã có hình ảnh bắt mắt của người mặc/dùng sản phẩm (5-10s)
-- Phần voice này: Tiếp nối, giải thích TẠI SAO sản phẩm này tốt
-- Video có GẮN GIỎ HÀNG (icon giỏ hàng màu vàng trong video)
-
-CẤU TRÚC KỊCH BẢN (4 phần):
-
-1. HOOK NHẸ (1-2 câu): Thu hút tiếp sau hình ảnh
-   - "Mình biết nhiều bạn đang thắc mắc về..."
-   - "Đây là món mình hay được hỏi nhất..."
-   - "Nếu bạn đang tìm [loại sản phẩm] thì xem tiếp nha..."
-
-2. TÍNH NĂNG (2-3 điểm): Trích từ mô tả, nói ngắn gọn
-   - Chất liệu gì? (cotton, lụa, thun...)
-   - Thiết kế như thế nào? (form, kiểu dáng...)
-   - Điểm đặc biệt? (co giãn, thoáng mát, không nhăn...)
-
-3. LÝ DO MUA (kích thích nhu cầu):
-   - Phù hợp với ai? Dịp nào?
-   - Giải quyết vấn đề gì cho người mua?
-   - So sánh nhẹ (giá tốt, chất lượng...)
-
-4. CALL TO ACTION (cho video AFFILIATE - chọn 1):
-   - "Bấm vào giỏ hàng màu vàng trong video để mua nha"
-   - "Ai thích thì bấm giỏ hàng để xem giá nha"
-   - "Comment 'muốn' để mình gửi link nha"
-   - "Bấm vào giỏ hàng hoặc comment để mình tư vấn"
+CẤU TRÚC LỜI ĐỌC:
+1. Thu hút: "Đây là món mình hay được hỏi nhất nè..."
+2. Tính năng: Chất liệu, form dáng, điểm nổi bật
+3. Kêu gọi: "Bấm vào giỏ hàng màu vàng để mua nha"
 
 YÊU CẦU:
-- Độ dài: 90-120 từ (30-40 giây)
-- Giọng điệu: Tự nhiên như nói chuyện, KHÔNG giả tạo
-- Tập trung TÍNH NĂNG thực tế từ mô tả sản phẩm
-- KHÔNG bịa thông tin không có trong mô tả
+- 90-120 từ, văn xuôi liền mạch
+- Giọng tự nhiên như nói chuyện với bạn bè
+- Dựa vào mô tả, không bịa thông tin
 
-PHONG CÁCH:
-- Như đang review cho bạn bè xem
-- Dùng từ đời thường: "thật sự", "nói thật", "mình thấy"
-- Có thể dùng: "xịn", "ưng", "đáng tiền" (tự nhiên)
-- KHÔNG dùng quá mức: "siêu cấp", "đỉnh của chóp"
-
-VÍ DỤ TỐT (cho áo thun cotton):
+VÍ DỤ ĐÚNG:
 "Đây là mẫu áo mình hay được hỏi nhất nè. Chất cotton 100% nên mặc mát lắm, đi làm cả ngày không bí. Form áo vừa vặn, không quá rộng cũng không bó. Màu này dễ phối đồ, mình hay mặc với quần jean hoặc chân váy đều được. Giá cũng mềm, dưới 200k thôi. Ai thích thì bấm vào giỏ hàng màu vàng trong video nha."
 
-TUYỆT ĐỐI KHÔNG ĐƯỢC có:
-- Ghi chú thời gian: "(0-5 giây)", "(Mở đầu - 3s)"
-- Hướng dẫn hành động: "(quay cận...)", "(bé cười...)"
-- Tiêu đề: "Kịch bản TikTok:", "Video bắt đầu"
-- Định dạng: **in đậm**, *nghiêng*
-- Ghi chú: "MC:", "Người nói:", ghi chú sân khấu
+TUYỆT ĐỐI KHÔNG ĐƯỢC CÓ:
+- Ghi chú: "(0-5s)", "(quay cận...)", "(nhạc nền...)"
+- Tiêu đề: "Kịch bản:", "Video:", "Mở đầu:"
+- Bullet point: *, -, •
+- Định dạng: **đậm**, *nghiêng*
+- Emoji, hashtag
+- Hướng dẫn sân khấu
 
-CHỈ TRẢ VỀ VĂN BẢN ĐỌC VOICE TRỰC TIẾP:"""
+CHỈ TRẢ VỀ VĂN XUÔI ĐỌC VOICE (không giải thích):"""
 
     # Prompt template cho SORA video (đơn giản, nhân vật mặc/dùng sản phẩm)
     SORA_PROMPT_TEMPLATE = """Tạo prompt NGẮN GỌN cho SORA AI để tạo video người Việt Nam đang mặc/sử dụng sản phẩm.

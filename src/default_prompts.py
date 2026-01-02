@@ -65,38 +65,30 @@ Return ONLY the edited product image."""
 # =============================================================================
 # 2. SCRIPT PROMPT - Kịch bản bán hàng (~30s) cho video AFFILIATE thời trang
 # =============================================================================
-DEFAULT_SCRIPT_PROMPT = """Viết kịch bản REVIEW SẢN PHẨM cho video TikTok ~30 giây.
+DEFAULT_SCRIPT_PROMPT = """Viết lời đọc cho video TikTok review sản phẩm thời trang trẻ em (~30 giây).
 
-ĐỐI TƯỢNG: Phụ nữ có con nhỏ từ 2-8 tuổi
-- Quan tâm: tiết kiệm, tiện lợi, bền đẹp, an toàn cho bé
-- Tâm lý: muốn con xinh xắn, đáng yêu, thoải mái khi mặc
-- Thích: giá hợp lý, chất lượng tốt, dễ giặt, không phai màu
+SẢN PHẨM: {product_name}
+MÔ TẢ: {product_description}
 
-SẢN PHẨM:
-- Tên: {product_name}
-- Mô tả: {product_description}
+ĐỐI TƯỢNG: Mẹ có con 2-8 tuổi, quan tâm tiết kiệm, tiện lợi, con xinh xắn thoải mái.
 
-HƯỚNG DẪN:
-1. MỞ ĐẦU: Câu thơ/vè BẮT VẦN ấn tượng, thu hút các mẹ
-2. REVIEW: Nói về chất liệu, form dáng, điểm nổi bật phù hợp với bé
-3. KẾT: Kêu gọi mua hàng
+CẤU TRÚC LỜI ĐỌC:
+1. Câu thơ/vè bắt vần thu hút (2 câu)
+2. Giới thiệu điểm nổi bật: chất liệu, form dáng, phù hợp bé
+3. Kêu gọi mua hàng
 
-YÊU CẦU:
-- 50-70 từ
-- Giọng thân thiện như mẹ bỉm chia sẻ với nhau
-- Hiểu tâm lý phụ huynh: an tâm, tiện lợi, con xinh
-- Dựa vào thông tin sản phẩm, KHÔNG bịa
-- Sáng tạo, tự nhiên
+QUAN TRỌNG - ĐÂY LÀ LỜI ĐỌC VOICE:
+- Viết văn xuôi liền mạch, 50-70 từ
+- Giọng thân thiện như mẹ nói chuyện
+- KHÔNG viết ghi chú, hướng dẫn, tiêu đề
+- KHÔNG dùng bullet point, số thứ tự
+- KHÔNG có "(hình ảnh...)", "(nhạc nền...)", "(0-5s)"
+- KHÔNG có **đậm**, *nghiêng*, emoji, hashtag
 
-TUYỆT ĐỐI KHÔNG ĐƯỢC có trong kịch bản:
-- Ghi chú thời gian như "(0-5 giây)", "(Mở đầu - 3s)"
-- Hướng dẫn hành động như "(quay cận...)", "(bé cười...)"
-- Tiêu đề như "Kịch bản TikTok:", "Video bắt đầu"
-- Định dạng như **in đậm**, *nghiêng*
-- Chữ "MC:", "Người nói:", ghi chú sân khấu
-- Hashtag (trừ khi trong câu kêu gọi cuối)
+VÍ DỤ ĐÚNG:
+"Váy xinh cho bé, mẹ nào mà chê? Diện lên là yêu, tha hồ mà khoe! Chất liệu cotton mát lịm, bé mặc thoải mái cả ngày. Form dáng công chúa xinh xắn, đường may tỉ mỉ bền đẹp lắm. Giá thì siêu yêu, mẹ nào ưng thì bấm vào giỏ hàng nha!"
 
-CHỈ TRẢ VỀ VĂN BẢN ĐỌC VOICE, KHÔNG CÓ GHI CHÚ NÀO:"""
+CHỈ TRẢ VỀ LỜI ĐỌC (không giải thích, không tiêu đề):"""
 
 
 # =============================================================================
